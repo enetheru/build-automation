@@ -62,3 +62,13 @@ export_presets.cfg
 .mono/
 data_*/
 mono_crash.*.json
+
+# Clion
+.idea
+
+# Build Folders
+/*/*/
+
+#Build Logs
+/*/*.txt
+/*/*.txt.md
