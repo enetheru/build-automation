@@ -90,7 +90,8 @@ Set-PSDebug -Off
     # Reset the working directory after we are done.
     Set-Location $root
 
-    rg -M1024 "(register_types|memory|libgdexample|libgodot-cpp)" $tracelog | sed 's/ \(-[a-zA-Z]\)/\n\1/g;s/\(-c\) /\1\n/g' > "$traceLog.md"
+    rg -M1024 "(register_types|memory|libgdexample|libgodot-cpp)" $tracelog `
+        | sed 's/ \(-[a-zA-Z]\)/\n\1/g;s/\(-c\) /\1\n/g;s/&&/\n/g' > "$traceLog.md"
 }
 
 foreach ($hostTarget in  @(
@@ -98,7 +99,7 @@ foreach ($hostTarget in  @(
 #    'w64-cmake-msvc-w64'
 #    'w64-cmake-android'
     'w64-cmake-web'
-#    'w64-scons-web'
+    'w64-scons-web'
 )) {
     TargetPrep -hostTarget $hostTarget -sourceOrigin $sourceOrigin -sourceBranch $sourceBranch
     TargetBuild -hostTarget $hostTarget -buildRoot "$root/$hostTarget"
