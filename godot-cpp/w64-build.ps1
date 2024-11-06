@@ -1,45 +1,111 @@
-#TODO make the Tee-Object -Append option configurable.
+#!/usr/bin/env pwsh
+#Requires -Version 7.4
 
-$godotcpp = "C:\build\godot-cpp"
-cd $godotcpp
+param(
+    [switch] $freshBuild, # defaults to false
+    [switch] $testBuild, # defaults to false
+    [switch] $appendTrace # defaults to false
+)
 
-rg -u --files | rg "memory.*o(bj)?" | ForEach-Object { rm $_ }
-rg -u --files | rg "example.*o(bj)?" | ForEach-Object { rm $_ }
-rg -u --files | rg "\.dll$" | ForEach-Object { rm $_ }
-rg -u --files | rg "\.so$" | ForEach-Object { rm $_ }
-rg -u --files | rg "\.wasm$" | ForEach-Object { rm $_ }
+# Powershell execution options
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
 
-function Build-Target {
+# Main Variables
+[string]$godot="C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
+[string]$godot_tr="C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
+
+[string]$root = "C:\build\godot-cpp"
+[System.Uri]$sourceOrigin = "C:\Godot\src\godot-cpp"
+$sourceBranch = "modernise"
+
+# Automtion Begin
+Set-Location $root
+
+function TargetPrep {
     param(
-        $hostTarget
+        [Parameter(Mandatory=$true)] [string]$hostTarget,
+        [Parameter(Mandatory=$true)] [System.Uri]$sourceOrigin,
+        $sourceBranch
     )
 
-    $buildScript="$godotcpp\$hostTarget.ps1"
-    $traceLog="$godotcpp\$hostTarget.txt"
-    pwsh -nop -File $buildScript | Tee-Object -FilePath $traceLog
+    Set-Location $root
+
+    [string]$sourceDest = "$root/$hostTarget"
+
+    # Clone the repository
+    if( -Not (Test-Path -Path $sourceDest -PathType Container) ){
+        git clone (${sourceBranch}?.Insert(0,"-b")) "$sourceOrigin" "$sourceDest"
+    }
+
+    # Change working directory
+    Set-Location $sourceDest
+
+    # Fetch any changes and reset to latest
+    git fetch --all
+    git reset --hard '@{u}'
+    if( $sourceBranch ){ git checkout $sourceBranch }
+
+    # Remove key build artifacts before re-build
+    # Turn off failure on Non-Zero exit code for ripgrep finding no results
+    $PSNativeCommandUseErrorActionPreference = $false
+    rg -u --files | rg "\.(lib|dll|a|so|wasm|dylib)$" | ForEach-Object { Remove-Item $_ }
+    rg -u --files | rg "(memory|register_types).*?\.(o|obj|so)$" | ForEach-Object { Remove-Item $_ }
+    #Turn back on exit failures.
+    $PSNativeCommandUseErrorActionPreference = $true
 }
 
-$hostTargetList = @(
-    'w64-cmake-msvc-w64'
-    'w64-cmake-android'
+function TargetBuild {
+    param(
+        $hostTarget,
+        $buildRoot
+    )
+    $buildScript="$root\$hostTarget.ps1"
+    $traceLog="$root\$hostTarget.txt"
+    $fresh = ($freshBuild) ? "`"--fresh`"" : "`$null"
+
+    # This script will be source of the exported log, and sources the build script.
+    @"
+#Requires -Version 7.4
+Set-StrictMode -Version Latest
+`$ErrorActionPreference = "Stop"
+`$PSNativeCommandUseErrorActionPreference = `$true
+
+Set-PSDebug -Trace 1
+
+`$godot="$godot"
+`$godot_tr="$godot_tr"
+
+`$hostTarget="$hostTarget"
+`$buildRoot="$buildRoot"
+`$fresh=$fresh
+
+. $buildScript
+
+Set-PSDebug -Off
+
+"@ | pwsh -nop -WorkingDirectory $buildRoot -Command - | Tee-Object -FilePath $traceLog
+    #TODO make the Tee-Object -Append option configurable.
+
+    # Reset the working directory after we are done.
+    Set-Location $root
+
+    rg -M1024 "(register_types|memory|libgdexample|libgodot-cpp)" $tracelog | sed 's/ \(-[a-zA-Z]\)/\n\1/g;s/\(-c\) /\1\n/g' > "$traceLog.md"
+}
+
+foreach ($hostTarget in  @(
+#    'w64-scons-msvc-w64'
+#    'w64-cmake-msvc-w64'
+#    'w64-cmake-android'
     'w64-cmake-web'
-);
-
-foreach ($hostTarget in $hostTargetList)
-{
-    Build-Target -HostTarget $hostTarget
+#    'w64-scons-web'
+)) {
+    TargetPrep -hostTarget $hostTarget -sourceOrigin $sourceOrigin -sourceBranch $sourceBranch
+    TargetBuild -hostTarget $hostTarget -buildRoot "$root/$hostTarget"
 }
 
-
-# Build using msys2
-# UCRT64
-@'
-$msys2_shell="C:\msys64\msys2_shell.cmd -defterm -no-start -where C:\build\godot-cpp"
-cmd /c $msys2_shell -ucrt64 -e /c/build/godot-cpp/msys2-ucrt64-cmake-w64.sh 2>&1
-'@ | pwsh -nop -NoProfile -Command - | Tee-Object -FilePath "$godotcpp\msys2-ucrt64-cmake-w64.txt"
-
-# CLANG64
-@'
-$msys2_shell="C:\msys64\msys2_shell.cmd -defterm -no-start -where C:\build\godot-cpp"
-cmd /c $msys2_shell -clang64 -e /c/build/godot-cpp/msys2-clang64-cmake-w64.sh 2>&1
-'@ | pwsh -nop -NoProfile -Command - | Tee-Object -FilePath "$godotcpp\msys2-clang64-cmake-w64.txt"
+# When running from the play button in clion I get an exception after the script finishes
+#   An error has occurred that was not properly handled. Additional information is shown below. The PowerShell process will exit.
+#   Unhandled exception. System.Management.Automation.PipelineStoppedException: The pipeline has been stopped.
+# This can be stopped by just sleeping for a second.
+Start-Sleep -Seconds 1

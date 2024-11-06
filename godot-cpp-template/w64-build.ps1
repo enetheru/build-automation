@@ -59,6 +59,7 @@ function TargetPrep {
     # Turn off failure on Non-Zero exit code for ripgrep finding no results
     $PSNativeCommandUseErrorActionPreference = $false
     rg -u --files | rg "\.(lib|dll|a|so|wasm|dylib)$" | ForEach-Object { Remove-Item $_ }
+    rg -u --files | rg "register_types.*?\.(o|obj|so)$" | ForEach-Object { Remove-Item $_ }
     #Turn back on exit failures.
     $PSNativeCommandUseErrorActionPreference = $true
 }
@@ -93,6 +94,7 @@ Set-PSDebug -Trace 1
 Set-PSDebug -Off
 
 "@ | pwsh -nop -WorkingDirectory $buildRoot -Command - | Tee-Object -FilePath $traceLog
+    #TODO make the Tee-Object -Append option configurable.
 
     # Reset the working directory after we are done.
     Set-Location $root

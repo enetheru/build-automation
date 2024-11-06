@@ -59,6 +59,7 @@ function TargetPrep {
     # Turn off failure on Non-Zero exit code for ripgrep finding no results
     $PSNativeCommandUseErrorActionPreference = $false
     rg -u --files | rg "\.(dll|so|wasm|dylib|lib)$" | ForEach-Object { Remove-Item $_ }
+    rg -u --files | rg "register_types.*?\.(o|obj|so)$" | ForEach-Object { Remove-Item $_ }
     #Turn back on exit failures.
     $PSNativeCommandUseErrorActionPreference = $true
 }

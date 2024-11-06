@@ -182,6 +182,22 @@ cmake --build . -j 12 --verbose -t godot-cpp-test --config Release
 
 ## emscripten.scons
 
+after some updates this isnt working anymore.
+I have had to cd to C:\emsdk, and git pull to update.
+C:\emsdk\emsdk install latest
+C:\emsdk\emsdk activate latest
+
+to get the cmd prompt to activate I needed to be in the sdk folder.
+cd /emsdk/
+emcmdprompt.bat
+cd /build/godot-cpp/w64-scons-web
+scons verbose=yes platform=web target=template_release
+
+So whats the deal?
+
+Looks like activating the latest also sets up the environment, which is only active for this session.
+
+
 ```powershell
 # Start emcmdprompt and change to ps
 C:\emsdk\emcmdprompt.bat
