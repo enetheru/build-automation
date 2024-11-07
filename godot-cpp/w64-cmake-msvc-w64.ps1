@@ -5,7 +5,7 @@ Set-Location $buildDir
 
 # Build godot-cpp-test
 cmake $fresh ..\
-cmake --build . -j 12 --verbose -t godot-cpp-test --config Release
+cmake --build . -j 12 --verbose -t godot-cpp-test --config Release -- /nologo /v:m /clp:"ShowCommandLine;ForceNoAlign"
 
 if( -Not $test ) {
     # Generate the .godot folder

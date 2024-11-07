@@ -30,7 +30,6 @@ if( $args ){
 if( -Not ($buildConfigs -is [array] -And $buildConfigs.count -gt 0) ) {
     if( $args ){ Write-Error "No configs found for: {$args}"
     } else { Write-Error "No Configs found in folder."  }
-    Start-Sleep -Seconds 1
     exit
 }
 
@@ -115,8 +114,11 @@ Set-PSDebug -Off
     # Reset the working directory after we are done.
     Set-Location $root
 
-    rg -M1024 "(register_types|memory|libgdexample|libgodot-cpp)" $tracelog `
-        | sed 's/ \([-\/][a-zA-Z]\)/\n\1/g;s/\(-c\) /\1\n/g;s/&&/\n/g' > "$traceLog.md"
+    $matchPattern = '(register_types|memory|libgdexample|libgodot-cpp)'
+    rg -M2048 $matchPattern $traceLog                       ` # Only the lines that include these terms
+        | sed -E 's/\s+/\n/g'                               ` # split on all whitespace
+        | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D'  ` # join lines with condition.
+        > $traceLog.md
 }
 
 foreach ($hostTarget in  $buildConfigs) {
