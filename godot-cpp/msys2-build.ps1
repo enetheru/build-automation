@@ -79,7 +79,7 @@ foreach ($msys2Env in @('ucrt64';'mingw64';'mingw32';'clang64';'clang32';'clanga
     foreach ($buildScript in $buildScripts)
     {
         $hostTarget = $buildScript | Split-Path -LeafBase
-        $buildRoot = "$root/$Host"
+        $buildRoot = "$root/$hostTarget"
         "== Build Configuration : $hostTarget =="
         "BuildRoot: $buildRoot"
 
