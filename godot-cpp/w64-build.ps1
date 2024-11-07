@@ -83,7 +83,8 @@ function TargetBuild {
         $buildRoot
     )
     $buildScript="$root\$hostTarget.ps1"
-    $traceLog="$root\$hostTarget.txt"
+    $rawLog="$root/logs-raw/$hostTarget.txt"
+    $cleanLog="$root/logs-clean/$hostTarget.txt"
     $fresh = ($freshBuild) ? "`"--fresh`"" : "`$null"
     $test = ($noTestBuild) ? "`$false" : "`$true"
 
@@ -108,17 +109,15 @@ Set-PSDebug -Trace 1
 
 Set-PSDebug -Off
 
-"@ | pwsh -nop -WorkingDirectory $buildRoot -Command - | Tee-Object -FilePath $traceLog
+"@ | pwsh -nop -WorkingDirectory $buildRoot -Command - | Tee-Object -FilePath $rawLog
     #TODO make the Tee-Object -Append option configurable.
 
     # Reset the working directory after we are done.
     Set-Location $root
 
     $matchPattern = '(register_types|memory|libgdexample|libgodot-cpp)'
-    rg -M2048 $matchPattern $traceLog                       ` # Only the lines that include these terms
-        | sed -E 's/\s+/\n/g'                               ` # split on all whitespace
-        | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D'  ` # join lines with condition.
-        > $traceLog.md
+    rg -M2048 $matchPattern $rawLog | sed -E 's/\s+/\n/g' `
+        | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' > $cleanLog
 }
 
 foreach ($hostTarget in  $buildConfigs) {
