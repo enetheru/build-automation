@@ -12,4 +12,3 @@ Set-Location "$buildRoot/test"
 scons verbose=yes platform=web target=template_release
 
 # TODO Run test project
-

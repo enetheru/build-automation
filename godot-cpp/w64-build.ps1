@@ -2,14 +2,37 @@
 #Requires -Version 7.4
 
 param(
-    [switch] $freshBuild, # defaults to false
-    [switch] $testBuild, # defaults to false
-    [switch] $appendTrace # defaults to false
+    # [switch] options default to false
+    [switch] $freshBuild,
+    [switch] $noTestBuild,
+    [switch] $appendTrace
+    # Remaining arguments are treated as targets
 )
 
 # Powershell execution options
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# Make sure we are in the directory of the build script before continuing.
+Set-Location $PSScriptRoot
+
+# Process varargs for build configs.
+if( $args ){
+    $buildConfigs = $args | Where-Object { Test-Path "$_.ps1" }
+} else{
+    # scan the directory for configs.
+    $buildConfigs = (rg --files --max-depth 1 `
+        | rg "w64-(cmake|scons).+\.ps1$" ) `
+        | ForEach-Object { Split-Path -LeafBase $_ }
+}
+
+# Quit if there are no configs.
+if( -Not ($buildConfigs -is [array] -And $buildConfigs.count -gt 0) ) {
+    if( $args ){ Write-Error "No configs found for: {$args}"
+    } else { Write-Error "No Configs found in folder."  }
+    Start-Sleep -Seconds 1
+    exit
+}
 
 # Main Variables
 [string]$godot="C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
@@ -63,6 +86,7 @@ function TargetBuild {
     $buildScript="$root\$hostTarget.ps1"
     $traceLog="$root\$hostTarget.txt"
     $fresh = ($freshBuild) ? "`"--fresh`"" : "`$null"
+    $test = ($noTestBuild) ? "`$false" : "`$true"
 
     # This script will be source of the exported log, and sources the build script.
     @"
@@ -79,6 +103,7 @@ Set-PSDebug -Trace 1
 `$hostTarget="$hostTarget"
 `$buildRoot="$buildRoot"
 `$fresh=$fresh
+`$test=$test
 
 . $buildScript
 
@@ -91,16 +116,10 @@ Set-PSDebug -Off
     Set-Location $root
 
     rg -M1024 "(register_types|memory|libgdexample|libgodot-cpp)" $tracelog `
-        | sed 's/ \(-[a-zA-Z]\)/\n\1/g;s/\(-c\) /\1\n/g;s/&&/\n/g' > "$traceLog.md"
+        | sed 's/ \([-\/][a-zA-Z]\)/\n\1/g;s/\(-c\) /\1\n/g;s/&&/\n/g' > "$traceLog.md"
 }
 
-foreach ($hostTarget in  @(
-#    'w64-scons-msvc-w64'
-#    'w64-cmake-msvc-w64'
-#    'w64-cmake-android'
-    'w64-cmake-web'
-    'w64-scons-web'
-)) {
+foreach ($hostTarget in  $buildConfigs) {
     TargetPrep -hostTarget $hostTarget -sourceOrigin $sourceOrigin -sourceBranch $sourceBranch
     TargetBuild -hostTarget $hostTarget -buildRoot "$root/$hostTarget"
 }
