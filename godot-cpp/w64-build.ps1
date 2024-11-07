@@ -13,8 +13,17 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# Main Variables
+[string]$godot="C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
+[string]$godot_tr="C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
+
+[string]$root = $PSScriptRoot
+# [System.Uri]$sourceOrigin = "http://github.com/godotengine/godot-cpp.git"
+[System.Uri]$sourceOrigin = "C:\Godot\src\godot-cpp"
+[string]$sourceBranch = "modernise"
+
 # Make sure we are in the directory of the build script before continuing.
-Set-Location $PSScriptRoot
+Set-Location $root
 
 # Process varargs for build configs.
 if( $args ){
@@ -32,17 +41,6 @@ if( -Not ($buildConfigs -is [array] -And $buildConfigs.count -gt 0) ) {
     } else { Write-Error "No Configs found in folder."  }
     exit
 }
-
-# Main Variables
-[string]$godot="C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
-[string]$godot_tr="C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
-
-[string]$root = "C:\build\godot-cpp"
-[System.Uri]$sourceOrigin = "C:\Godot\src\godot-cpp"
-$sourceBranch = "modernise"
-
-# Automtion Begin
-Set-Location $root
 
 function TargetPrep {
     param(
@@ -82,9 +80,12 @@ function TargetBuild {
         $hostTarget,
         $buildRoot
     )
+    #Script and Log variables
     $buildScript="$root\$hostTarget.ps1"
     $rawLog="$root/logs-raw/$hostTarget.txt"
     $cleanLog="$root/logs-clean/$hostTarget.txt"
+
+    #Build Variables
     $fresh = ($freshBuild) ? "`"--fresh`"" : "`$null"
     $test = ($noTestBuild) ? "`$false" : "`$true"
 
@@ -121,8 +122,9 @@ Set-PSDebug -Off
 }
 
 foreach ($hostTarget in  $buildConfigs) {
-    TargetPrep -hostTarget $hostTarget -sourceOrigin $sourceOrigin -sourceBranch $sourceBranch
-    TargetBuild -hostTarget $hostTarget -buildRoot "$root/$hostTarget"
+    $buildRoot = "$root/$hostTarget"
+    TargetPrep -buildRoot $buildRoot -sourceOrigin $sourceOrigin -sourceBranch $sourceBranch
+    TargetBuild -hostTarget $hostTarget -buildRoot $buildRoot
 }
 
 # When running from the play button in clion I get an exception after the script finishes
