@@ -21,7 +21,7 @@ $ErrorActionPreference = "Stop"
 # Make sure we are in the directory of the build script before continuing.
 Set-Location $root
 
-. ../build-common.ps1 -prefix "msys2"
+. ../build-common.ps1 -prefix "msys2" $args
 
 function LocalPrep {
     param(

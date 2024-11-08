@@ -25,46 +25,14 @@ $ErrorActionPreference = "Stop"
 # Make sure we are in the directory of the build script before continuing.
 Set-Location $root
 
-# Process varargs for build configs.
-if( $args ){
-    $buildConfigs = $args | Where-Object { Test-Path "$_.ps1" }
-} else{
-    # scan the directory for configs.
-    $buildConfigs = (rg --files --max-depth 1 `
-        | rg "w64-(cmake|scons).+\.ps1$" ) `
-        | ForEach-Object { Split-Path -LeafBase $_ }
-}
+. ../build-common.ps1 -prefix "w64" $args
 
-# Quit if there are no configs.
-if( -Not ($buildConfigs -is [array] -And $buildConfigs.count -gt 0) ) {
-    if( $args ){ Write-Error "No configs found for: {$args}"
-    } else { Write-Error "No Configs found in folder."  }
-    exit
-}
-
-function TargetPrep {
+function LocalPrep {
     param(
-        [Parameter(Mandatory=$true)] [string]$hostTarget,
-        [Parameter(Mandatory=$true)] [System.Uri]$sourceOrigin,
-        $sourceBranch
+        [Parameter(Mandatory=$true)] [string]$buildRoot
     )
 
-    Set-Location $root
-
-    [string]$sourceDest = "$root/$hostTarget"
-
-    # Clone the repository
-    if( -Not (Test-Path -Path $sourceDest -PathType Container) ){
-        git clone (${sourceBranch}?.Insert(0,"-b")) "$sourceOrigin" "$sourceDest"
-    }
-
-    # Change working directory
-    Set-Location $sourceDest
-
-    # Fetch any changes and reset to latest
-    git fetch --all
-    git reset --hard '@{u}'
-    if( $sourceBranch ){ git checkout $sourceBranch }
+    Set-Location $buildRoot
 
     # Remove key build artifacts before re-build
     # Turn off failure on Non-Zero exit code for ripgrep finding no results
@@ -98,6 +66,7 @@ Set-StrictMode -Version Latest
 
 Set-PSDebug -Trace 1
 
+`$root="$root"
 `$godot="$godot"
 `$godot_tr="$godot_tr"
 
@@ -123,7 +92,8 @@ Set-PSDebug -Off
 
 foreach ($hostTarget in  $buildConfigs) {
     $buildRoot = "$root/$hostTarget"
-    TargetPrep -buildRoot $buildRoot -sourceOrigin $sourceOrigin -sourceBranch $sourceBranch
+    SourcePrep -buildRoot $buildRoot -sourceOrigin $sourceOrigin -sourceBranch $sourceBranch
+    LocalPrep -buildRoot $buildRoot
     TargetBuild -hostTarget $hostTarget -buildRoot $buildRoot
 }
 

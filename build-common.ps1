@@ -16,7 +16,11 @@ if( -Not $MyInvocation.InvocationName -eq '.' -or $MyInvocation.Line -eq ''){
 
 # Process varargs for build configs.
 if( $args ){
-    $buildConfigs = $args | Where-Object { Test-Path "$_.ps1" -Or Test-Path "$_.sh" }
+    $args = $args -split '\s+' -join '|'
+    [string]$pattern = "^$prefix-(.*?)($args)(.*?)\.(ps1|sh)$"
+    "Search command = rg -u --files --max-depth 1 | rg $pattern"
+    [array]$buildConfigs = rg -u --files --max-depth 1 | rg $pattern `
+        | ForEach-Object { Split-Path -LeafBase $_ }
 } else{
     # scan the directory for configs.
     $buildConfigs = rg --files --max-depth 1 `
