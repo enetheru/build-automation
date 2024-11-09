@@ -20,12 +20,22 @@ function Prepare {
     "== Prepare =="
     Set-Location $buildRoot
 
-    "-- Update Submodules"
-    # Submodules godot-cpp needs its updating to test modernise branch
-    git submodule set-url -- extern/godot-cpp https://github.com/enetheru/godot-cpp.git
-    git submodule set-branch -b "4.3-modernise" extern/godot-cpp
-    git submodule sync
-    git submodule update --init --remote extern/godot-cpp
+    "- Update Submodules"
+    if( -Not (Test-Path extern/godot-cpp/*) ) {
+        git submodule update --init --remote extern/godot-cpp
+    }
+
+    set-location extern/godot-cpp
+    if( -Not (git remote -v | Select-String -Pattern "local" -Quiet ) ){
+        git remote add local C:\godot\src\godot-cpp
+        git fetch local
+    }
+
+    if( -Not (git branch | Select-String -Pattern "4.3-modernise" -Quiet ) ){
+        git checkout "local/4.3-modernise" --track
+    }
+
+    set-location $root
 
     "-- Remove any remaining key build artifacts"
     # Remove key build artifacts before re-build

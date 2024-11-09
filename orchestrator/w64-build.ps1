@@ -41,6 +41,8 @@ foreach ($hostTarget in  $buildConfigs) {
     #separate build command based on prefix.
     w64Build -buildRoot $buildRoot
 
+    Clean -buildRoot $buildRoot -matchPattern '(orchestration.cpp|orchestrator.windows)'
+
     if( -not $noTestBuild ) {
         Test -buildRoot $buildRoot
     }

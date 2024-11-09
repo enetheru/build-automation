@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 # Help and prevent direct call.
-if( $h -or $args -match "--help|/?" ){ $help = $true  }
+if( $h -or $args -match "--help|/\?" ){ $help = $true  }
 if( $MyInvocation.ScriptLineNumber -eq 1 -Or $help){
     Write-Output "`$args = '$args'"
     Write-Error "This script cannot be run directly."
@@ -27,8 +27,8 @@ if( $MyInvocation.ScriptLineNumber -eq 1 -Or $help){
 
 # Process varargs for build configs.
 if( $args ){
-    $args = $args -split '\s+' -join '|'
-    [string]$pattern = "^$prefix-(.*?)($args)(.*?)\.(ps1|sh)$"
+    $patterns = $args -split '\s+' -join '|'
+    [string]$pattern = "^$prefix-(.*?)($patterns)(.*?)\.(ps1|sh)$"
     "Search command = rg -u --files --max-depth 1 | rg $pattern"
     [array]$buildConfigs = rg -u --files --max-depth 1 | rg $pattern `
         | ForEach-Object { Split-Path -LeafBase $_ }
@@ -132,12 +132,7 @@ Set-PSDebug -Off
 
     # Reset the working directory after we are done.
     Set-Location $root
-
-    $matchPattern = '(register_types|memory|libgdexample|libgodot-cpp)'
-    rg -M2048 $matchPattern $rawLog | sed -E 's/\s+/\n/g' `
-        | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' > $cleanLog
 }
-
 
 function msys2Build {
     param(
@@ -166,8 +161,17 @@ function msys2Build {
 
     # Reset the working directory after we are done.
     Set-Location $root
+}
 
-    $matchPattern = '(register_types|memory|libgdexample|libgodot-cpp)'
+function Clean {
+    param(
+        [Parameter(Mandatory=$true)][string]$buildRoot,
+        [Parameter(Mandatory=$true)][string]$matchPattern
+    )
+    $hostTarget = Split-Path -LeafBase $buildRoot
+    $rawLog="$root/logs-raw/$hostTarget.txt"
+    $cleanLog="$root/logs-clean/$hostTarget.txt"
+
     rg -M2048 $matchPattern $rawLog | sed -E 's/\s+/\n/g' `
         | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' > $cleanLog
 }

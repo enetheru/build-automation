@@ -39,7 +39,11 @@ foreach ($msys2Env in @('ucrt64';'mingw64';'mingw32';'clang64';'clang32';'clanga
 
         msys2Build -msys2Env $msys2Env -hostTarget $hostTarget -buildRoot $buildRoot
 
-        Test -buildRoot $buildRoot
+        Clean -buildRoot $buildRoot -matchPattern '(orchestration.cpp|orchestrator.windows)'
+
+        if( -not $noTestBuild ) {
+            Test -buildRoot $buildRoot
+        }
     }
 }
 
