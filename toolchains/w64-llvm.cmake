@@ -1,10 +1,18 @@
 set( CMAKE_SYSTEM_NAME Windows )
 set( CMAKE_SYSTEM_PROCESSOR x86_64 )
 
+#set( CMAKE_SYSROOT "C:/Program Files/LLVM" )
+
 # which compilers to use for C and C++
-set(CMAKE_C_COMPILER   "C:/Program Files/LLVM/bin/clang.exe")
-set(CMAKE_CXX_COMPILER "C:/Program Files/LLVM/bin/clang++.exe")
-set(CMAKE_RC_COMPILER "C:/Program Files/LLVM/bin/llvm-rc.exe")
+set( CMAKE_CXX_COMPILER "C:/Program Files/LLVM/bin/clang-cl.exe")
+set( CMAKE_RC_COMPILER "C:/Program Files/LLVM/bin/llvm-rc.exe")
+
+# https://github.com/godotengine/godot/issues/43354
+# C:/build/godot-cpp/w64-cmake-llvm-w64/include\godot_cpp/core/method_bind.hpp:347:45:
+#   error:
+#       cannot reinterpret_cast from member pointer type 'void (ExampleRef::*)(int)'
+#       to member pointer type 'void (godot::_gde_UnexistingClass::*)(int)' of different size
+#set( CMAKE_CXX_FLAGS -DTYPED_METHOD_BIND )
 
 # where is the target environment located
 set(CMAKE_FIND_ROOT_PATH

@@ -16,7 +16,7 @@ $ErrorActionPreference = "Stop"
 [string]$root = $PSScriptRoot
 #[System.Uri]$sourceOrigin = "http://github.com/enetheru/godot-cpp.git"
 [System.Uri]$sourceOrigin = "C:/Godot/src/godot-cpp"
-[string]$sourceBranch = "modernise"
+[string]$sourceBranch = "4.3-modernise"
 
 # Make sure we are in the directory of the build script before continuing.
 Set-Location $root

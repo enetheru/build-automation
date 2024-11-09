@@ -9,7 +9,7 @@ cmake $fresh ..\ --toolchain $toolChain -GNinja
 
 cmake --build . -j 12 --verbose -t godot-cpp-test --config Release
 
-if( -Not $test ) {
+if( $test ) {
     # Generate the .godot folder
     &$godot -e --path "$buildRoot/test/Project" --headless --quit *> $null
     # Run test project
