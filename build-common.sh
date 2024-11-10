@@ -8,10 +8,8 @@ if [ $sourced -eq 0 ]; then
     exit
 fi
 
-# Stubs for building code.
-
-godot="${godot:-godot.macos.editor.arm64}"
-godot_tr="${godot_tr:-godot.macos.template_release.arm64}"
+godot="$root/godot/macos-master/bin/godot.macos.editor.arm64"
+godot_tr="$root/godot/macos-master-tr/godot.macos.template_release.arm64"
 
 function Fetch () {
     # The expectation is that we are in $targetRoot
