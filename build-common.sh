@@ -1,9 +1,17 @@
 #!/bin/bash
 
+# Check whether this file is sourced or not.
+# https://stackoverflow.com/questions/2683279/how-to-detect-if-a-script-is-being-sourced
+(return 0 2>/dev/null) && sourced=1 || sourced=0
+if [ $sourced -eq 0 ]; then
+    echo "Do not run this script directly, it simply holds helper functions"
+    exit
+fi
+
 # Stubs for building code.
 
-GODOT="${GODOT:godot.macos.editor.arm64}"
-GODOT_TR="${GODOT_TR:godot.macos.template_release.arm64}"
+GODOT="${GODOT:-godot.macos.editor.arm64}"
+GODOT_TR="${GODOT_TR:-godot.macos.template_release.arm64}"
 
 function Source () {
     local SOURCE_ORIGIN="$1"
@@ -14,7 +22,7 @@ function Source () {
     echo "Git URL: $SOURCE_ORIGIN"
     echo "Git Branch: $SOURCE_BRANCH"
     echo "Source Dest: $BUILD_ROOT"
-    cd $ROOT
+    exit
 
 
 
@@ -41,11 +49,11 @@ function Source () {
 }
 
 function Build () {
-
+    echo "Build - Nothing to do"
 }
 
 function Clean () {
-
+    echo "Clean - Nothing to do"
 }
 
 
