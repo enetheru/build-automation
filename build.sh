@@ -1,5 +1,5 @@
 #!/bin/zsh
-# set -xve
+set -Ee
 
 RED='\033[0;31m'
 NC='\033[0m' # No Color
@@ -14,6 +14,8 @@ fi
 
 echo 
 echo " == Build-Automation =="
+root=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
+echo "  root        = $root"
 
 
 Syntax()
@@ -42,9 +44,9 @@ die() { echo "$*" >&2; exit 2; }  # complain to STDERR and exit with error
 needs_arg() { if [ -z "$OPTARG" ]; then die "No arg for --$OPT option"; fi; }
 
 # Defaults
-fresh=false
-logAppend=false
-doTest=true
+fresh=
+logAppend=0
+doTest=0
 
 while getopts :hfan-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
     # support long options: https://stackoverflow.com/a/28466267/519360
@@ -55,9 +57,9 @@ while getopts :hfan-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
     fi
     case "$OPT" in
         h | help )     Help ;;
-        f | fresh )    fresh=true ;;
-        a | append )   logAppend=true ;;
-        n | no-test )  doTest=false ;;
+        f | fresh )    fresh=--fresh ;;
+        a | append )   logAppend=1 ;;
+        n | no-test )  doTest=1 ;;
         # b | bravo )    needs_arg; bravo="$OPTARG" ;;
         # c | charlie )  charlie="${OPTARG:-$charlie_default}" ;;  # optional argument
         \? )           exit 2 ;;  # bad short option (error reported via getopts)

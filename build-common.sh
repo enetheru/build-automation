@@ -10,12 +10,13 @@ fi
 
 # Stubs for building code.
 
-GODOT="${GODOT:-godot.macos.editor.arm64}"
-GODOT_TR="${GODOT_TR:-godot.macos.template_release.arm64}"
+godot="${godot:-godot.macos.editor.arm64}"
+godot_tr="${godot_tr:-godot.macos.template_release.arm64}"
 
-function Source () {
-    echo
-    echo " == Source Code =="
+function Fetch () {
+    # The expectation is that we are in $targetRoot
+    # and when we finish we should be back in $targetRoot
+    figlet Fetch
     echo "  Target Root   = $targetRoot"
     echo "  Build Root    = $buildRoot"
     echo "  Git URL       = $gitUrl"
@@ -36,6 +37,7 @@ function Source () {
     cd "$buildRoot"
 
     # Fetch any changes and reset to latest
+    echo
     git fetch --all
     git reset --hard '@{u}'
     if [ -n "$gitBranch" ]; then
@@ -43,10 +45,19 @@ function Source () {
     fi
 
     #TODO fix when the tree diverges and needs to be clobbered.
+    cd $targetRoot
+}
+
+function Prepare (){
+    echo "Prepare - Nothing to do"
 }
 
 function Build () {
     echo "Build - Nothing to do"
+}
+
+function Test () {
+    echo "Test - Nothing to do"
 }
 
 function Clean () {
