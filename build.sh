@@ -1,11 +1,20 @@
 #!/bin/zsh
 # set -xve
-#
-echo 
-echo " == Build-Automation =="
 
 RED='\033[0;31m'
 NC='\033[0m' # No Color
+
+if [ "$(which -s rg)" = "rg not found" ]; then
+    echo "${RED}Error: Unable to find Ripgrep${NC}"
+    exit 1
+elif [ ! "${$(rg -V):0:7}" = "ripgrep" ]; then
+    echo "${RED}Error: found rg is not RipGrep${NC}"
+    exit 1
+fi
+
+echo 
+echo " == Build-Automation =="
+
 
 Syntax()
 {
@@ -63,8 +72,8 @@ if $(echo "${argv[@]}" | rg -q -e "--help|-h" ); then
     exit
 fi
 
-echo "  fresh     = $fresh"
-echo "  append    = $logAppend"
+echo "  fresh       = $fresh"
+echo "  append      = $logAppend"
 
 if [ -z "$argv[1]" ]; then
     echo
@@ -74,7 +83,10 @@ if [ -z "$argv[1]" ]; then
     die
 else
     target=$argv[1]
-    echo "  target    = $target"
+    echo "  target      = $target"
+    targetRoot=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
+    targetRoot+="/$target"
+    echo "  targetRoot  = $targetRoot"
     shift 1
 fi
 
@@ -86,19 +98,16 @@ if [ -n "$argv[1]" ]; then
         shift 1
         echo "  Remaining arg: ${argv[@]}"
     else
-        echo "  pattern=$pattern"
+        echo "  pattern     = $pattern"
     fi
 fi
 
-echo "  uname -om = $(uname -om)"
+echo "  uname -om   = $(uname -om)"
 
 # == Main Script ==
+
+# Pull in common items.
 source build-common.sh
 
-# Get local OS
-
-for script in "$target/$(uname)-"*; do
-    source $script $pattern
-done
-
-
+# Get scripts in target folder that match host platform
+source "$target/$(uname)-build.sh" $pattern

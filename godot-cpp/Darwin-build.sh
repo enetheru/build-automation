@@ -3,36 +3,51 @@
 # for a fresh configure add FRESH=--fresh to the start of the script invocation
 #> FRESH=--fresh ./build.sh
 
-if [ "$(which -s rg)" = "rg not found" ]; then
-    echo "${RED}Error: Unable to find Ripgrep${NC}"
-    exit 1
-fi
+gitUrl=http://github.com/enetheru/godot-cpp.git
+gitBranch="modernise"
 
 prev_dir=$(pwd)
 
 echo 
 echo " == Build $target using Darwin =="
 thisScript="$(basename $0)"
-echo "basename: $thisScript"
-target_dir=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
-echo "target_dir: $target_dir"
+echo "  thisScript  = $thisScript"
+targetRoot=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
+echo "  targetRoot  = $targetRoot"
 
 if [ -n "$argv[1]" ]; then
     pattern="$argv[1]"
-    echo "pattern=$pattern"
+    echo "  pattern     = $pattern"
 fi
 
-cd $target_dir
+cd $targetRoot
 
-buildScripts=$(rg -u --files --max-depth 1 | rg "Darwin.*sh" | rg -v "$thisScript")
-echo $buildScripts
+buildScripts=($(rg -u --files --max-depth 1 | \
+    rg "Darwin.*sh" | \
+    rg -v "$thisScript"))
 
-for buildScript in $buildScripts; do
-    echo $buildScript
+echo "  Script count: ${#buildScripts}"
+if [ ${#buildScripts} -eq 0 ]; then
+    echo
+    echo "  ${RED}Error: No build scripts found${NC}"
+    cd $prev_dir
+    exit 1
+fi
+
+echo "  Scripts:"
+for script in $buildScripts; do
+    echo "    $script"
+done
+
+for script in $buildScripts; do
+    echo
+    echo " == Starting $(basename $script) =="
+    buildRoot="$targetRoot/${script%.*}"
+    echo "  Build Root = $buildRoot"
     Source
-    prepare
-    Build
-    Clean
+    # prepare
+    # Build
+    # Clean
 done
 
 cd $prev_dir
