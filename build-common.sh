@@ -20,16 +20,16 @@ function Source () {
     echo "  Build Root    = $buildRoot"
     echo "  Git URL       = $gitUrl"
     echo "  Git Branch    = $gitBranch"
-    return
 
     if [ ! -d $buildRoot ]; then
+        echo "  --Creating ${buildRoot}"
         mkdir -p $buildRoot
     fi
 
-
-    if [ ! -z $( ls -A "$buildRoot" ) ]; then
+    #BASH files=$(shopt -s nullglob; shopt -s dotglob; echo /MYPATH/*)
+    if [ ! $buildRoot(N/F) ]; then #ZSH Globbing qualifiers
         echo "  --Cloning ${target}"
-        git clone $branch "$gitUrl" "$buildRoot"
+        git clone "$gitUrl" "$buildRoot"
     fi
 
     # Change working directory
@@ -41,7 +41,6 @@ function Source () {
     if [ -n "$gitBranch" ]; then
         git checkout "$gitBranch"
     fi
-    return
 
     #TODO fix when the tree diverges and needs to be clobbered.
 }
