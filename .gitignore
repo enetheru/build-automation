@@ -72,3 +72,4 @@ mono_crash.*.json
 #Build Logs
 /*/*.txt
 /*/*.txt.md
+summary.log

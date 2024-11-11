@@ -95,9 +95,9 @@ for script in $buildScripts; do
         if ! Test
         then
             echo "${RED}Error: Test Failure${NC}"
-            echo "$config : FAILED" >> $targetRoot/summarry.log
+            echo "$config : FAILED" >> $targetRoot/summary.log
         else
-            echo "$config : PASSED" >> $targetRoot/summarry.log
+            echo "$config : PASSED" >> $targetRoot/summary.log
         fi
         if ! Clean;   then echo "${RED}Error: Clean Failure${NC}"  ; fi
     } 2>&1 | tee $traceLog
