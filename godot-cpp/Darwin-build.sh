@@ -61,7 +61,13 @@ CommonTest(){
     $godot -e --path $buildRoot/test/project/ --quit --headless &> /dev/null 
     
     # Run the test project
-    $godot_tr --path $buildRoot/test/project/ --quit --headless
+    exec 5>&1
+    result=$( \
+        $godot_tr --path $buildRoot/test/project/ --quit --headless 2>&1 \
+            | tee >(cat >&5) \
+        )
+    
+    echo "$result" | rg "PASSED" 2>&1 > /dev/null
 }
 
 # Process Scripts
