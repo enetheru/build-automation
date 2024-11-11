@@ -4,7 +4,7 @@
 # Check whether this file is sourced or not.
 # https://stackoverflow.com/questions/2683279/how-to-detect-if-a-script-is-being-sourced
 (return 0 2>/dev/null) && sourced=1 || sourced=0
-if [ $sourced -eq 0 ]; then
+if [ "$sourced" -eq 0 ]; then
     echo "Do not run this script directly, it simply holds helper functions"
     exit
 fi
@@ -12,14 +12,14 @@ fi
 Prepare(){
     figlet Prepare
 
-    cd $buildRoot
+    cd "$buildRoot" || return 1
     mkdir -p cmake-build
 }
 
 Build(){
     figlet CMake
 
-    cd cmake-build
+    cd cmake-build || return 1
 
     # Configure
     cmake $fresh ../ -GNinja

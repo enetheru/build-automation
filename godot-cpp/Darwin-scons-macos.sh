@@ -12,6 +12,6 @@ fi
 Build(){
     figlet SCons
 
-    cd $buildRoot/test
+    cd "$buildRoot/test" || return 1
     scons verbose=yes target=template_release
 }
