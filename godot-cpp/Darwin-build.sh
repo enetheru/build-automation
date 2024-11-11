@@ -51,7 +51,7 @@ mkdir -p $targetRoot/logs-clean
 CommonPrep(){
     # Clean up key artifacts to trigger rebuild
     rg -u --files $buildRoot \
-        | rg "(memory|example).*o(bj)?" \
+        | rg "(memory|example).*?o(bj)?$" \
         | xargs rm
     CustomPrep
 }
