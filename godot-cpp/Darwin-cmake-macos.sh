@@ -11,10 +11,6 @@ fi
 
 Prepare(){
     figlet Prepare
-    # Clean up key artifacts to trigger rebuild
-    rg -u --files $buildRoot \
-        | rg "(memory|example).*o(bj)?" \
-        | xargs rm
 
     cd $buildRoot
     mkdir -p cmake-build
@@ -30,13 +26,4 @@ Build(){
 
     # Build
     cmake --build . -j 6 --verbose -t godot-cpp-test --config Release
-}
-
-Test(){
-    figlet Test
-    # generate the .godot folder
-    $godot -e --path $buildRoot/test/project/ --quit --headless &> /dev/null 
-    
-    # Run the test project
-    $godot_tr --path $buildRoot/test/project/ --quit --headless
 }

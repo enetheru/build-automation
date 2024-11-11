@@ -46,29 +46,52 @@ done
 mkdir -p $targetRoot/logs-raw
 mkdir -p $targetRoot/logs-clean
 
+
+# Some steps are identical.
+CommonPrep(){
+    # Clean up key artifacts to trigger rebuild
+    rg -u --files $buildRoot \
+        | rg "(memory|example).*o(bj)?" \
+        | xargs rm
+    CustomPrep
+}
+
+CommonTest(){
+    # generate the .godot folder
+    $godot -e --path $buildRoot/test/project/ --quit --headless &> /dev/null 
+    
+    # Run the test project
+    $godot_tr --path $buildRoot/test/project/ --quit --headless
+}
+
 # Process Scripts
 for script in $buildScripts; do
+    cd $targetRoot
+
     config=${script%.*}
     traceLog=$targetRoot/logs-raw/${config}.txt
     cleanLog=$targetRoot/logs-clean/${config}.txt
-    cd $targetRoot
+    buildRoot="$targetRoot/$config"
+
     source $root/build-common.sh
     source $targetRoot/$script
+    RenameFunction Prepare CustomPrep
+    RenameFunction CommonPrep Prepare
+    RenameFunction CommonTest Test
+
     {
         echo
         echo " == Starting $(basename $script) =="
-        buildRoot="$targetRoot/$config"
         echo "  Build Root = $buildRoot"
-
         if ! Fetch;   then echo "${RED}Error: Fetch Failure${NC}"  ; continue; fi
         if ! Prepare; then echo "${RED}Error: Prepare Failure${NC}"; continue; fi
-        if ! Build;   then echo "${RED}Error: Build Failure${NC}" && yes  ; continue; fi
+        if ! Build;   then echo "${RED}Error: Build Failure${NC}"  ; continue; fi
         if ! Test;    then echo "${RED}Error: Test Failure${NC}"   ; fi
         if ! Clean;   then echo "${RED}Error: Clean Failure${NC}"  ; fi
     } 2>&1 | tee $traceLog
 
     matchPattern='(register_types|memory|libgdexample|libgodot-cpp)'
-    rg -M2048 $matchPattern $traceLog | sed -E 's/\s+/\n/g' \
+    rg -M2048 $matchPattern $traceLog | sed -E 's/ +/\n/g' \
         | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' > $cleanLog
 done
 

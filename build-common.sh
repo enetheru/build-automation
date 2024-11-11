@@ -9,7 +9,15 @@ if [ $sourced -eq 0 ]; then
 fi
 
 godot="$root/godot/macos-master/bin/godot.macos.editor.arm64"
-godot_tr="$root/godot/macos-master-tr/godot.macos.template_release.arm64"
+godot_tr="$root/godot/macos-master-tr/bin/godot.macos.template_release.arm64"
+
+# https://mharrison.org/post/bashfunctionoverride/
+# Usage: RenameFunction <oldname> <newname>
+function RenameFunction() {
+    local ORIG_FUNC=$(declare -f $1)
+    local NEWNAME_FUNC="$2${ORIG_FUNC#$1}"
+    eval "$NEWNAME_FUNC"
+}
 
 function Fetch () {
     # The expectation is that we are in $targetRoot

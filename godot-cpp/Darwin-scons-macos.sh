@@ -12,15 +12,6 @@ fi
 Build(){
     figlet SCons
 
-    cd macos-scons/test
+    cd $buildRoot/test
     scons verbose=yes target=template_release
 }
-
-#Test(){
-    figlet Test
-    # generate the .godot folder
-    #$GODOT -e --path $BUILD_ROOT/test/project/ --quit --headless &> /dev/null 
-    
-    # Run the test project
-    #$GODOT_TR --path $BUILD_ROOT/test/project/ --quit --headless
-#}
