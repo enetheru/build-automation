@@ -81,3 +81,14 @@ discussion bout why it's disbled.
 
 ## IOS
 https://github.com/leetal/ios-cmake
+
+
+## emscripten
+I did install emscripten from brew, but uninstalled it and preferred to follow
+the instructions from the emscripten website.
+
+now it wants me to source the env.
+
+`source ~/emsdk/emsdk_env.sh`
+
+
