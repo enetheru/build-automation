@@ -92,7 +92,13 @@ for script in $buildScripts; do
         if ! Fetch;   then echo "${RED}Error: Fetch Failure${NC}"  ; continue; fi
         if ! Prepare; then echo "${RED}Error: Prepare Failure${NC}"; continue; fi
         if ! Build;   then echo "${RED}Error: Build Failure${NC}"  ; continue; fi
-        if ! Test;    then echo "${RED}Error: Test Failure${NC}"   ; fi
+        if ! Test
+        then
+            echo "${RED}Error: Test Failure${NC}"
+            echo "$config : FAILED" >> $targetRoot/summarry.log
+        else
+            echo "$config : PASSED" >> $targetRoot/summarry.log
+        fi
         if ! Clean;   then echo "${RED}Error: Clean Failure${NC}"  ; fi
     } 2>&1 | tee $traceLog
 
