@@ -10,8 +10,9 @@ if [ $sourced -eq 0 ]; then
 fi
 
 Build(){
-    figlet SCons
-
+    H1 "SCons Build"
     cd "$buildRoot/test" || return 1
     scons verbose=yes target=template_release
 }
+
+Test(){ CommonTest }

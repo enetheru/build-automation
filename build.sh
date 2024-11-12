@@ -107,13 +107,13 @@ if [ -n "${argv[1]}" ]; then
     fi
 fi
 
-echo "  uname -om   = $(uname -om)"
+platform=$(uname -o)
+echo "  uname -om   = $OS"
 
-# == Main Script ==
+mainScript="$root/$target/$platform-build.sh"
+echo "  script      = $mainScript"
+echo
 
-# Pull in common items.
+## Run target build script ##
 source build-common.sh
-
-# Get scripts in target folder that match host platform
-# shellcheck disable=SC1090
-source "$target/$(uname)-build.sh" "$pattern"
+source "$mainScript" "$pattern"

@@ -9,16 +9,11 @@ if [ "$sourced" -eq 0 ]; then
     exit
 fi
 
-Prepare(){
-    figlet Prepare
-
-    cd "$buildRoot" || return 1
-    mkdir -p cmake-build
-}
-
 Build(){
-    figlet CMake
+    H1 "CMake Build"
+    cd "$buildRoot" || return 1
 
+    mkdir -p cmake-build
     cd cmake-build || return 1
 
     # Configure
@@ -27,3 +22,5 @@ Build(){
     # Build
     cmake --build . -j 6 --verbose -t godot-cpp-test --config Release
 }
+
+Test(){ CommonTest }

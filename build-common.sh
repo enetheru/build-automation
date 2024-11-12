@@ -8,6 +8,43 @@ if [ $sourced -eq 0 ]; then
     exit
 fi
 
+
+# Fill Command
+# Looks like using printf is the canonical way of repeating characters in a
+# posix shell that is also performant - https://stackoverflow.com/a/30288267
+Fill () {
+    local filler="${1:- }"
+    local width="${2:-$COLUMNS}" 
+    local line="$(printf -- "%.0s$filler" {1..$width})"
+    if [ ${#line} -ge $width ]; then
+        printf "${line:0:$width}\n";
+    else
+        printf "$line\n"
+    fi
+}
+
+Center(){
+    local string=${1:-"Center"}
+    local line="${2:-$(Fill)}"
+    while read -t 0 line; do break; done
+
+    local pos=$(( (${#line} - ${#string}) / 2 ))
+    sed -E "s/^(.{$pos}).{${#string}}(.*$)/\1$string\2/" <<< "$line"
+}
+
+Right(){
+    local string=${1:-"Right"}
+    local line="${2:-$(Fill)}"
+    while read -t 0 line; do break; done
+
+    local pos=$(( (${#line} - ${#string}) -1 ))
+    sed -E "s/^(.{$pos}).{${#string}}(.*$)/\1$string\2/" <<< "$line"
+}
+
+function H1 { figlet "$1" }
+function H2 { echo; Center " $1 "; Fill =; }
+function H3 { printf " == $1 ==\n" }
+
 godot="$root/godot/macos-master/bin/godot.macos.editor.arm64"
 godot_tr="$root/godot/macos-master-tr/bin/godot.macos.template_release.arm64"
 
@@ -22,7 +59,7 @@ function RenameFunction() {
 function Fetch () {
     # The expectation is that we are in $targetRoot
     # and when we finish we should be back in $targetRoot
-    figlet Fetch
+    H1 Fetch
     echo "  Target Root   = $targetRoot"
     echo "  Build Root    = $buildRoot"
     echo "  Git URL       = $gitUrl"
@@ -55,19 +92,19 @@ function Fetch () {
 }
 
 function Prepare (){
-    echo "Prepare - Nothing to do"
+    echo
 }
 
 function Build () {
-    echo "Build - Nothing to do"
+    echo
 }
 
 function Test () {
-    echo "Test - Nothing to do"
+    echo
 }
 
 function Clean () {
-    echo "Clean - Nothing to do"
+    echo
 }
 
 

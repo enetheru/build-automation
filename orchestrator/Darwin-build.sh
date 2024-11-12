@@ -2,14 +2,13 @@
 set -Ee
 prev_dir=$(pwd)
 
+gitUrl=http://github.com/enetheru/godot-cpp.git
+gitBranch="modernise"
 godot=${godot:-echo}
 godot_tr=${godot_tr:-echo}
 
-gitUrl=http://github.com/enetheru/godot-cpp.git
-gitBranch="modernise"
-
-
-H2 " Build $target using $platform "
+echo 
+echo " == Build $target using Darwin =="
 thisScript="$(basename "$0")"
 echo "  thisScript  = $thisScript"
 
@@ -46,6 +45,8 @@ for script in "${buildScripts[@]}"; do
 done
 
 # Make sure the log directories exist.
+mkdir -p $targetRoot/logs-raw
+mkdir -p $targetRoot/logs-clean
 mkdir -p "$targetRoot/logs-raw"
 mkdir -p "$targetRoot/logs-clean"
 
@@ -56,26 +57,22 @@ CommonPrep(){
     rg -u --files "$buildRoot" \
         | rg "(memory|example).*?o(bj)?$" \
         | xargs rm
+    CustomPrep
 }
 
 CommonTest(){
-    H1 "Test" >&5
     # generate the .godot folder
     $godot -e --path "$buildRoot/test/project/" --quit --headless &> /dev/null
     
     # Run the test project
+    exec 5>&1
     result=$( \
         $godot_tr --path "$buildRoot/test/project/" --quit --headless 2>&1 \
             | tee >(cat >&5) \
         )
-    H2 "Test - $config"
-    printf "$result"
+    
     echo "$result" | rg "PASSED" > /dev/null 2>&1
 }
-
-# Setup a secondary mechanism for piping to stdout so that we can split output
-# of commands to files and show them at the same time.
-exec 5>&1
 
 # Process Scripts
 for script in "${buildScripts[@]}"; do
@@ -88,18 +85,24 @@ for script in "${buildScripts[@]}"; do
 
     source "$root/build-common.sh"
     source "$targetRoot/$script"
-
+    RenameFunction Prepare CustomPrep
     RenameFunction CommonPrep Prepare
-
+    RenameFunction CommonTest Test
 
     {
-        H2 "Starting - $config"
+        echo
+        echo " == Starting $(basename "$script") =="
         echo "  Build Root = $buildRoot"
         if ! Fetch;   then echo "${RED}Error: Fetch Failure${NC}"  ; continue; fi
         if ! Prepare; then echo "${RED}Error: Prepare Failure${NC}"; continue; fi
         if ! Build;   then echo "${RED}Error: Build Failure${NC}"  ; continue; fi
-        if ! Test >> "$targetRoot/summary.log"; then
-            echo "${RED}Error: Test Failure${NC}"; fi
+        if ! Test
+        then
+            echo "${RED}Error: Test Failure${NC}"
+            echo "$config : FAILED" >> "$targetRoot/summary.log"
+        else
+            echo "$config : PASSED" >> "$targetRoot/summary.log"
+        fi
         if ! Clean;   then echo "${RED}Error: Clean Failure${NC}"  ; fi
     } 2>&1 | tee "$traceLog"
 
