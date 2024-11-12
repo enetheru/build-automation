@@ -8,6 +8,13 @@ if [ $sourced -eq 0 ]; then
     exit
 fi
 
+# https://mharrison.org/post/bashfunctionoverride/
+# Usage: RenameFunction <oldname> <newname>
+function RenameFunction {
+    local ORIG_FUNC=$(declare -f $1)
+    local NEWNAME_FUNC="$2${ORIG_FUNC#$1}"
+    eval "$NEWNAME_FUNC"
+}
 
 # Fill Command
 # Looks like using printf is the canonical way of repeating characters in a
@@ -15,7 +22,7 @@ fi
 Fill () {
     local filler="${1:- }"
     local width="${2:-$COLUMNS}" 
-    local line="$(printf -- "%.0s$filler" {1..$width})"
+    local line=$(printf -- "%.0s$filler" $(seq $width))
     if [ ${#line} -ge $width ]; then
         printf "${line:0:$width}\n";
     else
@@ -24,12 +31,17 @@ Fill () {
 }
 
 Center(){
-    local string=${1:-"Center"}
+    local string="${1:-Center}"
     local line="${2:-$(Fill)}"
     while read -t 0 line; do break; done
 
     local pos=$(( (${#line} - ${#string}) / 2 ))
-    sed -E "s/^(.{$pos}).{${#string}}(.*$)/\1$string\2/" <<< "$line"
+    if [ $pos -lt 0 ]; then
+      printf "%s" "$string"
+    else
+      sed -E "s/^(.{$pos}).{${#string}}(.*$)/\1$string\2/" <<< "$line"
+    fi
+
 }
 
 Right(){
@@ -38,25 +50,39 @@ Right(){
     while read -t 0 line; do break; done
 
     local pos=$(( (${#line} - ${#string}) -1 ))
-    sed -E "s/^(.{$pos}).{${#string}}(.*$)/\1$string\2/" <<< "$line"
+    if [ $pos -lt 0 ]; then
+      printf "%s" "$string"
+    else
+      sed -E "s/^(.{$pos}).{${#string}}(.*$)/\1$string\2/" <<< "$line"
+    fi
 }
 
-function H1 { figlet "$1" }
-function H2 { echo; Center " $1 "; Fill =; }
-function H3 { printf " == $1 ==\n" }
+function Figlet {
+  customFiglet=/c/git/cmatsuoka/figlet/figlet
+  # other figlet fonts I like are 'standard','Ogre', 'Stronger Than All' and 'ANSI Regular'
+  if [ $(command -v figlet) ]; then
+    figlet "$1"
+  elif [ -n "$customFiglet" ];then
+    "$customFiglet" -f standard "$1"
+  else
+      echo "==== $1 ===="
+  fi
 
-godot="$root/godot/macos-master/bin/godot.macos.editor.arm64"
-godot_tr="$root/godot/macos-master-tr/bin/godot.macos.template_release.arm64"
-
-# https://mharrison.org/post/bashfunctionoverride/
-# Usage: RenameFunction <oldname> <newname>
-function RenameFunction() {
-    local ORIG_FUNC=$(declare -f $1)
-    local NEWNAME_FUNC="$2${ORIG_FUNC#$1}"
-    eval "$NEWNAME_FUNC"
 }
 
-function Fetch () {
+function H1 {
+  Figlet "$1"
+}
+
+function H2 {
+  echo; Center " $1 "; Fill "=";
+}
+
+function H3 {
+  printf "%s" " == $1 ==\n"
+}
+
+function Fetch {
     # The expectation is that we are in $targetRoot
     # and when we finish we should be back in $targetRoot
     H1 Fetch
@@ -65,19 +91,20 @@ function Fetch () {
     echo "  Git URL       = $gitUrl"
     echo "  Git Branch    = $gitBranch"
 
-    if [ ! -d $buildRoot ]; then
+    if [ ! -d "$buildRoot" ]; then
         echo "  --Creating ${buildRoot}"
-        mkdir -p $buildRoot
+        mkdir -p "$buildRoot"
     fi
 
     #BASH files=$(shopt -s nullglob; shopt -s dotglob; echo /MYPATH/*)
-    if [ ! $buildRoot(N/F) ]; then #ZSH Globbing qualifiers
+    #FIXME - its simply luck that this works, without zsh it evaluates to a string.
+    if [ ! -d "$buildRoot" ]; then #ZSH Globbing qualifiers
         echo "  --Cloning ${target}"
         git clone "$gitUrl" "$buildRoot"
     fi
 
     # Change working directory
-    cd "$buildRoot"
+    cd "$buildRoot" || exit
 
     # Fetch any changes and reset to latest
     echo
@@ -88,23 +115,21 @@ function Fetch () {
     fi
 
     #TODO fix when the tree diverges and needs to be clobbered.
-    cd $targetRoot
+    cd "$targetRoot" || exit
 }
 
-function Prepare (){
+function Prepare {
     echo
 }
 
-function Build () {
+function Build {
     echo
 }
 
-function Test () {
+function Test {
     echo
 }
 
-function Clean () {
+function Clean {
     echo
 }
-
-

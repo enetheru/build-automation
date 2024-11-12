@@ -4,15 +4,7 @@ set -Ee
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-if [ "$(which rg)" = "rg not found" ]; then
-    echo "${RED}Error: Unable to find Ripgrep${NC}"
-    exit 1
-fi
-ripgrepVersion=$(rg -V)
-if [ ! "${ripgrepVersion:0:7}" = "ripgrep" ]; then
-    echo "${RED}Error: found rg is not RipGrep${NC}"
-    exit 1
-fi
+
 
 echo 
 echo " == Build-Automation =="
@@ -49,7 +41,7 @@ needs_arg() { if [ -z "$OPTARG" ]; then die "No arg for --$OPT option"; fi; }
 # Defaults
 fresh=
 logAppend=0
-doTest=0
+doTest=1
 
 while getopts :hfan-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
     # support long options: https://stackoverflow.com/a/28466267/519360
@@ -61,9 +53,9 @@ while getopts :hfan-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
     # shellcheck disable=SC2034
     case "$OPT" in
         h | help )     Help ;;
-        f | fresh )    fresh=--fresh ;;
+        f | fresh )    fresh="--fresh" ;;
         a | append )   logAppend=1 ;;
-        n | no-test )  doTest=1 ;;
+        n | no-test )  doTest=0 ;;
         # b | bravo )    needs_arg; bravo="$OPTARG" ;;
         # c | charlie )  charlie="${OPTARG:-$charlie_default}" ;;  # optional argument
         \? )           exit 2 ;;  # bad short option (error reported via getopts)
@@ -73,12 +65,13 @@ done
 shift $((OPTIND-1)) # remove parsed options and args from $@ list
 
 # Last minute checking of help flag before continuing.
-if echo "${argv[@]}" | rg -q -e "--help|-h"; then
+if echo "${argv[@]}" | grep -qEe "--help|-h"; then
     Help
 fi
 
 echo "  fresh       = $fresh"
 echo "  append      = $logAppend"
+echo "  test        = $doTest"
 
 if [ -z "${argv[1]}" ]; then
     echo
@@ -108,7 +101,7 @@ if [ -n "${argv[1]}" ]; then
 fi
 
 platform=$(uname -o)
-echo "  uname -om   = $OS"
+echo "  platform    = $platform"
 
 mainScript="$root/$target/$platform-build.sh"
 echo "  script      = $mainScript"

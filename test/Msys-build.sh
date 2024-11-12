@@ -46,7 +46,7 @@ H3 " Fill - 60 | Center "
 Fill - 60 | Center
 
 H3 "Center ' O.o ' <<<(Fill 'o-' 40)"
-Center ' O.o ' <<<$(Fill 'o-' 20)
+Center ' O.o ' <<<"$(Fill 'o-' 20)"
 
 H3 'Fill "- " | Center " Title " | Right " $(date ...) "'
 Fill '- ' | Center " Title " | Right " $(date +"%y-%m-%d") "
