@@ -118,9 +118,8 @@ function Fetch {
         mkdir -p "$buildRoot"
     fi
 
-    #BASH files=$(shopt -s nullglob; shopt -s dotglob; echo /MYPATH/*)
-    #FIXME - its simply luck that this works, without zsh it evaluates to a string.
-    if [ ! -d "$buildRoot" ]; then #ZSH Globbing qualifiers
+    # Clone if not already
+    if [ -n "$(find "$buildRoot" -maxdepth 0 -empty)" ]; then
         echo "  --Cloning ${target}"
         git clone "$gitUrl" "$buildRoot"
     fi
