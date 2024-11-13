@@ -26,7 +26,7 @@ fi
 
 # Get script count
 buildScripts=($(rg -u --files --max-depth 1 | \
-    rg "Darwin.*sh" | \
+    rg "$platform.*sh" | \
     rg -v "$thisScript"))
 
 echo "  Script count: ${#buildScripts}"

@@ -1,16 +1,15 @@
-#!/bin/zsh
+#!/bin/bash
 set -Ee
 
-RED='\033[0;31m'
-NC='\033[0m' # No Color
+# shellcheck disable=SC2034
+columns=120
 
+source build-common.sh
 
+H1 "AutoBuild"
 
-echo 
-echo " == Build-Automation =="
-root=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
-echo "  root        = $root"
-
+argv[0]="$0"
+argv+=("${@}")
 
 Syntax()
 {
@@ -20,7 +19,7 @@ Syntax()
 Help()
 {
    # Display Help
-   echo "Add description of the script functions here."
+   echo "My Little helper script to automate building things for different architectures"
    echo
    Syntax
    echo "options:"
@@ -35,7 +34,6 @@ Help()
 # Option parsing pulled from this Stack Overflow Answer from Adam Katz
 # https://stackoverflow.com/a/28466267
 die() { echo "$*" >&2; exit 2; }  # complain to STDERR and exit with error
-# shellcheck disable=SC2317
 needs_arg() { if [ -z "$OPTARG" ]; then die "No arg for --$OPT option"; fi; }
 
 # Defaults
@@ -69,44 +67,50 @@ if echo "${argv[@]}" | grep -qEe "--help|-h"; then
     Help
 fi
 
+H2 " Options "
+echo "  command     = ${argv[*]}"
 echo "  fresh       = $fresh"
 echo "  append      = $logAppend"
 echo "  test        = $doTest"
 
 if [ -z "${argv[1]}" ]; then
     echo
-    echo "${RED}Error: The <target> parameter is missing${NC}"
-    echo
     Syntax
-    die
+    Error "The <target> parameter is missing"
+    exit 1
 else
     target=${argv[1]}
     echo "  target      = $target"
-    targetRoot=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
-    targetRoot+="/$target"
-    echo "  targetRoot  = $targetRoot"
     shift 1
 fi
 
-# TODO This logic is trash
-if [ -n "${argv[1]}" ]; then
-    pattern="${argv[1]}"
+# get the regex pattern from the second argument
+if [ -n "${argv[2]}" ]; then
+    pattern="${argv[2]}"
     if [ "$pattern" = "--" ]; then
         unset pattern
         shift 1
         echo "  Remaining arg: ${argv[*]}"
-    else
-        echo "  pattern     = $pattern"
     fi
 fi
+echo "  regexFilter = $pattern"
 
-platform=$(uname -o)
+#Center " Automatic " "$(Fill "- " )"
+Fill "- " | Center " Automatic "
+
+platform=$(basename "$(uname -o)")
 echo "  platform    = $platform"
+
+root=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
+echo "  root        = $root"
+
+targetRoot="$root/$target"
+echo "  targetRoot  = $targetRoot"
 
 mainScript="$root/$target/$platform-build.sh"
 echo "  script      = $mainScript"
 echo
 
 ## Run target build script ##
-source build-common.sh
+# shellcheck disable=SC1090
 source "$mainScript" "$pattern"

@@ -1,20 +1,25 @@
 #!/bin/bash
 set -Ee
+
+declare -a argv=("${BASH_SOURCE[0]}")
+argv+=("$1")
+
 prev_dir=$(pwd)
 
 godot=${godot:-echo}
 godot_tr=${godot_tr:-echo}
 
-gitUrl=http://github.com/enetheru/godot-cpp.git
-gitBranch="modernise"
+export gitUrl=http://github.com/enetheru/godot-cpp.git
+export gitBranch="modernise"
 
-
+: "${target:="$( basename "$(dirname -- "${argv[0]}")")"}"
+: "${platform:="$( basename "$(uname -o)")"}"
 H2 " Build $target using $platform "
-thisScript="$(basename "$0")"
-echo "  thisScript  = $thisScript"
+
+echo "  command     = ${argv[*]}"
 
 # Get the target root from this script location
-targetRoot=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
+targetRoot=$( cd -- "$( dirname -- "${argv[0]}" )" &> /dev/null && pwd )
 echo "  targetRoot  = $targetRoot"
 cd "$targetRoot"
 
@@ -25,13 +30,13 @@ if [ -n "${argv[1]}" ]; then
 fi
 
 # Get script count
-buildScripts=$(find  . -maxdepth 1 -type f -name "$platform*" -printf "%f\n" | grep -v build)
-echo "  Script count: ${#buildScripts}"
+declare -a buildScripts=($(find . -maxdepth 1 -type f -name "$platform*" -printf "%f\n" | grep -v build))
+declare -i scriptCount=${#buildScripts[@]}
+echo "  Script count: $scriptCount"
 
 #Fail if no scripts
-if [ ${#buildScripts} -eq 0 ]; then
-    echo
-    echo "  ${RED}Error: No build scripts found${NC}"
+if [ $scriptCount -eq 0 ]; then
+    Error "No build scripts found"
     cd "$prev_dir"
     exit 1
 fi
@@ -46,64 +51,19 @@ done
 mkdir -p "$targetRoot/logs-raw"
 mkdir -p "$targetRoot/logs-clean"
 
-
-# Some steps are identical.
-CommonPrep(){
-    # Clean up key artifacts to trigger rebuild
-    rg -u --files "$buildRoot" \
-        | rg "(memory|example).*?o(bj)?$" \
-        | xargs rm
-}
-
-CommonTest(){
-    H1 "Test" >&5
-    # generate the .godot folder
-    $godot -e --path "$buildRoot/test/project/" --quit --headless &> /dev/null
-    
-    # Run the test project
-    result=$( \
-        $godot_tr --path "$buildRoot/test/project/" --quit --headless 2>&1 \
-            | tee >(cat >&5) \
-        )
-    H2 "Test - $config"
-    printf '%s' "$result"
-    echo "$result" | rg "PASSED" > /dev/null 2>&1
-}
-
-# Setup a secondary mechanism for piping to stdout so that we can split output
-# of commands to files and show them at the same time.
-exec 5>&1
-
 # Process Scripts
 for script in "${buildScripts[@]}"; do
-    action="$targetRoot/Msys-build-action.sh"
-    vars="root=\"$root\" script=\"$script\""
-    /msys2_shell.cmd -ucrt64 -defterm -no-start -where "$targetRoot" -c "$vars $action"
+    # shellcheck disable=SC1090
+    source "$script" # Fetch the msysEnv variable
+    if [ -z "$msysEnv" ]; then
+      Error "Msys based build scripts must be sourcable with no side effects except the declaration of
+        the variable 'msysEnv' matching one of the msys environments"
+      exit 1
+    fi
 
-#    cd "$targetRoot"
-#
-#    config=${script%.*}
-#    traceLog=$targetRoot/logs-raw/${config}.txt
-#    cleanLog=$targetRoot/logs-clean/${config}.txt
-#    buildRoot="$targetRoot/$config"
-#
-#    source "$root/build-common.sh"
-#    source "$targetRoot/$script"
-#
-#    {
-#        H2 "Starting - $config"
-#        echo "  Build Root = $buildRoot"
-#        if ! Fetch;   then echo "${RED}Error: Fetch Failure${NC}"  ; continue; fi
-#        if ! Prepare; then echo "${RED}Error: Prepare Failure${NC}"; continue; fi
-#        if ! Build;   then echo "${RED}Error: Build Failure${NC}"  ; continue; fi
-#        if ! Test >> "$targetRoot/summary.log"; then
-#            echo "${RED}Error: Test Failure${NC}"; fi
-#        if ! Clean;   then echo "${RED}Error: Clean Failure${NC}"  ; fi
-#    } 2>&1 | tee "$traceLog"
-#
-#    matchPattern='(register_types|memory|libgdexample|libgodot-cpp)'
-#    rg -M2048 $matchPattern "$traceLog" | sed -E 's/ +/\n/g' \
-#        | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' > "$cleanLog"
+    action="$targetRoot/$platform-build-action.sh"
+    vars="root=\"$root\" script=\"$script\""
+    /msys2_shell.cmd -"$msysEnv" -defterm -no-start -where "$targetRoot" -c "$vars $action"
 done
 
 cd "$prev_dir"

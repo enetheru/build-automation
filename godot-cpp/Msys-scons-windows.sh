@@ -9,16 +9,18 @@ if [ "$sourced" -eq 0 ]; then
     exit
 fi
 
+msysEnv="ucrt64"
+
 function Prepare {
-  CommonPrep
+    CommonPrep
 }
 
 function Build {
     H1 "SCons Build"
-#    cd "$buildRoot/test" || return 1
-#    scons verbose=yes target=template_release
+    cd "$buildRoot/test" || return 1
+    scons verbose=yes target=template_release use_mingw=yes
 }
 
 function Test {
-  CommonTest
+    CommonTest
 }

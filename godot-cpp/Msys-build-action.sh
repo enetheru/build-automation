@@ -1,10 +1,7 @@
 #!/bin/bash
 set -Ee
 
-COLUMNS=120
-
-godot=${godot:-echo}
-godot_tr=${godot_tr:-echo}
+declare -i columns=120
 
 gitUrl=http://github.com/enetheru/godot-cpp.git
 gitBranch="modernise"
@@ -17,22 +14,39 @@ cd "$targetRoot"
 
 # Some steps are identical.
 CommonPrep(){
+    local prev=$(pwd)
+    cd "$buildRoot" || exit 1
     # Clean up key artifacts to trigger rebuild
-    rg -u --files "$buildRoot" \
-        | rg "(memory|example).*?o(bj)?$" \
-        | xargs -r rm
+    declare -a artifacts
+    artifacts+=($(rg -u --files \
+        | rg "(memory|example).*?o(bj)?$"))
+    artifacts+=($(rg -u --files \
+        | rg "\.(a|lib|so|dll|dylib)$"))
+
+    if [ -n "${artifacts[*]}" ]; then
+      H3 "Prepare"
+      Warning "Deleting key Artifacts"
+      for item in "${artifacts[@]}"; do
+        echo "rm '$item'"
+        rm "$item"
+      done
+    fi
+    cd "$prev"
 }
 
 CommonTest(){
     H1 "Test" >&5
+
+    local godot=/c/build/godot/msvc.master/bin/godot.windows.editor.x86_64.exe
+    local godot_tr=/c/build/godot/msvc.master/bin/godot.windows.template_release.x86_64.exe
+
     # generate the .godot folder
     $godot -e --path "$buildRoot/test/project/" --quit --headless &> /dev/null
     
     # Run the test project
-    result=$( \
-        $godot_tr --path "$buildRoot/test/project/" --quit --headless 2>&1 \
-            | tee >(cat >&5) \
-        )
+    local result
+    result=$( $godot_tr --path "$buildRoot/test/project/" --quit --headless 2>&1 \
+            | tee >(cat >&5) )
     H2 "Test - $config"
     printf '%s' "$result"
     echo "$result" | rg "PASSED" > /dev/null 2>&1
