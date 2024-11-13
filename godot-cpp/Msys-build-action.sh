@@ -3,8 +3,9 @@ set -Ee
 
 declare -i columns=120
 
-gitUrl=http://github.com/enetheru/godot-cpp.git
-gitBranch="modernise"
+#export gitUrl=http://github.com/enetheru/godot-cpp.git
+export gitUrl="C:\godot\src\godot-cpp"
+export gitBranch="modernise"
 
 # Get the target root from this script location
 targetRoot=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )

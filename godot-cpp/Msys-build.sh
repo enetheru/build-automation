@@ -6,12 +6,6 @@ argv+=("$1")
 
 prev_dir=$(pwd)
 
-godot=${godot:-echo}
-godot_tr=${godot_tr:-echo}
-
-export gitUrl=http://github.com/enetheru/godot-cpp.git
-export gitBranch="modernise"
-
 : "${target:="$( basename "$(dirname -- "${argv[0]}")")"}"
 : "${platform:="$( basename "$(uname -o)")"}"
 H2 " Build $target using $platform "

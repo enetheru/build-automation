@@ -73,20 +73,22 @@ echo "  fresh       = $fresh"
 echo "  append      = $logAppend"
 echo "  test        = $doTest"
 
-if [ -z "${argv[1]}" ]; then
+argv=("${@}")
+
+if [ -z "${argv[0]}" ]; then
     echo
     Syntax
     Error "The <target> parameter is missing"
     exit 1
 else
-    target=${argv[1]}
+    target=${argv[0]}
     echo "  target      = $target"
     shift 1
 fi
 
 # get the regex pattern from the second argument
-if [ -n "${argv[2]}" ]; then
-    pattern="${argv[2]}"
+if [ -n "${argv[1]}" ]; then
+    pattern="${argv[1]}"
     if [ "$pattern" = "--" ]; then
         unset pattern
         shift 1
