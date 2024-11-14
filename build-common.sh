@@ -76,7 +76,7 @@ function Figlet {
   # other figlet fonts I like are 'standard','Ogre', 'Stronger Than All' and 'ANSI Regular'
   if [ $(command -v figlet) ]; then
     figlet "$1"
-  elif [ -n "$customFiglet" ];then
+  elif [ -f "$customFiglet" ];then
     "$customFiglet" -f standard "$1"
   else
       echo "==== $1 ===="
