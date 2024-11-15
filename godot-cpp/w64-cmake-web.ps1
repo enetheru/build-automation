@@ -11,7 +11,7 @@ New-Item -Path $buildDir -ItemType Directory -Force
 Set-Location $buildDir
 
 #build using cmake
-emcmake.bat cmake $fresh ..\
+emcmake.bat cmake --fresh ..\
 cmake --build . -j 12 --verbose -t godot-cpp-test --config Release
 
 # TODO Run test project

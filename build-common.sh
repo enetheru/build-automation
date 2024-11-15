@@ -25,7 +25,7 @@ function RenameFunction {
 # Fill Command
 # Looks like using printf is the canonical way of repeating characters in a
 # posix shell that is also performant - https://stackoverflow.com/a/30288267
-Fill () {
+function Fill {
     local filler="${1:- }"
     declare -i width=${2:-$columns}
     local line
@@ -39,7 +39,7 @@ Fill () {
 
 }
 
-Center(){
+function Center {
     local string line
     string="${1:-Center}"
     if [ -z "$2" ];
@@ -55,7 +55,7 @@ Center(){
     fi
 }
 
-Right(){
+function Right {
     local string line
     string=${1:-"Right"}
     if [ -z "$2" ];

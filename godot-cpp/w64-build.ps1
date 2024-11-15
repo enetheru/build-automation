@@ -21,7 +21,7 @@ $ErrorActionPreference = "Stop"
 # [System.Uri]$sourceOrigin = "http://github.com/godotengine/godot-cpp.git"
 [System.Uri]$sourceOrigin = "C:\Godot\src\godot-cpp"
 #[string]$sourceBranch = "modernise"
-[string]$sourceBranch = "4.3-modernise"
+[string]$sourceBranch = "modernise"
 
 # Make sure we are in the directory of the build script before continuing.
 Set-Location $root
