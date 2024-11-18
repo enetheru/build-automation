@@ -52,7 +52,7 @@ if( $regexFilter -eq "--" ){
 # shellcheck disable=SC2034
 $columns=120
 
-. ./build-common.ps1
+. ./share/format.ps1
 
 H1 "AutoBuild"
 
@@ -72,6 +72,11 @@ Write-Output @"
   passThrough = $passThrough
 "@
 
+if( $target -eq "" ){
+    Syntax
+    Write-Error "Missing <target>"
+}
+
 #Center " Automatic " "$(Fill "- " )"
 Fill "- " | Center " Automatic "
 
@@ -89,12 +94,12 @@ Write-Output "  platform    = $platform"
 $root=$PSScriptRoot
 Write-Output "  root        = $root"
 
-$targetRoot="$root/$target"
+$targetRoot="$root\$target"
 Write-Output "  targetRoot  = $targetRoot"
 
-$mainScript="$root/$target/$platform-build.ps1"
+$mainScript="$root\$target\$platform-build.ps1"
 Write-Output "  script      = $mainScript"
 
-## Run target build script ##
 # shellcheck disable=SC1090
-. $mainScript # $regexFilter
+## Run target build script ##
+. $mainScript
