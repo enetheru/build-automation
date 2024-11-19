@@ -1,8 +1,8 @@
 # Run the steps to build
 scons verbose=yes target=template_release
 
-if( $false ) #TODO create a varible for testing
-{
+#TODO create a varible for testing
+if( $false ) {
     # Test afterwards
     $testProject = "$buildRoot\test\project"
     # Generate the .godot folder

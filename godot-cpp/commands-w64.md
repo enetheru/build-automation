@@ -3,6 +3,7 @@
 This document lists the build commands used for these subfolders.
 
 I updated all the ones that rely on my changes using this command
+
 ```bash
 for I in */; do cd $I; git pull; cd ..; done
 ```
@@ -12,6 +13,7 @@ Get-ChildItem -Directory | ForEach-Object -Parallel { cd $_ ; git pull; cd .. }
 ```
 
 ## msvc.scons
+
 ```powershell
 # Clone godot-cpp
 cd C:\build\godot-cpp
@@ -32,6 +34,7 @@ $godot_tr="C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.
 ```
 
 ## msvc.cmake
+
 ```powershell
 # Clone godot-cpp
 cd C:\build\godot-cpp
@@ -41,7 +44,8 @@ cd msvc.cmake
 # Compile the test project
 mdkdir cmake-build
 cd cmake-build
-cmake ../ && cmake --build . --verbose -t godot-cpp-test --config Release
+cmake ../
+cmake --build . --verbose -t godot-cpp-test --config Release
 
 # Generate the .godot folder
 $godot = C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe
@@ -53,6 +57,7 @@ $godot_tr --path ..\test\project\ --headless --quit
 ```
 
 ## ucrt64.scons
+
 ```bash
 # Clone godot-cpp
 cd /c/build/godot-cpp
@@ -116,6 +121,7 @@ $GODOT_TR --path project/ --quit --headless
 ```
 
 ## clang64.cmake
+
 ```bash
 # Clone godot-cpp
 cd /c/build/godot-cpp
@@ -137,19 +143,23 @@ $GODOT_TR --path ../test/project/ --quit --headless
 ```
 
 ## clion.cmake
+
 Built using the inbuilt toolchain and clion features
 
 Then opened terminal to project dir.
+
 ```powershell
-PowerShell 7.4.6
-PS C:\build\godot-cpp\clion.cmake> $godot="C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
-PS C:\build\godot-cpp\clion.cmake> &$godot -e --path .\test\project\ --headless --quit *>$null            
-PS C:\build\godot-cpp\clion.cmake> $godot_tr="C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"             
-PS C:\build\godot-cpp\clion.cmake> &$godot_tr --path .\test\project\ --headless --quit
+# PowerShell 7.4.6
+$godot="C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
+&$godot -e --path .\test\project\ --headless --quit *>$null
+$godot_tr="C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
+&$godot_tr --path .\test\project\ --headless --quit
 ```
+
 Tests passed.
 
 ## android.scons
+
 ```powershell
 # Clone godot-cpp
 cd C:\build\godot-cpp
@@ -174,7 +184,10 @@ cd android.cmake
 # Compile godot-cpp-test
 mkdir cmake-build
 cd cmake-build
-cmake ../ -GNinja --toolchain C:\androidsdk\ndk\23.2.8568313\build\cmake\android.toolchain.cmake -DANDROID_PLATFORM=android-29 -DANDROID_ABI=x86_64
+cmake ../ -GNinja `
+    --toolchain C:\androidsdk\ndk\23.2.8568313\build\cmake\android.toolchain.cmake `
+    -DANDROID_PLATFORM=android-29 `
+    -DANDROID_ABI=x86_64
 cmake --build . -j 12 --verbose -t godot-cpp-test --config Release
 
 # TODO Testing
@@ -182,21 +195,26 @@ cmake --build . -j 12 --verbose -t godot-cpp-test --config Release
 
 ## emscripten.scons
 
-after some updates this isnt working anymore.
-I have had to cd to C:\emsdk, and git pull to update.
+after some updates this isn't working anymore.
+I have had to cd to `C:\emsdk`, and git pull to update.
+
+```powershell
 C:\emsdk\emsdk install latest
 C:\emsdk\emsdk activate latest
+```
 
 to get the cmd prompt to activate I needed to be in the sdk folder.
+
+```powershell
 cd /emsdk/
 emcmdprompt.bat
 cd /build/godot-cpp/w64-scons-web
 scons verbose=yes platform=web target=template_release
+```
 
 So whats the deal?
 
 Looks like activating the latest also sets up the environment, which is only active for this session.
-
 
 ```powershell
 # Start emcmdprompt and change to ps
@@ -228,10 +246,10 @@ git clone c:\Godot\src\godot-cpp emsdk.cmake
 cd emsdk.cmake
 
 # Compile godot-cpp-test
-> mkdir cmake-build
-> cd cmake-build
-> emcmake.bat cmake ../
-> cmake --build . -j 12 --verbose -t template_release --config Release
+mkdir cmake-build
+cd cmake-build
+emcmake.bat cmake ../
+cmake --build . -j 12 --verbose -t template_release --config Release
 
 # TODO Test
 ```

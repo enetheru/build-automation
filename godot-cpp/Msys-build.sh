@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2154
 set -Ee
 
 declare -a argv=("${BASH_SOURCE[0]}")
@@ -63,7 +64,7 @@ for script in "${buildScripts[@]}"; do
     # shellcheck disable=SC1090
     source "$script" # Fetch the msysEnv variable
     if [ -z "$msysEnv" ]; then
-      Error "Msys based build scripts must be sourcable with no side effects except the declaration of
+      Error "Msys based build scripts must be source-able with no side effects except the declaration of
         the variable 'msysEnv' matching one of the msys environments"
       exit 1
     fi

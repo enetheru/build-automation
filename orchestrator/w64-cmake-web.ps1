@@ -1,12 +1,12 @@
 # Perform any updates to emscripten as required.
-$emsdk="C:\emsdk"
+$emsdk = "C:\emsdk"
 Set-Location $emsdk
 git pull
 &"$emsdk\emsdk.ps1" install latest
 &"$emsdk\emsdk.ps1" activate latest
 
 # Add the build directory
-$buildDir="$buildRoot\cmake-build"
+$buildDir = "$buildRoot\cmake-build"
 New-Item -Path $buildDir -ItemType Directory -Force
 Set-Location $buildDir
 

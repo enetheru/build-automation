@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2154
 # Compile the test project
 
 # Check whether this file is sourced or not.
@@ -11,16 +12,19 @@ fi
 
 Build(){
     H1 "CMake Build"
+
     cd "$buildRoot" || return 1
 
     mkdir -p cmake-build
     cd cmake-build || return 1
 
     # Configure
-    cmake $fresh ../ -GNinja
+    cmake "$fresh" ../ -GNinja
 
     # Build
     cmake --build . -j 6 --verbose -t godot-cpp-test --config Release
 }
 
-Test(){ CommonTest }
+function Test {
+  CommonTest
+}

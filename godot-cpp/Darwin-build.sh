@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2154,SC1090
 set -Ee
 prev_dir=$(pwd)
 
@@ -7,6 +8,7 @@ godot_tr=${godot_tr:-echo}
 
 gitUrl=http://github.com/enetheru/godot-cpp.git
 gitBranch="modernise"
+
 
 
 H2 " Build $target using $platform "
@@ -69,7 +71,7 @@ CommonTest(){
             | tee >(cat >&5) \
         )
     H2 "Test - $config"
-    printf "$result"
+    printf "%s\n" "$result"
     echo "$result" | rg "PASSED" > /dev/null 2>&1
 }
 

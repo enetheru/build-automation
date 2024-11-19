@@ -1,5 +1,5 @@
-
 ## ucrt64.scons
+
 ```bash
 # Clone godot-cpp
 cd /c/build/godot-cpp

@@ -3,8 +3,8 @@
 # Check whether this file is sourced or not.
 # https://stackoverflow.com/questions/2683279/how-to-detect-if-a-script-is-being-sourced
 (return 0 2>/dev/null) && sourced=1 || sourced=0
-if [ $sourced -eq 0 ]; then
-    echo "Do not run this script directly, it simply holds foramtting functions"
+if [ "$sourced" -eq 0 ]; then
+    echo "Do not run this script directly, it simply holds formatting functions"
     exit
 fi
 
@@ -16,7 +16,7 @@ NC='\033[0m' # No Color
 function Figlet {
   local customFiglet=/c/git/cmatsuoka/figlet/figlet
   # other figlet fonts I like are 'standard','Ogre', 'Stronger Than All' and 'ANSI Regular'
-  if [ $(command -v figlet) ]; then
+  if [ "$(command -v figlet)" ]; then
     figlet "$1"
   elif [ -f "$customFiglet" ];then
     "$customFiglet" -f standard "$1"

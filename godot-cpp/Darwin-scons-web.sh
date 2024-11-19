@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2154
 # Compile the test project
 
 # Check whether this file is sourced or not.

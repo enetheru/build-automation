@@ -1,9 +1,12 @@
 #!/bin/bash
 set -Ee
 
+# shellcheck disable=SC2034
 declare -i columns=120
+# shellcheck disable=SC2154
 source "$root/share/format.sh"
 
+# shellcheck disable=SC2154
 H2 "using $script ..."
 echo "  MSYSTEM     = $MSYSTEM"
 
@@ -37,14 +40,14 @@ echo "
 
 # Some steps are identical.
 PrepareCommon(){
-    local prev=$(pwd)
+    local prev
+    prev="$(pwd)"
+
     cd "$buildRoot" || exit 1
     # Clean up key artifacts to trigger rebuild
     declare -a artifacts
-    artifacts+=($(rg -u --files \
-        | rg "(memory|example).*?o(bj)?$"))
-    artifacts+=($(rg -u --files \
-        | rg "\.(a|lib|so|dll|dylib)$"))
+    artifacts+=("$(rg -u --files | rg "(memory|example).*?o(bj)?$")")
+    artifacts+=("$(rg -u --files | rg "\.(a|lib|so|dll|dylib)$")")
 
     if [ -n "${artifacts[*]}" ]; then
       H3 "Prepare"
@@ -78,7 +81,7 @@ TestCommon(){
         result=$($godot -e --path "$buildRoot/test/project/" --quit --headless 2>&1)
 
         if [ ! -d "$buildRoot/test/project/.godot" ]; then
-            echo $result
+            echo "$result"
             Error "Creating .godot folder" >> "$targetRoot/summary.log"
             return 1
         fi
@@ -100,7 +103,7 @@ TestCommon(){
         if [ -n "${line//[[:space:]]/}" ]; then
             lines+=("$line") 
         fi
-    done <<< $result
+    done <<< "$result"
 
     printf "%s\n" "${lines[@]}" >> "$targetRoot/summary.log"
 
@@ -117,7 +120,10 @@ cd "$targetRoot"
     buildRoot="$targetRoot/$config"
     echo "  Build Root = $buildRoot"
 
+
+
     source "$root/share/build-actions.sh"
+    # shellcheck disable=SC1090
     source "$targetRoot/$script"
 
     if ! Fetch;   then Error "Fetch Failure"  ; exit 1; fi

@@ -1,15 +1,16 @@
 #!/bin/bash
+# shellcheck disable=SC2154
 
 # Check whether this file is sourced or not.
 # https://stackoverflow.com/questions/2683279/how-to-detect-if-a-script-is-being-sourced
 (return 0 2>/dev/null) && sourced=1 || sourced=0
-if [ $sourced -eq 0 ]; then
+if [ "$sourced" -eq 0 ]; then
     echo "Do not run this script directly, it simply holds helper functions"
     exit
 fi
 
 # https://mharrison.org/post/bashfunctionoverride/
-# Usage: RenameFunction <oldname> <newname>
+# Usage: RenameFunction <old-name> <newname>
 function RenameFunction {
     local ORIG_FUNC
     ORIG_FUNC=$(declare -f "$1")
@@ -21,6 +22,7 @@ function Fetch {
     # The expectation is that we are in $targetRoot
     # and when we finish we should be back in $targetRoot
     H1 "Git Fetch"
+
     echo "  Target Root   = $targetRoot"
     echo "  Build Root    = $buildRoot"
     echo "  Git URL       = $gitUrl"

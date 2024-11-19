@@ -1,11 +1,12 @@
 #!/usr/bin/env pwsh
 #Requires -Version 7.4
 
-[CmdletBinding(PositionalBinding=$false)]
+[CmdletBinding( PositionalBinding = $false )]
 param(
-    [string]$prefix='w64',
-    [switch]$help, [switch]$h,
-    [Parameter(ValueFromRemainingArguments=$true)]$args
+    [string]$prefix = 'w64',
+    [switch]$help,
+    [switch]$h,
+    [Parameter( ValueFromRemainingArguments = $true )]$args
 )
 
 trap {
@@ -22,18 +23,20 @@ $ErrorActionPreference = "Stop"
 
 
 # Help and prevent direct call.
-if( $h -or $args -match "--help|/\?" ){ $help = $true  }
-if( $MyInvocation.ScriptLineNumber -eq 1 -Or $help){
+if( $h -or $args -match "--help|/\?" ) {
+    $help = $true
+}
+if( $MyInvocation.ScriptLineNumber -eq 1 -Or $help ) {
     Write-Output "`$args = '$args'"
     Write-Error "This script cannot be run directly."
 }
 
 # Main Variables
-[string]$godot="C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
-[string]$godot_tr="C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
+[string]$godot = "C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
+[string]$godot_tr = "C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
 
 # Process varargs for build configs.
-if( $args ){
+if( $args ) {
     $patterns = $args -split '\s+' -join '|'
     [string]$pattern = "^$prefix-(.*?)($patterns)(.*?)\.(ps1|sh)$"
     "Search command = rg -u --files --max-depth 1 | rg $pattern"
@@ -49,8 +52,11 @@ if( $args ){
 
 # Quit if there are no configs.
 if( -Not ($buildConfigs -is [array] -And $buildConfigs.count -gt 0) ) {
-    if( $args ){ Write-Error "No configs found for: {$args}"
-    } else { Write-Error "No Configs found in folder."  }
+    if( $args ) {
+        Write-Error "No configs found for: {$args}"
+    } else {
+        Write-Error "No Configs found in folder."
+    }
     exit 1
 }
 
@@ -59,16 +65,20 @@ $buildConfigs | Format-List -Property Name
 
 # Helper Function for changing windwos paths to msys2 paths.
 Function Win2Unix {
-    [CmdletBinding()]
-    Param( [Parameter(ValueFromPipeline)] $Name )
-    process { $Name -replace '\\','/' -replace ':','' -replace '^C','/c'  }
+    [CmdletBinding( )]
+    Param(
+        [Parameter( ValueFromPipeline )] $Name
+    )
+    process {
+        $Name -replace '\\', '/' -replace ':', '' -replace '^C', '/c'
+    }
 }
 
 
 function SourcePrep {
     param(
-        [Parameter(Mandatory=$true)] [string]$buildRoot,
-        [Parameter(Mandatory=$true)] [System.Uri]$sourceOrigin,
+        [Parameter( Mandatory = $true )] [string]$buildRoot,
+        [Parameter( Mandatory = $true )] [System.Uri]$sourceOrigin,
         $sourceBranch
     )
     "== Source Code =="
@@ -78,8 +88,7 @@ function SourcePrep {
     Set-Location $root
 
     # Clone the repository
-    if (-Not (Test-Path -Path $buildRoot -PathType Container))
-    {
+    if( -Not (Test-Path -Path $buildRoot -PathType Container) ) {
         git clone (${sourceBranch}?.Insert(0, "-b")) "$sourceOrigin" "$buildRoot"
     }
 
@@ -89,8 +98,7 @@ function SourcePrep {
     # Fetch any changes and reset to latest
     git fetch --all
     git reset --hard '@{u}'
-    if ($sourceBranch)
-    {
+    if( $sourceBranch ) {
         git checkout $sourceBranch
     }
 
@@ -100,13 +108,13 @@ function SourcePrep {
 
 function w64Build {
     param(
-        [Parameter(Mandatory=$true)][string]$buildRoot
+        [Parameter( Mandatory = $true )][string]$buildRoot
     )
     $hostTarget = Split-Path -LeafBase $buildRoot
     #Script and Log variables
-    $buildScript="$root\$hostTarget.ps1"
-    $rawLog="$root/logs-raw/$hostTarget.txt"
-    $cleanLog="$root/logs-clean/$hostTarget.txt"
+    $buildScript = "$root\$hostTarget.ps1"
+    $rawLog = "$root/logs-raw/$hostTarget.txt"
+    $cleanLog = "$root/logs-clean/$hostTarget.txt"
 
     #Build Variables
     $fresh = ($freshBuild) ? "`"--fresh`"" : "`$null"
@@ -143,18 +151,18 @@ Set-PSDebug -Off
 
 function msys2Build {
     param(
-        [Parameter(Mandatory=$true)] [string]$buildRoot,
+        [Parameter( Mandatory = $true )] [string]$buildRoot,
         [string]$msys2Env = "clang64"
     )
     # Script and log variables
     $hostTarget = Split-Path -LeafBase $buildRoot
-    $msys2_shell="C:/msys64/msys2_shell.cmd -$msys2Env -defterm -no-start -where $buildRoot"
-    $rawLog="$root/logs-raw/$hostTarget.txt"
-    $cleanLog="$root/logs-clean/$hostTarget.txt"
+    $msys2_shell = "C:/msys64/msys2_shell.cmd -$msys2Env -defterm -no-start -where $buildRoot"
+    $rawLog = "$root/logs-raw/$hostTarget.txt"
+    $cleanLog = "$root/logs-clean/$hostTarget.txt"
 
     #unix shell script, and shell varibles.
-    $buildScript="$root/$hostTarget.sh" | Win2Unix
-    $vars=@(
+    $buildScript = "$root/$hostTarget.sh" | Win2Unix
+    $vars = @(
         "GODOT=$($godot | Win2Unix)"
         "GODOT_TR=$($godot_tr | Win2Unix)"
         "BUILD_ROOT=$($buildRoot | Win2Unix)"
@@ -172,12 +180,12 @@ function msys2Build {
 
 function Clean {
     param(
-        [Parameter(Mandatory=$true)][string]$buildRoot,
-        [Parameter(Mandatory=$true)][string]$matchPattern
+        [Parameter( Mandatory = $true )][string]$buildRoot,
+        [Parameter( Mandatory = $true )][string]$matchPattern
     )
     $hostTarget = Split-Path -LeafBase $buildRoot
-    $rawLog="$root/logs-raw/$hostTarget.txt"
-    $cleanLog="$root/logs-clean/$hostTarget.txt"
+    $rawLog = "$root/logs-raw/$hostTarget.txt"
+    $cleanLog = "$root/logs-clean/$hostTarget.txt"
 
     rg -M2048 $matchPattern $rawLog | sed -E 's/\s+/\n/g' `
         | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' > $cleanLog

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Compile the test project
+# shellcheck disable=SC2154
 
 # Check whether this file is sourced or not.
 # https://stackoverflow.com/questions/2683279/how-to-detect-if-a-script-is-being-sourced

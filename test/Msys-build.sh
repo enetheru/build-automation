@@ -1,3 +1,5 @@
+#!/bin/bash
+# shellcheck disable=SC2016
 
 H1 "Heading 1"
 
@@ -32,6 +34,7 @@ Fill "." | Center "Title"
 
 H3 'Center "o.O"  "¯\_   _/¯"'
 Center "o.O" "¯\_   _/¯"
+
 
 H3 '(Center " Title " $(Fill "- ""))'
 Center " Title " "$(Fill '- ')"

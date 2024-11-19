@@ -2,7 +2,7 @@
 #Requires -Version 7.4
 
 # Check whether this file is sourced or not.
-if( -Not ($MyInvocation.InvocationName -eq '.') ){
+if( -Not ($MyInvocation.InvocationName -eq '.') ) {
     Write-Output "Do not run this script directly, it simply holds helper functions"
     exit 1
 }

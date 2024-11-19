@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 # Local prep function for orchestrator.
 function Prepare {
     param(
-        [Parameter(Mandatory=$true)][string]$buildRoot
+        [Parameter( Mandatory = $true )][string]$buildRoot
     )
     "== Prepare =="
     Set-Location $buildRoot
@@ -26,12 +26,12 @@ function Prepare {
     }
 
     set-location extern/godot-cpp
-    if( -Not (git remote -v | Select-String -Pattern "local" -Quiet ) ){
+    if( -Not (git remote -v | Select-String -Pattern "local" -Quiet) ) {
         git remote add local C:\godot\src\godot-cpp
         git fetch local
     }
 
-    if( -Not (git branch | Select-String -Pattern "4.3-modernise" -Quiet ) ){
+    if( -Not (git branch | Select-String -Pattern "4.3-modernise" -Quiet) ) {
         git checkout "local/4.3-modernise" --track
     }
 
@@ -49,13 +49,13 @@ function Prepare {
 
 function Test {
     param(
-        [Parameter(Mandatory=$true)][string]$buildRoot
+        [Parameter( Mandatory = $true )][string]$buildRoot
     )
     Write-Output "Nothing to test"
-#    if( -Not $test ) {
-#        # Generate the .godot folder
-#        &$godot -e --path "$buildRoot/test/Project" --headless --quit *> $null
-#        # Run test project
-#        &$godot_tr --path "$buildRoot/test/Project" --headless --quit
-#    }
+    #    if( -Not $test ) {
+    #        # Generate the .godot folder
+    #        &$godot -e --path "$buildRoot/test/Project" --headless --quit *> $null
+    #        # Run test project
+    #        &$godot_tr --path "$buildRoot/test/Project" --headless --quit
+    #    }
 }

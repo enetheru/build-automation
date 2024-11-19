@@ -1,7 +1,7 @@
 # MACOS Build Preparation
 
 set -xv
-echo - $(uname -a)
+echo "- $(uname -a)"
 
 GODOTCPP=/home/enetheru/build/godot-cpp
 GODOT=/home/enetheru/build/godot/linux-master/bin/godot.linuxbsd.editor.x86_64

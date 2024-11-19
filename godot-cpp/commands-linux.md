@@ -1,8 +1,7 @@
-
 ## godot-master
 
-
 ## scons
+
 ```bash
 # Clone godot-cpp
 cd ~/build/godot-cpp
@@ -26,9 +25,9 @@ Working on getting the toolchain for emscripten and android working.
 
 on arch linux
 
-extra/emscripten doesnt appear to provide the things requred.
+extra/emscripten doesnt appear to provide the things required.
 
 trying aur/emsdk
 
-ok the aur pckage dies, looks like I just needed to logout and back in again to
+ok the aur package dies, looks like I just needed to logout and back in again to
 fresh my environment.. I hve the tools available now.

@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2154,SC1090
 set -Ee
 prev_dir=$(pwd)
 
@@ -33,7 +34,7 @@ echo "  Script count: ${#buildScripts}"
 #Fail if no scripts
 if [ ${#buildScripts} -eq 0 ]; then
     echo
-    echo "  ${RED}Error: No build scripts found${NC}"
+    echo "  ${RED}Error: No build scripts found"
     cd "$prev_dir"
     exit 1
 fi
@@ -45,8 +46,8 @@ for script in "${buildScripts[@]}"; do
 done
 
 # Make sure the log directories exist.
-mkdir -p $targetRoot/logs-raw
-mkdir -p $targetRoot/logs-clean
+mkdir -p "$targetRoot"/logs-raw
+mkdir -p "$targetRoot"/logs-clean
 mkdir -p "$targetRoot/logs-raw"
 mkdir -p "$targetRoot/logs-clean"
 
@@ -84,6 +85,7 @@ for script in "${buildScripts[@]}"; do
     buildRoot="$targetRoot/$config"
 
     source "$root/build-common.sh"
+    
     source "$targetRoot/$script"
     RenameFunction Prepare CustomPrep
     RenameFunction CommonPrep Prepare
@@ -93,17 +95,17 @@ for script in "${buildScripts[@]}"; do
         echo
         echo " == Starting $(basename "$script") =="
         echo "  Build Root = $buildRoot"
-        if ! Fetch;   then echo "${RED}Error: Fetch Failure${NC}"  ; continue; fi
-        if ! Prepare; then echo "${RED}Error: Prepare Failure${NC}"; continue; fi
-        if ! Build;   then echo "${RED}Error: Build Failure${NC}"  ; continue; fi
+        if ! Fetch;   then echo Error "Fetch Failure"  ; continue; fi
+        if ! Prepare; then echo Error "Prepare Failure"; continue; fi
+        if ! Build;   then echo Error "Build Failure"  ; continue; fi
         if ! Test
         then
-            echo "${RED}Error: Test Failure${NC}"
+            echo Error "Test Failure"
             echo "$config : FAILED" >> "$targetRoot/summary.log"
         else
             echo "$config : PASSED" >> "$targetRoot/summary.log"
         fi
-        if ! Clean;   then echo "${RED}Error: Clean Failure${NC}"  ; fi
+        if ! Clean;   then echo Error "Clean Failure"  ; fi
     } 2>&1 | tee "$traceLog"
 
     matchPattern='(register_types|memory|libgdexample|libgodot-cpp)'

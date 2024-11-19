@@ -6,8 +6,8 @@ Set-Location "cmake-build"
 cmake $fresh ..\
 cmake --build . --config Release -- /nologo /v:m /clp:"ShowCommandLine;ForceNoAlign"
 
-if( $false ) #TODO create a varible for testing
-{
+#TODO create a varible for testing
+if( $false ) {
     # Test afterwards
     $testProject = "$buildRoot\demo"
     # Generate the .godot folder

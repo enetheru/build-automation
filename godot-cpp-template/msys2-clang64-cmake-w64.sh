@@ -13,16 +13,16 @@ echo "test=$TEST"
 mkdir -p cmake-build
 cd cmake-build || exit
 
-cmake $FRESH ../
+cmake "$FRESH" ../
 cmake --build . -j 12 --verbose --config Release
 
 if [ "$TEST" -eq 1 ];
 then
   # generate the .godot folder
-  $GODOT -e --path $BUILD_ROOT/demo --quit --headless &> /dev/null
+  $GODOT -e --path "$BUILD_ROOT"/demo --quit --headless &> /dev/null
 
   # Run the test project
-  $GODOT_TR --path $BUILD_ROOT/demo --quit --headless
+  $GODOT_TR --path "$BUILD_ROOT"/demo --quit --headless
 fi
 
 

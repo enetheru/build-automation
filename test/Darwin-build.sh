@@ -1,4 +1,5 @@
-
+#!/usr/bin/env bash
+# shellcheck disable=SC2016
 H1 "Test"
 
 H2 "Fill"
@@ -22,6 +23,7 @@ H3 "(Center)"
 Center
 H3 "(Center ' Title ')"
 Center ' Title '
+
 H3 '(Center " Title " $(Fill '-'))'
 Center " Title " "$(Fill '-')"
 
@@ -46,7 +48,7 @@ H3 " Fill - 60 | Center "
 Fill - 60 | Center
 
 H3 "Center ' O.o ' <<<(Fill 'o-' 40)"
-Center ' O.o ' <<<$(Fill 'o-' 20)
+Center ' O.o ' <<<"$(Fill 'o-' 20)"
 
 H3 'Fill "- " | Center " Title " | Right " $(date ...) "'
 Fill '- ' | Center " Title " | Right " $(date +"%y-%m-%d") "

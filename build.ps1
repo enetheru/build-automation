@@ -30,38 +30,40 @@
 #>
 
 
-[CmdletBinding(PositionalBinding=$false)]
+[CmdletBinding( PositionalBinding = $false )]
 param(
-    [Alias("f")] [switch] $fresh,
-    [Alias("n")] [switch] $noTest,
-    [Alias("a")] [switch] $append,
-    [Parameter(Position = 0)] [string] $target,
-    [Parameter(Position = 1)] [string] $regexFilter,
-    [Parameter(ValueFromRemainingArguments=$true)]$passThrough
-# Remaining arguments are treated as targets
+    [Alias( "f" )] [switch] $fresh,
+    [Alias( "n" )] [switch] $noTest,
+    [Alias( "a" )] [switch] $append,
+    [Parameter( Position = 0 )] [string] $target,
+    [Parameter( Position = 1 )] [string] $regexFilter,
+    [Parameter( ValueFromRemainingArguments = $true )]$passThrough
 )
+# Remaining arguments are treated as targets
 
 # Because Clion starts this script in a pipeline, it errors if the script exits too fast.
 # Trapping the exit condition and sleeping for 1 prevents the error message.
-trap { Start-Sleep -Seconds 1 }
+trap {
+    Start-Sleep -Seconds 1
+}
 
 # Powershell execution options
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-if( $regexFilter -eq "--" ){
+if( $regexFilter -eq "--" ) {
     Clear-Variable -name regexFilter
 }
 
 # shellcheck disable=SC2034
-$columns=120
+$columns = 120
 
 . ./share/format.ps1
 
 H1 "AutoBuild"
 
 function Syntax {
-   Write-Output 'Syntax: ./build.sh [-hfa] [--longopts] <target> ["regexFilter"]'
+    Write-Output 'Syntax: ./build.sh [-hfa] [--longopts] <target> ["regexFilter"]'
 }
 
 H2 "Options"
@@ -77,24 +79,26 @@ Write-Output @"
   passThrough = $passThrough
 "@
 
-if( $target -eq "" ){
+if( $target -eq "" ) {
     Syntax
     Write-Error "Missing <target>"
 }
 
-if( $IsLinux ){
-    $platform="Linux"
-} elseif( $IsMacOS ){
-    $platform="MacOS"
-} elseif( $IsWindows ){
-    $platform="Windows"
-} else{
-    $platform="Unknown"
+if( $IsLinux ) {
+    $platform = "Linux"
+}
+elseif( $IsMacOS ) {
+    $platform = "MacOS"
+}
+elseif( $IsWindows ) {
+    $platform = "Windows"
+} else {
+    $platform = "Unknown"
 }
 
-$root=$PSScriptRoot
-$targetRoot="$root\$target"
-$mainScript="$root\$target\$platform-build.ps1"
+$root = $PSScriptRoot
+$targetRoot = "$root\$target"
+$mainScript = "$root\$target\$platform-build.ps1"
 
 Fill "- " | Center " Automatic "
 Write-Output @"

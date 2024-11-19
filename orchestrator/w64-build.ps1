@@ -1,15 +1,15 @@
 #!/usr/bin/env pwsh
 #Requires -Version 7.4
 
-[CmdletBinding(PositionalBinding=$false)]
+[CmdletBinding( PositionalBinding = $false )]
 param(
-    # [switch] options default to false
+# [switch] options default to false
     [switch] $freshBuild,
     [switch] $noTestBuild,
     [switch] $appendTrace,
 
-    # Remaining arguments are treated as regex filters for build configs.
-    [Parameter(ValueFromRemainingArguments=$true)]$configs
+# Remaining arguments are treated as regex filters for build configs.
+    [Parameter( ValueFromRemainingArguments = $true )]$configs
 )
 
 # Powershell execution options
@@ -31,7 +31,7 @@ New-Item -Path "$root/logs-clean" -ItemType Directory -Force
 # pull in common functions, and verify config filters against scripts.
 . ../build-common.ps1 -prefix "w64" $configs
 
-foreach ($hostTarget in  $buildConfigs) {
+foreach( $hostTarget in  $buildConfigs ) {
     $buildRoot = "$root/$hostTarget"
 
     SourcePrep -buildRoot $buildRoot -sourceOrigin $sourceOrigin -sourceBranch $sourceBranch
@@ -49,7 +49,8 @@ foreach ($hostTarget in  $buildConfigs) {
 }
 
 # When running from the play button in clion I get an exception after the script finishes
-#   An error has occurred that was not properly handled. Additional information is shown below. The PowerShell process will exit.
+#   An error has occurred that was not properly handled. Additional information is shown below.
+#   The PowerShell process will exit.
 #   Unhandled exception. System.Management.Automation.PipelineStoppedException: The pipeline has been stopped.
 # This can be stopped by just sleeping for a second.
 Start-Sleep -Seconds 1

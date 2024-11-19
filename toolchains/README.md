@@ -17,13 +17,14 @@ document them without polluting them.
 ```
 
 ## Microsoft Visual Studio 17 2022
-No special requirements, cmake will pick  it up as the default if run from a
+
+No special requirements, cmake will pick it up as the default if run from a
 powershell cmdline
 
 "binaryDir" : "${sourceDir}/cmake-build-msvc"
 
-
 ## MSYS2/ucrt64
+
 Uses the the gcc compiler, and links to microsoft's universal c run-time.
 
 Run all commands from within the ucrt64 msys terminal, it set's up all the
@@ -32,6 +33,7 @@ things required.
 "binaryDir" : "${sourceDir}/cmake-build-ucrt64"
 
 ## MSYS2/clang64
+
 Uses the the LLVM/clang compiler, and links to microsoft's universal c run-time.
 
 Run all commands from within the clang64 msys terminal, it set's up all the

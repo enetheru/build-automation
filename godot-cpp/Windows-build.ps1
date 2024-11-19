@@ -2,29 +2,30 @@
 #Requires -Version 7.4
 
 param(
-    [Alias("f")] [switch] $fresh=$fresh,
-    [Alias("a")] [switch] $append=$append,
-    [Alias("n")] [switch] $noTest=$noTest,
-    [Parameter(Position = 1)] [string] $regexFilter=$regexFilter,
-    [Parameter(ValueFromRemainingArguments=$true)]$passThrough=$passThrough
-# Remaining arguments are treated as targets
+    [Alias( "f" )] [switch] $fresh = $fresh,
+    [Alias( "a" )] [switch] $append = $append,
+    [Alias( "n" )] [switch] $noTest = $noTest,
+    [Parameter( Position = 1 )] [string] $regexFilter = $regexFilter,
+    [Parameter( ValueFromRemainingArguments = $true )]$passThrough = $passThrough
 )
+# Remaining arguments are treated as targets
 
 # Because CLion starts this script in a pipeline, it errors if the script exits too fast.
 # Trapping the exit condition and sleeping for 1 prevents the error message.
+
 trap {
     Write-Output "trap triggered on exception. Sleeping 1"
     Start-Sleep -Seconds 1
 }
 
-$prev_dir=$(Get-Location)
+$prev_dir = $(Get-Location)
 
 # PowerShell execution options
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$platform="Windows"
-$target="godot-cpp"
+$platform = "Windows"
+$target = "godot-cpp"
 
 H2 "Build $target using $platform"
 
@@ -41,8 +42,8 @@ Write-Output @"
 "@
 
 # Main Variables
-[string]$godot="C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
-[string]$godot_tr="C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
+[string]$godot = "C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
+[string]$godot_tr = "C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
 
 Write-Output @"
 
@@ -63,7 +64,7 @@ Write-Output @"
 "@
 
 # Get the target root from this script location
-$targetRoot= $thisScript  | split-path -parent
+$targetRoot = $thisScript  | split-path -parent
 Write-Output @"
 
   platform    = $platform
@@ -74,16 +75,16 @@ Write-Output @"
 cd "$targetRoot"
 
 # Get script count
-$buildScripts=@( Get-Item ./$platform*.ps1 `
+$buildScripts = @( Get-Item ./$platform*.ps1 `
     | Where-Object Name -Match "$regexFilter" `
     | Where-Object Name -NotMatch 'build' `
     | %{ $_.Name } )
 
-$scriptCount=$buildScripts.count
+$scriptCount = $buildScripts.count
 Write-Output "`n  Script count: $scriptCount"
 
 #Fail if no scripts
-if ( $scriptCount -eq 0 ) {
+if( $scriptCount -eq 0 ) {
     cd "$prev_dir"
     Write-Error "No build scripts found"
     exit 1
@@ -91,7 +92,7 @@ if ( $scriptCount -eq 0 ) {
 
 # Print Scripts
 Write-Output "  Scripts:"
-foreach ( $script in $buildScripts ) {
+foreach( $script in $buildScripts ) {
     Write-Output "    $script"
 }
 
@@ -104,16 +105,16 @@ function PrepareCommon {
 
     # Clean up key artifacts to trigger rebuild
     [array]$artifacts = @($(rg -u --files "$buildRoot" `
-        | rg "(memory|example).*?o(bj)?$" ))
+        | rg "(memory|example).*?o(bj)?$"))
 
     $artifacts += @($(rg -u --files "$buildRoot" `
-        | rg "\.(a|lib|so|dll|dylib|wasm32|wasm)$" ))
-#    ($array1 + $array2) | Select-Object -Unique -Property Name
+        | rg "\.(a|lib|so|dll|dylib|wasm32|wasm)$"))
+    #    ($array1 + $array2) | Select-Object -Unique -Property Name
 
     #Ignore exit code from ripgrep failure to match files.
     $global:LASTEXITCODE = 0
 
-    if( $artifacts.Length -gt 0 ){
+    if( $artifacts.Length -gt 0 ) {
         H3 "Removing key Artifacts"
         $artifacts | Sort-Object | Get-Unique | %{
             Write-Host "Removing $_"
@@ -145,58 +146,68 @@ function TestCommon {
     H4 "Run the test project"
     Format-Command "$godot_tr --path `"$buildRoot\test\project\`" --quit --headless`n"
     & $godot_tr --path "$buildRoot\test\project\" --quit --headless | Tee-Object -Variable result
-    @($result.split("`r`n") | ? {$_ -Match "FINI|PASS|FAIL|Godot"}) >> "$targetRoot\summary.log"
+    @($result.split( "`r`n" ) | ? { $_ -Match "FINI|PASS|FAIL|Godot" }) >> "$targetRoot\summary.log"
 }
 
 
-function RunActions{
+function RunActions {
     H2 "Processing - $config"
 
-    $buildRoot="$targetRoot\$config"
+    $buildRoot = "$targetRoot\$config"
     Write-Output "  buildRoot  = $buildRoot"
 
     . "$root\share\build-actions.ps1"
     . "$targetRoot\$script"
 
     Fetch 2>&1
-    if( $LASTEXITCODE ){ Write-Error "Fetch-Failure" }
+    if( $LASTEXITCODE ) {
+        Write-Error "Fetch-Failure"
+    }
 
     Prepare 2>&1
-    if( $LASTEXITCODE ){ Write-Error "Prep-Failure" }
+    if( $LASTEXITCODE ) {
+        Write-Error "Prep-Failure"
+    }
 
     Build 2>&1
-    if( $LASTEXITCODE ){ Write-Error "build-Failure" }
+    if( $LASTEXITCODE ) {
+        Write-Error "build-Failure"
+    }
 
     Test 2>&1 | Tee-Object -Variable result
-    if( @($result | ? {$_})[-1] -Match "PASSED" ){ Write-Output "Test Succeded" }
-    else{ Write-Output "Test-Failure" }
+    if( @($result | ? { $_ })[-1] -Match "PASSED" ) {
+        Write-Output "Test Succeded"
+    } else {
+        Write-Output "Test-Failure"
+    }
 
     Clean 2>&1
-    if( $LASTEXITCODE ){ Write-Output "Clean-Failure" }
+    if( $LASTEXITCODE ) {
+        Write-Output "Clean-Failure"
+    }
 
     H3 "Completed - $config"
 }
 
 # Process Scripts
-foreach ( $script in $buildScripts ) {
+foreach( $script in $buildScripts ) {
     H2 "using $script ..."
 
     $config = Split-Path -Path $script -LeafBase
 
-    $traceLog="$targetRoot\logs-raw\$config.txt"
-    $cleanLog="$targetRoot\logs-clean\$config.txt"
+    $traceLog = "$targetRoot\logs-raw\$config.txt"
+    $cleanLog = "$targetRoot\logs-clean\$config.txt"
     Write-Output "  traceLog   = $traceLog"
     Write-Output "  cleanLog   = $cleanLog"
 
-    try
-    {
+    try {
         RunActions 2>&1 | Tee-Object -FilePath "$traceLog"
     } catch {
         Get-Error
         exit
     }
 
-    $matchPattern='(register_types|memory|libgdexample|libgodot-cpp)'
+    $matchPattern = '(register_types|memory|libgdexample|libgodot-cpp)'
     rg -M2048 $matchPattern "$traceLog" | sed -E 's/ +/\n/g' `
         | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' > "$cleanLog"
 }

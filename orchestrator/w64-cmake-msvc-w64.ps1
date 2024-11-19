@@ -1,5 +1,5 @@
 # Add the build directory
-$buildDir="$buildRoot\cmake-build"
+$buildDir = "$buildRoot\cmake-build"
 New-Item -Path $buildDir -ItemType Directory -Force
 Set-Location $buildDir
 

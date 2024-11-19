@@ -6,8 +6,8 @@ param(
     [switch] $freshBuild,
     [switch] $noTestBuild,
     [switch] $appendTrace
-# Remaining arguments are treated as targets
 )
+# Remaining arguments are treated as targets
 
 # Powershell execution options
 Set-StrictMode -Version Latest
@@ -23,11 +23,9 @@ Set-Location $root
 . ../build-common.ps1 -prefix "msys2" $args
 
 # Build using msys2
-foreach ($msys2Env in @('ucrt64';'mingw64';'mingw32';'clang64';'clang32';'clangarm64') )
-{
-    $buildScripts=(rg --max-depth 1 --files | rg "msys2-$msys2env.+\.sh$" )
-    foreach ($buildScript in $buildScripts)
-    {
+foreach( $msys2Env in @('ucrt64'; 'mingw64'; 'mingw32'; 'clang64'; 'clang32'; 'clangarm64') ) {
+    $buildScripts = (rg --max-depth 1 --files | rg "msys2-$msys2env.+\.sh$")
+    foreach( $buildScript in $buildScripts ) {
         $hostTarget = $buildScript | Split-Path -LeafBase
         $buildRoot = "$root/$hostTarget"
         "== Build Configuration : $hostTarget =="
@@ -48,7 +46,8 @@ foreach ($msys2Env in @('ucrt64';'mingw64';'mingw32';'clang64';'clang32';'clanga
 }
 
 # When running from the play button in clion I get an exception after the script finishes
-#   An error has occurred that was not properly handled. Additional information is shown below. The PowerShell process will exit.
+#   An error has occurred that was not properly handled. Additional information is shown below.
+#   The PowerShell process will exit.
 #   Unhandled exception. System.Management.Automation.PipelineStoppedException: The pipeline has been stopped.
 # This can be stopped by just sleeping for a second.
 Start-Sleep -Seconds 1

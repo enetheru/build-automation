@@ -4,15 +4,15 @@ set -xv
 #> FRESH=--fresh ./build.sh
 
 GODOTCPP=$HOME/build/godot-cpp
-cd $GODOTCPP
+cd "$GODOTCPP" || exit
 
 rg -u --files | rg "memory.*o(bj)?" | xargs rm
 rg -u --files | rg "example.*o(bj)?" | xargs rm
 
 HOST_TARGET_LIST=(linux-cmake-linux)
-for HOST_TARGET in ${HOST_TARGET_LIST[@]}
+for HOST_TARGET in "${HOST_TARGET_LIST[@]}"
 do
     BUILD_SCRIPT=${GODOTCPP}/${HOST_TARGET}.sh
     TRACE_LOG=${GODOTCPP}/${HOST_TARGET}.txt
-    $SHELL $BUILD_SCRIPT 2>&1 | tee $TRACE_LOG
+    $SHELL "$BUILD_SCRIPT" 2>&1 | tee "$TRACE_LOG"
 done

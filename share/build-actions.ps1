@@ -3,7 +3,7 @@
 
 
 # Check whether this file is sourced or not.
-if( -Not ($MyInvocation.InvocationName -eq '.') ){
+if( -Not ($MyInvocation.InvocationName -eq '.') ) {
     Write-Output "Do not run this script directly, it simply holds helper functions"
     exit 1
 }
@@ -17,14 +17,13 @@ function Fetch {
     Write-Output "  Git URL       = $gitUrl"
     Write-Output "  Git Branch    = $gitBranch"
 
-    if( -Not (Test-Path "$buildRoot" -PathType Container) )
-    {
+    if( -Not (Test-Path "$buildRoot" -PathType Container) ) {
         Write-Output "  --Creating $buildRoot"
         New-Item -Force -ItemType Directory -Path "$buildRoot"
     }
 
     # Clone if not already
-    if( -Not (Test-Path -Path "$buildRoot/*") ){
+    if( -Not (Test-Path -Path "$buildRoot/*") ) {
         Write-Output "  --Cloning $target"
         git clone "$gitUrl" "$buildRoot"
     }
@@ -33,12 +32,12 @@ function Fetch {
     Set-Location "$buildRoot"
 
     # Fetch any changes and reset to latest
-    $fetchNeeded=$(git fetch --dry-run 2>&1)
-    if( $fetchNeeded ){
+    $fetchNeeded = $(git fetch --dry-run 2>&1)
+    if( $fetchNeeded ) {
         H4 "Fetching Latest"
         git fetch --all
         git reset --hard '@{u}'
-        if( $gitBranch ){
+        if( $gitBranch ) {
             git checkout "$gitBranch"
         }
     }
@@ -47,10 +46,14 @@ function Fetch {
     Set-Location "$targetRoot"
 }
 
-function Prepare { }
+function Prepare {
+}
 
-function Build { }
+function Build {
+}
 
-function Test { }
+function Test {
+}
 
-function Clean { }
+function Clean {
+}
