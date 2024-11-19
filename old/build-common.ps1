@@ -7,6 +7,12 @@ param(
     [switch]$help, [switch]$h,
     [Parameter(ValueFromRemainingArguments=$true)]$args
 )
+
+trap {
+    Write-Output "Sourcing build-common.ps1 failed."
+    exit 1
+}
+
 "Config Prefix: '$prefix'"
 "Config Search Patterns: '$args'"
 

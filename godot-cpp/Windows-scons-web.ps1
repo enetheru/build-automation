@@ -11,19 +11,31 @@ if( -Not ($MyInvocation.InvocationName -eq '.') ){
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+$emsdk="C:\emsdk"
+
 function Prepare {
     PrepareCommon
+
+    H1 "Update EmSDK"
+    Set-Location $emsdk
+    git pull
+
+    # perform any updates to emscripten as required.
+    &"$emsdk\emsdk.ps1" install latest
 }
 
 function Build {
+    H4 "Activate EmSDK"
+#    Set-Location $emsdk
+    &"$emsdk\emsdk.ps1" activate latest
+
     H1 "SCons Build"
-    H4 "Changing directory to $buildRoot/test"
     Set-Location "$buildRoot/test"
 
-    Format-Command "scons verbose=yes target=template_release"
-    scons verbose=yes target=template_release
+    Format-Command "scons verbose=yes platform=web target=template_release"
+    scons verbose=yes platform=web target=template_release
 }
 
 function Test {
-    TestCommon
+    H4 "TODO Testing"
 }

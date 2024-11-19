@@ -17,13 +17,12 @@ function Prepare {
 
 function Build {
     H1 "SCons Build"
-    H4 "Changing directory to $buildRoot/test"
     Set-Location "$buildRoot/test"
 
-    Format-Command "scons verbose=yes target=template_release"
-    scons verbose=yes target=template_release
+    Format-Command "scons verbose=yes platform=android target=template_release arch=x86_64"
+    scons verbose=yes platform=android target=template_release arch=x86_64
 }
 
 function Test {
-    TestCommon
+    H4 "TODO Testing"
 }

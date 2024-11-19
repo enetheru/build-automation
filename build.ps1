@@ -33,13 +33,17 @@
 [CmdletBinding(PositionalBinding=$false)]
 param(
     [Alias("f")] [switch] $fresh,
-    [Alias("a")] [switch] $append,
     [Alias("n")] [switch] $noTest,
+    [Alias("a")] [switch] $append,
     [Parameter(Position = 0)] [string] $target,
     [Parameter(Position = 1)] [string] $regexFilter,
     [Parameter(ValueFromRemainingArguments=$true)]$passThrough
 # Remaining arguments are treated as targets
 )
+
+# Because Clion starts this script in a pipeline, it errors if the script exits too fast.
+# Trapping the exit condition and sleeping for 1 prevents the error message.
+trap { Start-Sleep -Seconds 1 }
 
 # Powershell execution options
 Set-StrictMode -Version Latest
@@ -60,13 +64,14 @@ function Syntax {
    Write-Output 'Syntax: ./build.sh [-hfa] [--longopts] <target> ["regexFilter"]'
 }
 
-H2 " Options "
+H2 "Options"
 
 Write-Output @"
   command     = '$($(Get-PSCallStack)[0].InvocationInfo.Line)'
-  fresh       = $fresh
-  append      = $append
-  test        = $noTest
+  fresh build = $fresh
+  skip tests  = $noTest
+  log append  = $append
+
   target      = $target
   regexFilter = $regexFilter
   passThrough = $passThrough
@@ -77,9 +82,6 @@ if( $target -eq "" ){
     Write-Error "Missing <target>"
 }
 
-#Center " Automatic " "$(Fill "- " )"
-Fill "- " | Center " Automatic "
-
 if( $IsLinux ){
     $platform="Linux"
 } elseif( $IsMacOS ){
@@ -89,17 +91,20 @@ if( $IsLinux ){
 } else{
     $platform="Unknown"
 }
-Write-Output "  platform    = $platform"
 
 $root=$PSScriptRoot
-Write-Output "  root        = $root"
-
 $targetRoot="$root\$target"
-Write-Output "  targetRoot  = $targetRoot"
-
 $mainScript="$root\$target\$platform-build.ps1"
-Write-Output "  script      = $mainScript"
+
+Fill "- " | Center " Automatic "
+Write-Output @"
+  platform    = $platform
+  root        = $root
+  targetRoot  = $targetRoot
+  script      = $mainScript
+"@
 
 # shellcheck disable=SC1090
 ## Run target build script ##
+
 . $mainScript

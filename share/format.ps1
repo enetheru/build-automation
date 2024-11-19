@@ -125,5 +125,16 @@ function H3 {
 
 function H4 {
     param( [Parameter(ValueFromRemainingArguments=$true)]$args )
-    Write-Output "=> $args"
+    Write-Output "  => $args"
+}
+
+function Format-Command {
+    param( [Parameter(ValueFromRemainingArguments=$true)]$args )
+    Write-Output "`n  󰞷 $args"
+}
+
+function Print-Last-Errors {
+    H4 "last exit?     = $LASTEXITCODE"
+    H4 "auto var `$?   = $?"
+    H4 "Error?         = $Error"
 }

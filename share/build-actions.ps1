@@ -33,10 +33,14 @@ function Fetch {
     Set-Location "$buildRoot"
 
     # Fetch any changes and reset to latest
-    git fetch --all
-    git reset --hard '@{u}'
-    if( $gitBranch ){
-        git checkout "$gitBranch"
+    $fetchNeeded=$(git fetch --dry-run 2>&1)
+    if( $fetchNeeded ){
+        H4 "Fetching Latest"
+        git fetch --all
+        git reset --hard '@{u}'
+        if( $gitBranch ){
+            git checkout "$gitBranch"
+        }
     }
 
     #TODO fix when the tree diverges and needs to be clobbered.
