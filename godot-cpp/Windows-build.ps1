@@ -125,24 +125,33 @@ function PrepareCommon {
 
 function TestCommon {
     H1 "Test"
-    H3 "Generate the .godot folder"
-    & $godot -e --path "$buildRoot\test\project" --quit --headless 2>&1 | Out-Host
-    Start-Sleep -Seconds 1
+    Write-Output "" >> "$targetRoot\summary.log"
+    H4 "$config" >> "$targetRoot\summary.log"
+    if( -Not (Test-Path "$buildRoot\test\project\.godot" -PathType Container) ) {
+        H4 "Generate the .godot folder"
+        Format-Command "$godot -e --path `"$buildRoot\test\project`" --quit --headless"
+        & $godot -e --path "$buildRoot\test\project" --quit --headless 2>&1 | Tee-Object -Variable result
+        Start-Sleep -Seconds 1
 
-    if( -Not (Test-Path "$buildRoot\test\project\.godot" -PathType Container) )
-    {
-        Get-Error
-        write-Output "`$LASTEXITCODE = $LASTEXITCODE"
-        write-Output "`$? = $?"
-        write-Output "`$Error = $Error"
-        return
+        if( -Not (Test-Path "$buildRoot\test\project\.godot" -PathType Container) ) {
+            Get-Error
+            write-Output "`$LASTEXITCODE = $LASTEXITCODE"
+            write-Output "`$? = $?"
+            write-Output "`$Error = $Error"
+            Write-Output $result >> "$targetRoot\summary.log"
+            return
+        }
+    } else {
+        H4 "The .godot folder has already been generated."
     }
-    
-    H3 "Run the test project"
-    $result = & $godot_tr --path "$buildRoot\test\project\" --quit --headless | Out-String
 
-    Write-Output "`$result = $result"
-    Write-Output "$result" | rg "PASSED"
+    H4 "Run the test project"
+    Format-Command "$godot_tr --path `"$buildRoot\test\project\`" --quit --headless`n"
+    & $godot_tr --path "$buildRoot\test\project\" --quit --headless | Tee-Object -Variable result
+
+    Write-Output "" >> "$targetRoot\summary.log"
+    H4 "$config" >> "$targetRoot\summary.log"
+    @($result.split("`r`n") | ? {$_ -Match "FINI|PASS|FAIL|Godot"}) >> "$targetRoot\summary.log"
 }
 
 
@@ -157,12 +166,17 @@ function RunActions{
 
     Fetch 2>&1
     if( $LASTEXITCODE ){ Write-Error "Fetch-Failure" }
+
     Prepare 2>&1
     if( $LASTEXITCODE ){ Write-Error "Prep-Failure" }
+
     Build 2>&1
     if( $LASTEXITCODE ){ Write-Error "build-Failure" }
-    Test 2>&1 | Tee-Object -Append -FilePath  "$targetRoot\summary.log"
-    if( $LASTEXITCODE ){ Write-Output "Test-Failure" }
+
+    Test 2>&1 | Tee-Object -Variable result
+    if( @($result | ? {$_})[-1] -Match "PASSED" ){ Write-Output "Test Succeded" }
+    else{ Write-Output "Test-Failure" }
+
     Clean 2>&1
     if( $LASTEXITCODE ){ Write-Output "Clean-Failure" }
 
