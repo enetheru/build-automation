@@ -2,19 +2,41 @@
 set -Ee
 
 declare -i columns=120
+source "$root/share/format.sh"
+
+H2 "using $script ..."
+echo "  MSYSTEM     = $MSYSTEM"
+
+config="${script%.*}"
+
+
 
 #export gitUrl=http://github.com/enetheru/godot-cpp.git
 export gitUrl="C:\godot\src\godot-cpp"
 export gitBranch="modernise"
 
+echo "
+  gitUrl      = $gitUrl
+  gitBranch   = $gitBranch"
+
+godot="/c/build/godot/msvc.master/bin/godot.windows.editor.x86_64.exe"
+godot_tr="/c/build/godot/msvc.master/bin/godot.windows.template_release.x86_64.exe"
+
+echo "
+  godot       = $godot
+  godot_tr    = $godot_tr"
+
 # Get the target root from this script location
 targetRoot=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
-echo "  targetRoot  = $targetRoot"
-cd "$targetRoot"
 
+traceLog="$targetRoot/logs-raw/${config}.txt"
+cleanLog="$targetRoot/logs-clean/${config}.txt"
+echo "
+  traceLog    = $traceLog
+  cleanLog    = $cleanLog"
 
 # Some steps are identical.
-CommonPrep(){
+PrepareCommon(){
     local prev=$(pwd)
     cd "$buildRoot" || exit 1
     # Clean up key artifacts to trigger rebuild
@@ -35,48 +57,50 @@ CommonPrep(){
     cd "$prev"
 }
 
-CommonTest(){
+# Setup a secondary mechanism for piping to stdout so that we can split output
+# of commands to files and show them at the same time.
+exec 5>&1
+
+TestCommon(){
     H1 "Test" >&5
 
-    local godot=/c/build/godot/msvc.master/bin/godot.windows.editor.x86_64.exe
-    local godot_tr=/c/build/godot/msvc.master/bin/godot.windows.template_release.x86_64.exe
+    printf "\n" >> "$targetRoot/summary.log"
+    H4 "$config" >> "$targetRoot/summary.log"
 
     # generate the .godot folder
+    Format-Command "$godot -e --path \"$buildRoot/test/project/\" --quit --headless"
     $godot -e --path "$buildRoot/test/project/" --quit --headless &> /dev/null
     
     # Run the test project
     local result
+    Format-Command "$godot_tr --path \"$buildRoot/test/project/\" --quit --headless"
     result=$( $godot_tr --path "$buildRoot/test/project/" --quit --headless 2>&1 \
             | tee >(cat >&5) )
+
     H2 "Test - $config"
     printf '%s' "$result"
     echo "$result" | rg "PASSED" > /dev/null 2>&1
 }
 
-# Setup a secondary mechanism for piping to stdout so that we can split output
-# of commands to files and show them at the same time.
-exec 5>&1
-
-# Process Scripts
 cd "$targetRoot"
 
-config=${script%.*}
-traceLog=$targetRoot/logs-raw/${config}.txt
-cleanLog=$targetRoot/logs-clean/${config}.txt
-buildRoot="$targetRoot/$config"
-
-source "$root/build-common.sh"
-source "$targetRoot/$script"
-
+# Process and Log Actions
 {
-    H2 "Starting - $config"
+    H2 "Processing - $config"
+
+    buildRoot="$targetRoot/$config"
     echo "  Build Root = $buildRoot"
-    if ! Fetch;   then echo "${RED}Error: Fetch Failure${NC}"  ; exit 1; fi
-    if ! Prepare; then echo "${RED}Error: Prepare Failure${NC}"; exit 1; fi
-    if ! Build;   then echo "${RED}Error: Build Failure${NC}"  ; exit 1; fi
-    if ! Test >> "$targetRoot/summary.log"; then
-        echo "${RED}Error: Test Failure${NC}"; fi
-    if ! Clean;   then echo "${RED}Error: Clean Failure${NC}"  ; fi
+
+    source "$root/share/build-actions.sh"
+    source "$targetRoot/$script"
+
+    if ! Fetch;   then Error "Fetch Failure"  ; exit 1; fi
+    if ! Prepare; then Error "Prepare Failure"; exit 1; fi
+    if ! Build;   then Error "Build Failure"  ; exit 1; fi
+    if ! Test;    then Error "Test Failure"   ; fi
+    if ! Clean;   then Error "Clean Failure"  ; fi
+
+    H3 "Completed - $config"
 } 2>&1 | tee "$traceLog"
 
 matchPattern='(register_types|memory|libgdexample|libgodot-cpp)'

@@ -74,8 +74,7 @@ Write-Output @"
 cd "$targetRoot"
 
 # Get script count
-$buildScripts=@( Get-Item ./* `
-    | Where-Object Name -Match "^$platform.*ps1$" `
+$buildScripts=@( Get-Item ./$platform*.ps1 `
     | Where-Object Name -Match "$regexFilter" `
     | Where-Object Name -NotMatch 'build' `
     | %{ $_.Name } )
@@ -125,8 +124,10 @@ function PrepareCommon {
 
 function TestCommon {
     H1 "Test"
+
     Write-Output "" >> "$targetRoot\summary.log"
     H4 "$config" >> "$targetRoot\summary.log"
+
     if( -Not (Test-Path "$buildRoot\test\project\.godot" -PathType Container) ) {
         H4 "Generate the .godot folder"
         Format-Command "$godot -e --path `"$buildRoot\test\project`" --quit --headless"
@@ -177,7 +178,7 @@ function RunActions{
     Clean 2>&1
     if( $LASTEXITCODE ){ Write-Output "Clean-Failure" }
 
-    H3 "Completed: $config"
+    H3 "Completed - $config"
 }
 
 # Process Scripts

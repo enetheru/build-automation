@@ -6,15 +6,25 @@ argv+=("$1")
 
 prev_dir=$(pwd)
 
-: "${target:="$( basename "$(dirname -- "${argv[0]}")")"}"
-: "${platform:="$( basename "$(uname -o)")"}"
-H2 " Build $target using $platform "
+target="godot-cpp"
+platform=$(basename "$(uname -o)")
 
-echo "  command     = ${argv[*]}"
+H2 "Build $target using $platform"
+
+echo "
+  command     = ${argv[*]}
+  fresh build = $fresh
+  skip tests  = $doTest
+  log append  = $logAppend
+  pattern     = $pattern"
 
 # Get the target root from this script location
 targetRoot=$( cd -- "$( dirname -- "${argv[0]}" )" &> /dev/null && pwd )
-echo "  targetRoot  = $targetRoot"
+echo "
+  platform    = $platform
+  root        = $root
+  targetRoot  = $targetRoot"
+
 cd "$targetRoot"
 
 # Set pattern variable from first argument
@@ -24,7 +34,10 @@ if [ -n "${argv[1]}" ]; then
 fi
 
 # Get script count
-declare -a buildScripts=($(find . -maxdepth 1 -type f -name "$platform*" -printf "%f\n" | grep -v build))
+declare -a buildScripts=($(find . -maxdepth 1 -type f -name "$platform*" -printf "%f\n" \
+  | grep -e "$pattern" \
+  | grep -v build ))
+
 declare -i scriptCount=${#buildScripts[@]}
 echo "  Script count: $scriptCount"
 
@@ -55,6 +68,8 @@ for script in "${buildScripts[@]}"; do
       exit 1
     fi
 
+    # Processing of the actual commands must be done in a separate script so we can pass it on
+    # to the MSYS2 Environment shell.
     action="$targetRoot/$platform-build-action.sh"
     vars="root=\"$root\" script=\"$script\""
     /msys2_shell.cmd -"$msysEnv" -defterm -no-start -where "$targetRoot" -c "$vars $action"

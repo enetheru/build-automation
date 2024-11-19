@@ -12,15 +12,18 @@ fi
 msysEnv="ucrt64"
 
 function Prepare {
-    CommonPrep
+    PrepareCommon
 }
 
 function Build {
     H1 "SCons Build"
+
     cd "$buildRoot/test" || return 1
+
+    Format-Command "scons verbose=yes target=template_release use_mingw=yes"
     scons verbose=yes target=template_release use_mingw=yes
 }
 
 function Test {
-    CommonTest
+    TestCommon
 }

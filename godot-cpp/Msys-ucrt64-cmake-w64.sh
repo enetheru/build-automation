@@ -12,7 +12,7 @@ fi
 msysEnv="ucrt64"
 
 function Prepare {
-    CommonPrep
+    PrepareCommon
 }
 
 function Build {
@@ -21,10 +21,13 @@ function Build {
     mkdir -p "$buildRoot/cmake-build"
     cd "$buildRoot/cmake-build" || return 1
 
-    cmake ../ -GNinja
-    cmake --build . -t godot-cpp-test --config Release
+    Format-Command "cmake ../ -GNinja -DTEST_TARGET=template_release"
+    cmake ../ -GNinja -DTEST_TARGET=template_release
+
+    Format-Command "cmake --build . --verbose -t godot-cpp-test --config Release"
+    cmake --build . --verbose -t godot-cpp-test --config Release
 }
 
 function Test {
-    CommonTest
+    TestCommon
 }

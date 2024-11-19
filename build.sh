@@ -1,10 +1,13 @@
 #!/bin/bash
 set -Ee
 
+# The root is wherever this script is
+root=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
+
+# Set Columns width, and source the formatting script
 # shellcheck disable=SC2034
 columns=120
-
-source build-common.sh
+source "$root/share/format.sh"
 
 H1 "AutoBuild"
 
@@ -68,6 +71,7 @@ if echo "${argv[@]}" | grep -qEe "--help|-h"; then
 fi
 
 H2 " Options "
+echo "  root        = $root"
 echo "  command     = ${argv[*]}"
 echo "  fresh       = $fresh"
 echo "  append      = $logAppend"
@@ -102,9 +106,6 @@ Fill "- " | Center " Automatic "
 
 platform=$(basename "$(uname -o)")
 echo "  platform    = $platform"
-
-root=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
-echo "  root        = $root"
 
 targetRoot="$root/$target"
 echo "  targetRoot  = $targetRoot"
