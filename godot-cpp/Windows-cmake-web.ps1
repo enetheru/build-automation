@@ -33,7 +33,7 @@ function Build {
 
     H4 "Creating build Dir"
     $buildDir="$buildRoot\cmake-build"
-    New-Item -Path $buildDir -ItemType Directory -Force
+    New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
     Set-Location $buildDir
 
     H4 "CMake Configure"

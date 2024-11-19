@@ -108,7 +108,7 @@ function PrepareCommon {
         | rg "(memory|example).*?o(bj)?$" ))
 
     $artifacts += @($(rg -u --files "$buildRoot" `
-        | rg "\.(a|lib|so|dll|dylib)$" ))
+        | rg "\.(a|lib|so|dll|dylib|wasm32|wasm)$" ))
 #    ($array1 + $array2) | Select-Object -Unique -Property Name
 
     #Ignore exit code from ripgrep failure to match files.
@@ -148,9 +148,6 @@ function TestCommon {
     H4 "Run the test project"
     Format-Command "$godot_tr --path `"$buildRoot\test\project\`" --quit --headless`n"
     & $godot_tr --path "$buildRoot\test\project\" --quit --headless | Tee-Object -Variable result
-
-    Write-Output "" >> "$targetRoot\summary.log"
-    H4 "$config" >> "$targetRoot\summary.log"
     @($result.split("`r`n") | ? {$_ -Match "FINI|PASS|FAIL|Godot"}) >> "$targetRoot\summary.log"
 }
 
