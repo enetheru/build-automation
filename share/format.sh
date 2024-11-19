@@ -90,7 +90,7 @@ function H3 {
 }
 
 function H4 {
-  printf "  => %s" "$1"
+  printf "  => %s\n" "$1"
 }
 
 function Format-Command {

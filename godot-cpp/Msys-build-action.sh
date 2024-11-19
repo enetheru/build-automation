@@ -62,24 +62,50 @@ PrepareCommon(){
 exec 5>&1
 
 TestCommon(){
-    H1 "Test" >&5
+    local result
+
+    H1 "Test"
 
     printf "\n" >> "$targetRoot/summary.log"
     H4 "$config" >> "$targetRoot/summary.log"
 
-    # generate the .godot folder
-    Format-Command "$godot -e --path \"$buildRoot/test/project/\" --quit --headless"
-    $godot -e --path "$buildRoot/test/project/" --quit --headless &> /dev/null
-    
-    # Run the test project
-    local result
-    Format-Command "$godot_tr --path \"$buildRoot/test/project/\" --quit --headless"
-    result=$( $godot_tr --path "$buildRoot/test/project/" --quit --headless 2>&1 \
-            | tee >(cat >&5) )
+    if [ ! -d "$buildRoot/test/project/.godot" ]; then
+        H4 "Generate the .godot folder"
+        Format-Command "$godot -e --path \"$buildRoot/test/project/\" --quit --headless"
 
-    H2 "Test - $config"
-    printf '%s' "$result"
-    echo "$result" | rg "PASSED" > /dev/null 2>&1
+        # Capture the output of this one silently because it always fails, and
+        # succeeds. We can dump it if it's a real failure.
+        result=$($godot -e --path "$buildRoot/test/project/" --quit --headless 2>&1)
+
+        if [ ! -d "$buildRoot/test/project/.godot" ]; then
+            echo $result
+            Error "Creating .godot folder" >> "$targetRoot/summary.log"
+            return 1
+        fi
+    else
+        H4 "The .godot folder has already been generated."
+    fi
+
+    H4 "Run the test project"
+    Format-Command "$godot_tr --path \"$buildRoot/test/project/\" --quit --headless"
+
+    # Because of the capture of stdout for the variable, we need to tee it to a
+    # custom file descriptor which is being piped to stdout elsewhere.
+    result="$($godot_tr --path "$buildRoot/test/project/" --quit --headless 2>&1 \
+        | tee >(cat >&5))"
+
+    # Split the result into lines, skip the empty ones.
+    declare -a lines=()
+    while IFS=$'\n' read -ra line; do
+        if [ -n "${line//[[:space:]]/}" ]; then
+            lines+=("$line") 
+        fi
+    done <<< $result
+
+    printf "%s\n" "${lines[@]}" >> "$targetRoot/summary.log"
+
+    # returns true if the last line includes PASSED
+    [[ "${lines[-1]}" == *"PASSED"* ]]
 }
 
 cd "$targetRoot"
@@ -97,7 +123,7 @@ cd "$targetRoot"
     if ! Fetch;   then Error "Fetch Failure"  ; exit 1; fi
     if ! Prepare; then Error "Prepare Failure"; exit 1; fi
     if ! Build;   then Error "Build Failure"  ; exit 1; fi
-    if ! Test;    then Error "Test Failure"   ; fi
+    if ! Test 5>&1;    then Error "Test Failure"   ; fi
     if ! Clean;   then Error "Clean Failure"  ; fi
 
     H3 "Completed - $config"

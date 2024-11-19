@@ -135,12 +135,8 @@ function TestCommon {
         Start-Sleep -Seconds 1
 
         if( -Not (Test-Path "$buildRoot\test\project\.godot" -PathType Container) ) {
-            Get-Error
-            write-Output "`$LASTEXITCODE = $LASTEXITCODE"
-            write-Output "`$? = $?"
-            write-Output "`$Error = $Error"
-            Write-Output $result >> "$targetRoot\summary.log"
-            return
+            Write-Output "Failed to create .godot folder" >> "$targetRoot\summary.log"
+            return 1
         }
     } else {
         H4 "The .godot folder has already been generated."
