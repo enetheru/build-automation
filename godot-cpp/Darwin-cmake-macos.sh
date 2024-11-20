@@ -10,7 +10,11 @@ if [ "$sourced" -eq 0 ]; then
     exit
 fi
 
-Build(){
+function Prepare {
+    PrepareCommon
+}
+
+function Build {
     H1 "CMake Build"
 
     cd "$buildRoot" || return 1
@@ -26,5 +30,5 @@ Build(){
 }
 
 function Test {
-  CommonTest
+  TestCommon
 }

@@ -10,10 +10,6 @@ source "$root/share/format.sh"
 H2 "using $script ..."
 echo "  MSYSTEM     = $MSYSTEM"
 
-config="${script%.*}"
-
-
-
 #export gitUrl=http://github.com/enetheru/godot-cpp.git
 export gitUrl="C:\godot\src\godot-cpp"
 export gitBranch="modernise"
@@ -32,11 +28,6 @@ echo "
 # Get the target root from this script location
 targetRoot=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
 
-traceLog="$targetRoot/logs-raw/${config}.txt"
-cleanLog="$targetRoot/logs-clean/${config}.txt"
-echo "
-  traceLog    = $traceLog
-  cleanLog    = $cleanLog"
 
 # Some steps are identical.
 PrepareCommon(){
@@ -113,24 +104,29 @@ TestCommon(){
 
 cd "$targetRoot"
 
+config="${script%.*}"
+
+traceLog="$targetRoot/logs-raw/${config}.txt"
+cleanLog="$targetRoot/logs-clean/${config}.txt"
+echo "
+  traceLog    = $traceLog
+  cleanLog    = $cleanLog"
+
+buildRoot="$targetRoot/$config"
+source "$root/share/build-actions.sh"
+# shellcheck disable=SC1090
+source "$targetRoot/$script"
+
 # Process and Log Actions
 {
     H2 "Processing - $config"
-
-    buildRoot="$targetRoot/$config"
     echo "  Build Root = $buildRoot"
 
-
-
-    source "$root/share/build-actions.sh"
-    # shellcheck disable=SC1090
-    source "$targetRoot/$script"
-
-    if ! Fetch;   then Error "Fetch Failure"  ; exit 1; fi
-    if ! Prepare; then Error "Prepare Failure"; exit 1; fi
-    if ! Build;   then Error "Build Failure"  ; exit 1; fi
-    if ! Test 5>&1;    then Error "Test Failure"   ; fi
-    if ! Clean;   then Error "Clean Failure"  ; fi
+    if ! Fetch;     then Error "Fetch Failure"  ; exit 1; fi
+    if ! Prepare;   then Error "Prepare Failure"; exit 1; fi
+    if ! Build;     then Error "Build Failure"  ; exit 1; fi
+    if ! Test 5>&1; then Error "Test Failure"   ; fi
+    if ! Clean;     then Error "Clean Failure"  ; fi
 
     H3 "Completed - $config"
 } 2>&1 | tee "$traceLog"

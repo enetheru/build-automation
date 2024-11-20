@@ -10,6 +10,10 @@ if [ "$sourced" -eq 0 ]; then
     exit
 fi
 
+function Prepare {
+    PrepareCommon
+}
+
 function Build {
     H1 "SCons Build"
     cd "$buildRoot/test" || return 1
@@ -17,5 +21,5 @@ function Build {
 }
 
 function Test {
-  CommonTest
+  TestCommon
 }

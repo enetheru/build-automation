@@ -35,9 +35,11 @@ if [ -n "${argv[1]}" ]; then
 fi
 
 # Get script count
-declare -a buildScripts=($(find . -maxdepth 1 -type f -name "$platform*" -printf "%f\n" \
-  | grep -e "$pattern" \
-  | grep -v build ))
+declare -a buildScripts
+buildScripts=( \
+    $(find . -maxdepth 1 -type f -name "$platform*" -printf "%f\n" \
+    | grep -e "$pattern" \
+    | grep -v build ))
 
 declare -i scriptCount=${#buildScripts[@]}
 echo "  Script count: $scriptCount"
@@ -64,8 +66,9 @@ for script in "${buildScripts[@]}"; do
     # shellcheck disable=SC1090
     source "$script" # Fetch the msysEnv variable
     if [ -z "$msysEnv" ]; then
-      Error "Msys based build scripts must be source-able with no side effects except the declaration of
-        the variable 'msysEnv' matching one of the msys environments"
+      Error "Msys based build scripts must be source-able with no side effects
+      except the declaration of the variable 'msysEnv' matching one of the msys
+      environments"
       exit 1
     fi
 

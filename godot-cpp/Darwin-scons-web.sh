@@ -10,7 +10,11 @@ if [ "$sourced" -eq 0 ]; then
     exit
 fi
 
-Build(){
+function Prepare {
+    PrepareCommon
+}
+
+function Build {
     H1 "SCons Build"
     emsdk=$HOME/emsdk
     source "$emsdk/emsdk_env.sh"
