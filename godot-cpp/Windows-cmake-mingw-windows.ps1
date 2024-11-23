@@ -14,21 +14,19 @@ $ErrorActionPreference = "Stop"
 $toolChain = "$root\toolchains\w64-mingw-w64.cmake"
 
 function Prepare {
-    H3 "Skipping Preparation"
-    return
     PrepareCommon
 }
 
 function Build {
     H1 "CMake Build"
 
-    H4 "Disabled"
-    return
-
     H4 "Creating build Dir"
     $buildDir = "$buildRoot\cmake-build"
     New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
     Set-Location $buildDir
+
+    $oldPath = $env:Path
+    $env:Path = 'C:\mingw64\bin;' + $env:Path     # attach to the beginning
 
     H4 "CMake Configure"
     if( $fresh ) {
@@ -36,16 +34,22 @@ function Build {
     } else {
         $doFresh = ''
     }
-    Format-Command "cmake $doFresh ..\ -GNinja -DTEST_TARGET=template_release --toolchain $toolChain"
-    cmake $doFresh ..\ -GNinja -DTEST_TARGET=template_release --toolchain $toolChain
+    Format-Command "cmake $doFresh ..\ -G`"MinGW Makefiles`" -DTEST_TARGET=template_release --toolchain $toolChain"
+    cmake $doFresh ..\ -G"MinGW Makefiles" -DTEST_TARGET=template_release --toolchain $toolChain
+
+    if( $LASTEXITCODE ) {
+        Write-Error "Configuration failure"
+    }
+
+    Write-Output "Last Output Code '$LASTEXITCODE'"
 
     H4 "CMake Build"
     Format-Command "cmake --build . -j 12 --verbose -t godot-cpp-test --config Release"
     cmake --build . -j 12 --verbose -t godot-cpp-test --config Release
+
+    $env:Path = $oldPath
 }
 
 function Test {
-    H3 "Skipping Test"
-    return
     TestCommon
 }

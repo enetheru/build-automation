@@ -145,7 +145,7 @@ function Format-Command {
     Write-Output "`n  󰞷 $args"
 }
 
-function Print-Last-Errors {
+function Print-Last-Error {
     H4 "last exit?     = $LASTEXITCODE"
     H4 "auto var `$?   = $?"
     H4 "Error?         = $Error"

@@ -51,11 +51,9 @@ Write-Output @"
   godot.template_release = $godot_tr
 "@
 
-#[string]$root = $PSScriptRoot
 # [System.Uri]$gitUrl = "http://github.com/godotengine/godot-cpp.git"
 [System.Uri]$gitUrl = "C:\Godot\src\godot-cpp"
-#[string]$gitBranch = "modernise"
-[string]$gitBranch = "modernise"
+[string]$gitBranch = "clang-cl"
 
 Write-Output @"
 
@@ -207,7 +205,7 @@ foreach( $script in $buildScripts ) {
         exit
     }
 
-    $matchPattern = '(register_types|memory|libgdexample|libgodot-cpp)'
+    $matchPattern = 'register_types|memory|libgdexample|libgodot-cpp|  =>| ==|  󰞷'
     rg -M2048 $matchPattern "$traceLog" | sed -E 's/ +/\n/g' `
         | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' > "$cleanLog"
 }

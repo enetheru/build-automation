@@ -14,15 +14,11 @@ $ErrorActionPreference = "Stop"
 $toolChain = "$root\toolchains\w64-llvm.cmake"
 
 function Prepare {
-    H3 "Skipping Preparation"
-    return
     PrepareCommon
 }
 
 function Build {
     H1 "CMake Build"
-    H3 "Skipping"
-    return
 
     H4 "Creating build Dir"
     $buildDir = "$buildRoot\cmake-build"
@@ -44,7 +40,5 @@ function Build {
 }
 
 function Test {
-    H3 "Skipping Test"
-    return
     TestCommon
 }

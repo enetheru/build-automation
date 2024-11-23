@@ -17,6 +17,23 @@ function Prepare {
 
 function Build {
     H1 "SCons Build"
+
+    H4 "Changing directory to $buildRoot"
+    Set-Location "$buildRoot"
+
+    H3 "Building godot-cpp with target=template_debug"
+    Format-Command "scons verbose=yes target=template_debug"
+    scons verbose=yes target=template_debug
+
+    H3 "Building godot-cpp with target=template_release"
+    Format-Command "scons verbose=yes target=template_release"
+    scons verbose=yes target=template_release
+
+    H3 "Building godot-cpp with target=editor"
+    Format-Command "scons verbose=yes target=editor"
+    scons verbose=yes target=editor
+
+    H3 "Building test library"
     H4 "Changing directory to $buildRoot/test"
     Set-Location "$buildRoot/test"
 

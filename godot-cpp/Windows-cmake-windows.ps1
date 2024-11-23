@@ -29,10 +29,26 @@ function Build {
     } else {
         $doFresh = ''
     }
+
+    H3 "Configurin godot-cpp"
     Format-Command "cmake $doFresh ..\ -DTEST_TARGET=template_release"
     cmake $doFresh ..\ -DTEST_TARGET=template_release
 
-    H4 "CMake Build"
+    $vsExtraOptions = "/nologo /v:m /clp:`"ShowCommandLine;ForceNoAlign`""
+
+    H3 "Building godot-cpp::template_debug"
+    Format-Command "cmake --build . -j 12 --verbose -t template_debug --config Release -- $vsExtraOptions"
+    cmake --build . -j 12 --verbose -t template_debug --config Release -- /nologo /v:m /clp:"ShowCommandLine;ForceNoAlign"
+
+    H3 "Building godot-cpp::template_release"
+    Format-Command "cmake --build . -j 12 --verbose -t template_release --config Release -- $vsExtraOptions"
+    cmake --build . -j 12 --verbose -t template_release --config Release -- /nologo /v:m /clp:"ShowCommandLine;ForceNoAlign"
+
+    H3 "Building godot-cpp::editor"
+    Format-Command "cmake --build . -j 12 --verbose -t editor --config Release -- $vsExtraOptions"
+    cmake --build . -j 12 --verbose -t editor --config Release -- /nologo /v:m /clp:"ShowCommandLine;ForceNoAlign"
+
+    H4 "Building godot-cpp-test"
     Format-Command "cmake --build . -j 12 --verbose -t godot-cpp-test --config Release -- /nologo /v:m /clp:`"ShowCommandLine;ForceNoAlign`""
     cmake --build . -j 12 --verbose -t godot-cpp-test --config Release -- /nologo /v:m /clp:"ShowCommandLine;ForceNoAlign"
 }
