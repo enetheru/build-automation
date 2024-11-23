@@ -32,8 +32,11 @@ function Fetch {
     Set-Location "$buildRoot"
 
     # Fetch any changes and reset to latest
-    $fetchNeeded = $(git fetch --dry-run 2>&1)
-    if( $fetchNeeded ) {
+    [bool]$fetchNeeded = $(git fetch --dry-run 2>&1)
+    [string]$currentBranch = $(git branch --show-current) 
+    [bool]$wrongBranch = -Not ($currentBranch -match $gitBranch)
+
+    if( $fetchNeeded -Or $wrongBranch ){
         H4 "Fetching Latest"
         git fetch --all
         git reset --hard '@{u}'
