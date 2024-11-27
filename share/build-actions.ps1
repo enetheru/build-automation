@@ -46,6 +46,8 @@ function Fetch {
     }
 
     #TODO fix when the tree diverges and needs to be clobbered.
+    H4 "Git Status"
+    git status
     Set-Location "$targetRoot"
 }
 

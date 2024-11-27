@@ -32,12 +32,20 @@
 
 [CmdletBinding( PositionalBinding = $false )]
 param(
-    [Alias( "f" )] [switch] $fresh,
-    [Alias( "n" )] [switch] $noTest,
-    [Alias( "a" )] [switch] $append,
-    [Parameter( Position = 0 )] [string] $target,
-    [Parameter( Position = 1 )] [string] $regexFilter,
-    [Parameter( ValueFromRemainingArguments = $true )]$passThrough
+    [Alias( "f" )] [switch] $fetch,
+    [Alias( "c" )] [switch] $configure,
+    [Alias( "b" )] [switch] $build,
+    [Alias( "t" )] [switch] $test,
+
+    [switch] $fresh,        # re-fresh the configuration
+    [switch] $clean,        # clean the build directory
+    [switch] $append,       # Append to the logs rather than clobber
+    [string] $regexFilter = ".*",    #Filter which scripts are used.
+
+    [Parameter( Position = 0 )] [string] $target,       # Which target to use
+    [Parameter( Position = 1 )] [string] $gitBranch,    # Which git branch to use
+
+    [Parameter( ValueFromRemainingArguments = $true )]$passThrough #All remaining arguments
 )
 # Remaining arguments are treated as targets
 
@@ -50,6 +58,10 @@ trap {
 # Powershell execution options
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if( -Not( $fetch -Or $configure -Or $build -Or $test)){
+    $fetch=$true; $configure=$true; $build=$true; $test=$true
+}
 
 if( $regexFilter -eq "--" ) {
     Clear-Variable -name regexFilter
@@ -70,11 +82,17 @@ H2 "Options"
 
 Write-Output @"
   command     = '$($(Get-PSCallStack)[0].InvocationInfo.Line)'
+  fetch       = $fetch
+  configure   = $configure
+  build       = $build
+  test        = $test
+
   fresh build = $fresh
-  skip tests  = $noTest
   log append  = $append
 
   target      = $target
+  branch      = $gitBranch
+  
   regexFilter = $regexFilter
   passThrough = $passThrough
 "@
@@ -111,4 +129,5 @@ Write-Output @"
 # shellcheck disable=SC1090
 ## Run target build script ##
 
-. $mainScript
+&$mainScript -f:$fetch -c:$configure -b:$build -t:$test -regexFilter $regexFilter $gitBranch $passThrough
+# -VHDL2008:$VHDL2008.IsPresent

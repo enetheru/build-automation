@@ -2,10 +2,17 @@
 #Requires -Version 7.4
 
 param(
-    [Alias( "f" )] [switch] $fresh = $fresh,
-    [Alias( "a" )] [switch] $append = $append,
-    [Alias( "n" )] [switch] $noTest = $noTest,
-    [Parameter( Position = 1 )] [string] $regexFilter = $regexFilter,
+    [Alias( "f" )] [switch] $fetch,
+    [Alias( "c" )] [switch] $configure,
+    [Alias( "b" )] [switch] $build,
+    [Alias( "t" )] [switch] $test,
+
+    [switch] $fresh = $fresh,
+    [switch] $append = $append,
+    [string] $regexFilter = ".*",
+
+    [Parameter( Position = 1 )] [string] $gitBranch = "master",
+
     [Parameter( ValueFromRemainingArguments = $true )]$passThrough = $passThrough
 )
 # Remaining arguments are treated as targets
@@ -15,30 +22,47 @@ param(
 
 trap {
     Write-Output "trap triggered on exception. Sleeping 1"
+    Set-Location $root
     Start-Sleep -Seconds 1
 }
-
-$prev_dir = $(Get-Location)
 
 # PowerShell execution options
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+if( -Not( $fetch -Or $configure -Or $build -Or $test)){
+    $fetch=$true; $configure=$true; $build=$true; $test=$true
+}
+
+$verbose=$verbosePreference
+
+$prev_dir = $(Get-Location)
+
 $platform = "Windows"
 $target = "godot-cpp"
 
-H2 "Build $target using $platform"
+# $root = $(Get-PSCallStack)[0].InvocationInfo.ScriptName | Split-Path
+# . $root/share/format.ps1
 
 [string]$thisScript = $(Get-PSCallStack)[0].scriptName
-Write-Output "  thisScript  = $thisScript"
+
+H2 "Build $target using $platform"
 
 Write-Output @"
+  thisScript  = $thisScript
+  fetch       = $fetch
+  configure   = $configure
+  build       = $build
+  test        = $test
 
   fresh build = $fresh
-  skip tests  = $noTest
   log append  = $append
+
+  target      = $target
+  branch      = $gitBranch
+
   regexFilter = $regexFilter
-  passThrough = $passThrough
+  passThrough = $passThrougH
 "@
 
 # Main Variables
@@ -53,7 +77,7 @@ Write-Output @"
 
 # [System.Uri]$gitUrl = "http://github.com/godotengine/godot-cpp.git"
 [System.Uri]$gitUrl = "C:\Godot\src\godot-cpp"
-[string]$gitBranch = "clang-cl"
+# [string]$gitBranch = "ipo-lto"
 
 Write-Output @"
 
@@ -157,26 +181,34 @@ function RunActions {
     . "$root\share\build-actions.ps1"
     . "$targetRoot\$script"
 
-    Fetch 2>&1
-    if( $LASTEXITCODE ) {
-        Write-Error "Fetch-Failure"
+    if( $fetch ) {
+        Fetch 2>&1
+        if( $LASTEXITCODE ) {
+            Write-Error "Fetch-Failure"
+        }
     }
 
-    Prepare 2>&1
-    if( $LASTEXITCODE ) {
-        Write-Error "Prep-Failure"
+    if( $configure ) {
+        Prepare 2>&1
+        if( $LASTEXITCODE ) {
+            Write-Error "Prep-Failure"
+        }
     }
 
-    Build 2>&1
-    if( $LASTEXITCODE ) {
-        Write-Error "build-Failure"
+    if( $build ){
+        Build 2>&1
+        if( $LASTEXITCODE ) {
+            Write-Error "build-Failure"
+        }
     }
 
-    Test 2>&1 | Tee-Object -Variable result
-    if( @($result | ? { $_ })[-1] -Match "PASSED" ) {
-        Write-Output "Test Succeded"
-    } else {
-        Write-Output "Test-Failure"
+    if( $test ){
+        Test 2>&1 | Tee-Object -Variable result
+        if( @($result | ? { $_ })[-1] -Match "PASSED" ) {
+            Write-Output "Test Succeded"
+        } else {
+            Write-Output "Test-Failure"
+        }
     }
 
     Clean 2>&1

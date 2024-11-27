@@ -11,28 +11,31 @@ if( -Not ($MyInvocation.InvocationName -eq '.') ) {
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+
+$script:buildDir = ''
+
 function Prepare {
     PrepareCommon
+
+    H4 "Creating build Dir"
+    $script:buildDir = "$buildRoot\cmake-build"
+    New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
+    Set-Location $buildDir
+
+    $doFresh = ($fresh) ? "--fresh" : $null
+    $doVerbose = ($verbose) ? "-DVERBOSE=ON" : $null
+ 
+
+    H1 "CMake Configure"
+    Format-Command "cmake $doFresh ..\ $doVerbose -DGODOT_DEV_BUILD:YES -DTEST_TARGET=template_release"
+    cmake $doFresh ..\ $doVerbose -DGODOT_DEV_BUILD=YES -DTEST_TARGET=template_release
 }
 
 function Build {
     H1 "CMake Build"
-
-    H4 "Creating build Dir"
-    $buildDir = "$buildRoot\cmake-build"
-    New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
     Set-Location $buildDir
 
-    H4 "CMake Configure"
-    if( $fresh ) {
-        $doFresh = '--fresh'
-    } else {
-        $doFresh = ''
-    }
-
-    H3 "Configurin godot-cpp"
-    Format-Command "cmake $doFresh ..\ -DGODOT_DEV_BUILD:YES -DTEST_TARGET=template_release"
-    cmake $doFresh ..\ -DGODOT_DEV_BUILD=YES -DTEST_TARGET=template_release
+    $doVerbose = ($verbose) ? "-DVERBOSE=ON" : $null
 
     $vsExtraOptions = "/nologo /v:m /clp:`"ShowCommandLine;ForceNoAlign`""
 
