@@ -94,7 +94,7 @@ function H4 {
 }
 
 function Format-Command {
-  printf "\n  󰞷 %s\n" "$1"
+printf "\n  :%s\n  󰞷 %s\n" "$(pwd)" "$1"
 }
 
 function Warning {

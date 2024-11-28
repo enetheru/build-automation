@@ -16,7 +16,7 @@ argv+=("${@}")
 
 Syntax()
 {
-   echo "Syntax: ./build.sh [-hfa] [--longopts] <target> [\"regexFilter\"]"
+   echo "Syntax: ./build.sh [-hfcbt] [--longopts] <target> [\"regexFilter\"]"
 }
 
 Help()
@@ -27,9 +27,16 @@ Help()
    Syntax
    echo "options:"
    echo "  h, --help      Print this help"
-   echo "  f, --fresh     Re-Fresh the configuration before building"
-   echo "  a, --append    Append to the log rather than clobber it"
-   echo "  n, --no-test   Don't perform testing after build is completed"
+   echo
+   echo "  f, --fetch     Fetch the source"
+   echo "  c, --configure Configure the source"
+   echo "  b, --build     Build the code"
+   echo "  t, --test      Test the code"
+   echo
+   echo "     --fresh     Re-Fresh the configuration before building"
+   echo "     --append    Append to the log rather than clobber it"
+   echo
+   echo "     --match     Regex pattern matching script name"
    echo
    exit
 }
@@ -40,9 +47,14 @@ die() { echo "$*" >&2; exit 2; }  # complain to STDERR and exit with error
 needs_arg() { if [ -z "$OPTARG" ]; then die "No arg for --$OPT option"; fi; }
 
 # Defaults
+fetch=0
+configure=0
+build=0
+test=0
+
 fresh=
 logAppend=0
-doTest=1
+regexFilter=".*"
 
 while getopts :hfan-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
     # support long options: https://stackoverflow.com/a/28466267/519360
@@ -53,11 +65,14 @@ while getopts :hfan-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
     fi
     # shellcheck disable=SC2034
     case "$OPT" in
-        h | help )     Help ;;
-        f | fresh )    fresh="--fresh" ;;
-        a | append )   logAppend=1 ;;
-        n | no-test )  doTest=0 ;;
-        # b | bravo )    needs_arg; bravo="$OPTARG" ;;
+        h | help )      Help ;;
+        f | fetch )     fetch=1 ;;
+        c | configure ) configure=1 ;;
+        b | build )     build=1 ;;
+        t | test )      test=1 ;;
+        fresh )         fresh="--fresh" ;;
+        append )        logAppend=1 ;;
+        match )         needs_arg; regexFilter="$OPTARG" ;;
         # c | charlie )  charlie="${OPTARG:-$charlie_default}" ;;  # optional argument
         \? )           exit 2 ;;  # bad short option (error reported via getopts)
         * )            die "Illegal option --$OPT" ;;            # bad long option
@@ -66,54 +81,63 @@ done
 shift $((OPTIND-1)) # remove parsed options and args from $@ list
 
 # Last minute checking of help flag before continuing.
-if echo "${argv[@]}" | grep -qEe "--help|-h"; then
+if echo "${@}" | grep -qEe "--help|-h"; then
     Help
+fi
+
+if [ $fetch -eq 0 ] && [ $configure -eq 0 ] && [ $build -eq 0 ] && [ $test -eq 0 ]; then
+    fetch=1
+    configure=1
+    build=1
+    test=1
 fi
 
 H2 " Options "
 echo "  root        = $root"
 echo "  command     = ${argv[*]}"
+echo
+echo "  fetch       = $fetch"
+echo "  configure   = $configure"
+echo "  build       = $build"
+echo "  test        = $test"
+echo
 echo "  fresh       = $fresh"
 echo "  append      = $logAppend"
-echo "  test        = $doTest"
+echo
+echo "  match       = $regexFilter"
 
-argv=("${@}")
-
-if [ -z "${argv[0]}" ]; then
+if [ -z "$1" ]; then
     echo
     Syntax
     Error "The <target> parameter is missing"
     exit 1
 else
-    target=${argv[0]}
+    target=$1
     echo "  target      = $target"
     shift 1
 fi
 
-# get the regex pattern from the second argument
-if [ -n "${argv[1]}" ]; then
-    pattern="${argv[1]}"
-    if [ "$pattern" = "--" ]; then
-        unset pattern
-        shift 1
-        echo "  Remaining arg: ${argv[*]}"
-    fi
+if [ -z "$1" ]; then
+    echo
+    Syntax
+    Error "The <branch> parameter is missing"
+    exit 1
+else
+    gitBranch=$1
+    echo "  gitBranch   = $gitBranch"
+    shift 1
 fi
-echo "  regexFilter = $pattern"
 
-#Center " Automatic " "$(Fill "- " )"
 Fill "- " | Center " Automatic "
-
 platform=$(basename "$(uname -o)")
-echo "  platform    = $platform"
-
 targetRoot="$root/$target"
-echo "  targetRoot  = $targetRoot"
-
 mainScript="$root/$target/$platform-build.sh"
+echo "  platform    = $platform"
+echo "  root        = $root"
+echo "  targetRoot  = $targetRoot"
 echo "  script      = $mainScript"
 echo
 
 ## Run target build script ##
 # shellcheck disable=SC1090
-source "$mainScript" "$pattern"
+source "$mainScript"
