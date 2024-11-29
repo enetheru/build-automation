@@ -40,6 +40,7 @@ function Build {
     Set-Location $buildDir
 
     $doVerbose = ($verbose) ? "--verbose" : $null
+    $doFresh = ($fresh) ? "--fresh" : $null
 
     $MSBuildOptions = "/nologo /v:m /clp:ShowCommandLine;ForceNoAlign"
 
@@ -50,7 +51,7 @@ function Build {
 
     foreach( $target in ("template_debug", "template_release", "editor") ) {
         H3 "Building godot-cpp-test | target=$target"
-        Format-Eval cmake "$doFresh .. $doVerbose -DGODOT_DEV_BUILD=YES -DTEST_TARGET=$target"
+        Format-Eval cmake ".. -DGODOT_DEV_BUILD=YES -DTEST_TARGET=$target"
         Format-Eval cmake "--build . $doVerbose -t godot-cpp-test --config Debug -- $MSBuildOptions"
     }
 }
