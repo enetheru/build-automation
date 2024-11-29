@@ -94,7 +94,14 @@ function H4 {
 }
 
 function Format-Command {
-printf "\n  :%s\n  󰞷 %s\n" "$(pwd)" "$1"
+  printf "\n  :%s\n  󰞷 %s\n" "$(pwd)" "$1"
+}
+
+function Format-Eval {
+  echo
+  printf "  󰝰:%s\n" "$(pwd)"
+  printf "  󰞷 %s\n" "$1"
+  eval "$1"
 }
 
 function Warning {

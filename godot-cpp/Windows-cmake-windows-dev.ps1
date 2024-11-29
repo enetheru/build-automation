@@ -44,8 +44,8 @@ function Build {
     $MSBuildOptions = "/nologo /v:m /clp:`"ShowCommandLine;ForceNoAlign`""
 
     foreach( $target in ("template_debug", "template_release", "editor", "godot-cpp-test") ) {
-        H2 "Building godot-cpp::$target | Config = Debug"
-        Format-Eval cmake "--build . -j 12 $doVerbose -t $target --config Debug -- $MSBuildOptions"
+        H3 "Building godot-cpp::$target | Config = Debug"
+        Format-Eval cmake "--build . $doVerbose -t $target --config Debug -- $MSBuildOptions"
     }
 }
 

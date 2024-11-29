@@ -56,6 +56,8 @@ fresh=
 logAppend=0
 regexFilter=".*"
 
+gitBranch=""
+
 while getopts :hfan-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
     # support long options: https://stackoverflow.com/a/28466267/519360
     if [ "$OPT" = "-" ]; then   # long option: reformulate OPT and OPTARG
@@ -117,13 +119,8 @@ else
     shift 1
 fi
 
-if [ -z "$1" ]; then
-    echo
-    Syntax
-    Error "The <branch> parameter is missing"
-    exit 1
-else
-    gitBranch=$1
+if [ -n "$1" ]; then
+    gitBranch="$1"
     echo "  gitBranch   = $gitBranch"
     shift 1
 fi

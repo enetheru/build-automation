@@ -23,10 +23,10 @@ function Fetch {
     }
 
     # Clone if not already
-    if( -Not (Test-Path -Path "$buildRoot/*") ) {
+    if( -Not (Test-Path -Path "$buildRoot/.git" -PathType Container) ) {
         H4 "Cloning $target"
-        Format-Eval git "clone $gitUrl `"$buildRoot`""
-        if( $LASTEXITCODE ){
+        Format-Eval git "clone $gitUrl $buildRoot"
+        if( $LASTEXITCODE ) {
             Write-Error "Clone Failure"
         }
     }
@@ -36,10 +36,10 @@ function Fetch {
 
     # Fetch any changes and reset to latest
     [bool]$fetchNeeded = $(git fetch --dry-run 2>&1)
-    [string]$currentBranch = $(git branch --show-current) 
+    [string]$currentBranch = $(git branch --show-current)
     [bool]$wrongBranch = -Not ($currentBranch -match $gitBranch)
 
-    if( $fetchNeeded -Or $wrongBranch ){
+    if( $fetchNeeded -Or $wrongBranch ) {
         H4 "Fetching Latest"
         git fetch --all
         git reset --hard '@{u}'

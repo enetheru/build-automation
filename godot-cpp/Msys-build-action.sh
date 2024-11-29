@@ -11,8 +11,8 @@ H2 "using $script ..."
 echo "  MSYSTEM     = $MSYSTEM"
 
 #export gitUrl=http://github.com/enetheru/godot-cpp.git
-export gitUrl="C:\godot\src\godot-cpp"
-export gitBranch="modernise"
+gitUrl=${gitUrl:-"C:\godot\src\godot-cpp"}
+gitBranch=${gitBranch:-"master"}
 
 echo "
   gitUrl      = $gitUrl

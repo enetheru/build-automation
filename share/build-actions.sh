@@ -19,6 +19,9 @@ function RenameFunction {
 }
 
 function Fetch {
+
+    Format-Eval "echo Attempting to evaluate Format-Eval"
+    exit 1
     # The expectation is that we are in $targetRoot
     # and when we finish we should be back in $targetRoot
     H1 "Git Fetch"
@@ -29,13 +32,13 @@ function Fetch {
     echo "  Git Branch    = $gitBranch"
 
     if [ ! -d "$buildRoot" ]; then
-        echo "  --Creating ${buildRoot}"
+        H4 "Creating ${buildRoot}"
         mkdir -p "$buildRoot"
     fi
 
     # Clone if not already
     if [ -n "$(find "$buildRoot" -maxdepth 0 -empty)" ]; then
-        echo "  --Cloning ${target}"
+        H4 "Cloning ${target}"
         git clone "$gitUrl" "$buildRoot"
     fi
 

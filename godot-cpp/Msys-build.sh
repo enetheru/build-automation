@@ -17,7 +17,7 @@ echo "
   fresh build = $fresh
   skip tests  = $doTest
   log append  = $logAppend
-  pattern     = $pattern"
+  pattern     = $regexFilter"
 
 # Get the target root from this script location
 targetRoot=$( cd -- "$( dirname -- "${argv[0]}" )" &> /dev/null && pwd )
@@ -31,14 +31,14 @@ cd "$targetRoot"
 # Set pattern variable from first argument
 if [ -n "${argv[1]}" ]; then
     pattern="${argv[1]}"
-    echo "  pattern     = $pattern"
+    echo "  pattern     = $regexFilter"
 fi
 
 # Get script count
 declare -a buildScripts
 buildScripts=( \
     $(find . -maxdepth 1 -type f -name "$platform*" -printf "%f\n" \
-    | grep -e "$pattern" \
+    | grep -e "$regexFilter" \
     | grep -v build ))
 
 declare -i scriptCount=${#buildScripts[@]}
@@ -75,8 +75,11 @@ for script in "${buildScripts[@]}"; do
     # Processing of the actual commands must be done in a separate script so we can pass it on
     # to the MSYS2 Environment shell.
     action="$targetRoot/$platform-build-action.sh"
-    vars="root=\"$root\" script=\"$script\""
-    /msys2_shell.cmd -"$msysEnv" -defterm -no-start -where "$targetRoot" -c "$vars $action"
+    declare -a vars
+    vars+=("root='$root'")
+    vars+=("script='$script'")
+    vars+=("gitBranch='$gitBranch'")
+    /msys2_shell.cmd -"$msysEnv" -defterm -no-start -where "$targetRoot" -c "${vars[*]} $action"
 done
 
 cd "$prev_dir"

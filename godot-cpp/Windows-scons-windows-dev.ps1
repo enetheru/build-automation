@@ -32,7 +32,7 @@ function Build {
     Set-Location "$buildRoot/test"
 
     foreach( $target in ("template_debug", "template_release", "editor") ) {
-        H2 "Building integration test using target=$target"
+        H3 "Building integration test using target=$target"
         Format-Eval scons "$doVerbose target=$target dev_build=yes"
     }
 }
