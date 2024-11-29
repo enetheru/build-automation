@@ -41,7 +41,7 @@ function Build {
 
     $doVerbose = ($verbose) ? "--verbose" : $null
 
-    $MSBuildOptions = "/nologo /v:m /clp:`"ShowCommandLine;ForceNoAlign`""
+    $MSBuildOptions = "/nologo /v:m /clp:ShowCommandLine;ForceNoAlign"
 
     foreach( $target in ("template_debug", "template_release", "editor", "godot-cpp-test") ) {
         H3 "Building godot-cpp::$target | Config = Debug"
