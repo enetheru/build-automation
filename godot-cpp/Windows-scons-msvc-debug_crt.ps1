@@ -21,20 +21,24 @@ function Build {
     H4 "Changing directory to $buildRoot"
     Set-Location "$buildRoot"
 
-    $doVerbose = ($verbose) ? "verbose=yes" : $null
+    H3 "Building godot-cpp with target=template_debug"
+    Format-Command "scons verbose=yes target=template_debug"
+    scons verbose=yes target=template_debug
 
-    foreach( $target in ("template_debug", "template_release", "editor") ) {
-        H2 "Building $target"
-        Format-Eval scons "$doVerbose target=$target dev_build=yes"
-    }
+    H3 "Building godot-cpp with target=template_release"
+    Format-Command "scons verbose=yes target=template_release"
+    scons verbose=yes target=template_release
 
+    H3 "Building godot-cpp with target=editor"
+    Format-Command "scons verbose=yes target=editor"
+    scons verbose=yes target=editor
+
+    H3 "Building test library"
     H4 "Changing directory to $buildRoot/test"
     Set-Location "$buildRoot/test"
 
-    foreach( $target in ("template_debug", "template_release", "editor") ) {
-        H2 "Building integration test using target=$target"
-        Format-Eval scons "$doVerbose target=$target dev_build=yes"
-    }
+    Format-Command "scons verbose=yes target=template_release"
+    scons verbose=yes target=template_release
 }
 
 function Test {

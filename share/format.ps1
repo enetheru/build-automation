@@ -12,14 +12,10 @@ trap {
 
 # Check whether this file is sourced or not.
 if( -Not ($MyInvocation.InvocationName -eq '.') ) {
-    echo "Do not run this script directly, it simply holds helper functions"
+    Write-Output "Do not run this script directly, it simply holds helper functions"
     exit 1
 }
 #FIXME, dont source this more than once. Add some guard.
-
-$RED = '\033[0;31m'
-$ORANGE = '\033[0;93m'
-$NC = '\033[0m' # No Color
 
 # Update output buffer size to prevent clipping in Visual Studio output window.
 if( $Host -and $Host.UI -and $Host.UI.RawUI ) {
@@ -142,7 +138,20 @@ function Format-Command {
     param(
         [Parameter( ValueFromRemainingArguments = $true )]$args
     )
-    Write-Output "`n  󰞷 $args"
+    Write-Output ""
+    Write-Output "  󰝰:$((get-location).Path)"
+    Write-Output "  󰞷 $args"
+}
+
+function Format-Eval {
+    param(
+        [Parameter( Position = 0 )][string]$command,
+        [Parameter( ValueFromRemainingArguments = $true )][string]$args
+    )
+    Write-Output ""
+    Write-Output "  󰝰 $((get-location).Path)"
+    Write-Output "  󰞷 $command $args"
+    &"$command" (-Split $args)
 }
 
 function Print-Last-Error {

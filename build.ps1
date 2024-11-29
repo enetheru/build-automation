@@ -37,10 +37,10 @@ param(
     [Alias( "b" )] [switch] $build,
     [Alias( "t" )] [switch] $test,
 
-    [switch] $fresh,        # re-fresh the configuration
-    [switch] $clean,        # clean the build directory
-    [switch] $append,       # Append to the logs rather than clobber
-    [string] $regexFilter = ".*",    #Filter which scripts are used.
+    [switch] $fresh,                # re-fresh the configuration
+    [switch] $clean,                # clean the build directory
+    [switch] $append,               # Append to the logs rather than clobber
+    [string] $regexFilter = ".*",   #Filter which scripts are used.
 
     [Parameter( Position = 0 )] [string] $target,       # Which target to use
     [Parameter( Position = 1 )] [string] $gitBranch,    # Which git branch to use
@@ -66,9 +66,6 @@ if( -Not( $fetch -Or $configure -Or $build -Or $test)){
 if( $regexFilter -eq "--" ) {
     Clear-Variable -name regexFilter
 }
-
-# shellcheck disable=SC2034
-$columns = 120
 
 . ./share/format.ps1
 

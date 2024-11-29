@@ -18,14 +18,17 @@ function Fetch {
     Write-Output "  Git Branch    = $gitBranch"
 
     if( -Not (Test-Path "$buildRoot" -PathType Container) ) {
-        Write-Output "  --Creating $buildRoot"
+        H4 "Creating $buildRoot"
         New-Item -Force -ItemType Directory -Path "$buildRoot"
     }
 
     # Clone if not already
     if( -Not (Test-Path -Path "$buildRoot/*") ) {
-        Write-Output "  --Cloning $target"
-        git clone "$gitUrl" "$buildRoot"
+        H4 "Cloning $target"
+        Format-Eval git "clone $gitUrl `"$buildRoot`""
+        if( $LASTEXITCODE ){
+            Write-Error "Clone Failure"
+        }
     }
 
     # Change working directory

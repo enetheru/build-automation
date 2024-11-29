@@ -17,43 +17,36 @@ $script:buildDir = ''
 function Prepare {
     PrepareCommon
 
-    H4 "Creating build Dir"
     $script:buildDir = "$buildRoot\cmake-build"
-    New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
+
+    if( -Not (Test-Path -Path $script:buildDir -PathType Container) ) {
+        H4 "Creating build Dir"
+        Format-Command "New-Item -Path $buildDir -ItemType Directory -Force"
+        New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
+    }
     Set-Location $buildDir
 
     $doFresh = ($fresh) ? "--fresh" : $null
     $doVerbose = ($verbose) ? "-DVERBOSE=ON" : $null
- 
 
     H1 "CMake Configure"
-    Format-Command "cmake $doFresh ..\ $doVerbose -DGODOT_DEV_BUILD:YES -DTEST_TARGET=template_release"
-    cmake $doFresh ..\ $doVerbose -DGODOT_DEV_BUILD=YES -DTEST_TARGET=template_release
+    Format-Eval cmake "$doFresh .. $doVerbose -DGODOT_DEV_BUILD=YES -DTEST_TARGET=template_release"
 }
 
 function Build {
     H1 "CMake Build"
+
+    H4 "Changing directory to $buildDir"
     Set-Location $buildDir
 
-    $doVerbose = ($verbose) ? "-DVERBOSE=ON" : $null
+    $doVerbose = ($verbose) ? "--verbose" : $null
 
-    $vsExtraOptions = "/nologo /v:m /clp:`"ShowCommandLine;ForceNoAlign`""
+    $MSBuildOptions = "/nologo /v:m /clp:`"ShowCommandLine;ForceNoAlign`""
 
-    H3 "Building godot-cpp::template_debug"
-    Format-Command "cmake --build . -j 12 --verbose -t template_debug --config Debug -- $vsExtraOptions"
-    cmake --build . -j 12 --verbose -t template_debug --config Debug -- /nologo /v:m /clp:"ShowCommandLine;ForceNoAlign"
-
-    H3 "Building godot-cpp::template_release"
-    Format-Command "cmake --build . -j 12 --verbose -t template_release --config Debug -- $vsExtraOptions"
-    cmake --build . -j 12 --verbose -t template_release --config Debug -- /nologo /v:m /clp:"ShowCommandLine;ForceNoAlign"
-
-    H3 "Building godot-cpp::editor"
-    Format-Command "cmake --build . -j 12 --verbose -t editor --config Debug -- $vsExtraOptions"
-    cmake --build . -j 12 --verbose -t editor --config Debug -- /nologo /v:m /clp:"ShowCommandLine;ForceNoAlign"
-
-    H4 "Building godot-cpp-test"
-    Format-Command "cmake --build . -j 12 --verbose -t godot-cpp-test --config Debug -- $vsExtraOptions"
-    cmake --build . -j 12 --verbose -t godot-cpp-test --config Debug -- /nologo /v:m /clp:"ShowCommandLine;ForceNoAlign"
+    foreach( $target in ("template_debug", "template_release", "editor", "godot-cpp-test") ) {
+        H2 "Building godot-cpp::$target | Config = Debug"
+        Format-Eval cmake "--build . -j 12 $doVerbose -t $target --config Debug -- $MSBuildOptions"
+    }
 }
 
 function Test {
