@@ -30,7 +30,7 @@ function Prepare {
     $doVerbose = ($verbose) ? "-DVERBOSE=ON" : $null
 
     H1 "CMake Configure"
-    Format-Eval cmake "$doFresh .. $doVerbose -DGODOT_DEV_BUILD=YES -DTEST_TARGET=template_release"
+    Format-Eval cmake "$doFresh .. $doVerbose -DGODOT_DEV_BUILD=YES"
 }
 
 function Build {
@@ -43,9 +43,15 @@ function Build {
 
     $MSBuildOptions = "/nologo /v:m /clp:ShowCommandLine;ForceNoAlign"
 
-    foreach( $target in ("template_debug", "template_release", "editor", "godot-cpp-test") ) {
+    foreach( $target in ("template_debug", "template_release", "editor") ) {
         H3 "Building godot-cpp::$target | Config = Debug"
         Format-Eval cmake "--build . $doVerbose -t $target --config Debug -- $MSBuildOptions"
+    }
+
+    foreach( $target in ("template_debug", "template_release", "editor") ) {
+        H3 "Building godot-cpp-test | target=$target"
+        Format-Eval cmake "$doFresh .. $doVerbose -DGODOT_DEV_BUILD=YES -DTEST_TARGET=$target"
+        Format-Eval cmake "--build . $doVerbose -t godot-cpp-test --config Debug -- $MSBuildOptions"
     }
 }
 
