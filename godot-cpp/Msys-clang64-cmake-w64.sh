@@ -10,21 +10,26 @@ if [ "$sourced" -eq 0 ]; then
 fi
 
 msysEnv="clang64"
+declare buildDir
 
 function Prepare {
     PrepareCommon
+
+    buildDir="$buildRoot/cmake-build"
+    mkdir -p "$buildDir" || return 1
+    cd "$buildDir" || return 1
+
+    Format-Command "cmake ../ -GNinja -DTEST_TARGET=template_release"
+    cmake ../ -GNinja -DTEST_TARGET=template_release
+
 }
 
 function Build {
     H1 "CMake Build"
 
-    mkdir -p "$buildRoot/cmake-build"
-    cd "$buildRoot/cmake-build" || return 1
+    cd "$buildDir" || return 1
 
-    Format-Command "cmake ../ -GNinja -DTEST_TARGET=template_release"
-    cmake ../ -GNinja -DTEST_TARGET=template_release
-
-    Format-Command "cmake --build . --verbose -t godot-cpp-test --config Release"
+    Format-Eval "cmake --build . --verbose -t godot-cpp-test --config Release"
     cmake --build . --verbose -t godot-cpp-test --config Release
 }
 

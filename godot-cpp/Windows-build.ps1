@@ -62,7 +62,7 @@ Write-Output @"
   branch      = $gitBranch
 
   regexFilter = $regexFilter
-  passThrough = $passThrougH
+  passThrough = $passThrough
 "@
 
 # Main Variables

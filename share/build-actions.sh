@@ -19,9 +19,6 @@ function RenameFunction {
 }
 
 function Fetch {
-
-    Format-Eval "echo Attempting to evaluate Format-Eval"
-    exit 1
     # The expectation is that we are in $targetRoot
     # and when we finish we should be back in $targetRoot
     H1 "Git Fetch"
@@ -39,7 +36,7 @@ function Fetch {
     # Clone if not already
     if [ -n "$(find "$buildRoot" -maxdepth 0 -empty)" ]; then
         H4 "Cloning ${target}"
-        git clone "$gitUrl" "$buildRoot"
+        Format-Eval "git clone '$gitUrl' '$buildRoot'"
     fi
 
     # Change working directory
@@ -48,10 +45,10 @@ function Fetch {
     # Fetch any changes and reset to latest
     if eval git fetch --dry-run 2>&1 ; then
       H4 "Fetching Latest"
-      git fetch --all
-      git reset --hard '@{u}'
+      Format-Eval "git fetch --all"
+      Format-Eval "git reset --hard '@{u}'"
       if [ -n "$gitBranch" ]; then
-          git checkout "$gitBranch"
+          Format-Eval "git checkout $gitBranch"
       fi
     fi
 

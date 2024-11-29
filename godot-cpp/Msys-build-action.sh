@@ -8,7 +8,17 @@ source "$root/share/format.sh"
 
 # shellcheck disable=SC2154
 H2 "using $script ..."
-echo "  MSYSTEM     = $MSYSTEM"
+echo "
+  thisScript  = $thisScript
+  fetch       = $fetch
+  configure   = $configure
+  build       = $build
+  test        = $test
+
+  fresh build = $fresh
+  log append  = $append
+
+  MSYSTEM     = $MSYSTEM"
 
 #export gitUrl=http://github.com/enetheru/godot-cpp.git
 gitUrl=${gitUrl:-"C:\godot\src\godot-cpp"}
@@ -40,12 +50,11 @@ PrepareCommon(){
     artifacts+=("$(rg -u --files | rg "(memory|example).*?o(bj)?$")")
     artifacts+=("$(rg -u --files | rg "\.(a|lib|so|dll|dylib)$")")
 
-    if [ -n "${artifacts[*]}" ]; then
+    if [ ${#artifacts} -gt 0 ]; then
       H3 "Prepare"
       Warning "Deleting key Artifacts"
       for item in "${artifacts[@]}"; do
-        echo "rm '$item'"
-        rm "$item"
+        Format-Eval "rm '$item'"
       done
     fi
     cd "$prev"
@@ -122,10 +131,22 @@ source "$targetRoot/$script"
     H2 "Processing - $config"
     echo "  Build Root = $buildRoot"
 
-    if ! Fetch;     then Error "Fetch Failure"  ; exit 1; fi
-    if ! Prepare;   then Error "Prepare Failure"; exit 1; fi
-    if ! Build;     then Error "Build Failure"  ; exit 1; fi
-    if ! Test 5>&1; then Error "Test Failure"   ; fi
+    if [ "$fetch" -eq 1 ]; then
+      if ! Fetch;     then Error "Fetch Failure"  ; exit 1; fi
+    fi
+
+    if [ "$configure" -eq 1 ]; then
+      if ! Prepare;   then Error "Prepare Failure"; exit 1; fi
+    fi
+
+    if [ "$build" -eq 1 ]; then
+      if ! Build;     then Error "Build Failure"  ; exit 1; fi
+    fi
+
+    if [ "$test" -eq 1 ]; then
+      if ! Test 5>&1; then Error "Test Failure"   ; fi
+    fi
+
     if ! Clean;     then Error "Clean Failure"  ; fi
 
     H3 "Completed - $config"

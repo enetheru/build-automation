@@ -79,6 +79,12 @@ for script in "${buildScripts[@]}"; do
     vars+=("root='$root'")
     vars+=("script='$script'")
     vars+=("gitBranch='$gitBranch'")
+    vars+=("fetch='$fetch'")
+    vars+=("configure='$configure'")
+    vars+=("build='$build'")
+    vars+=("test='$test'")
+    vars+=("fresh='$fresh'")
+    vars+=("append='$append'")
     /msys2_shell.cmd -"$msysEnv" -defterm -no-start -where "$targetRoot" -c "${vars[*]} $action"
 done
 
