@@ -241,7 +241,7 @@ foreach( $script in $buildScripts ) {
     # it goes like this, for each line that matches the pattern.
     # split each line along spaces.
     # [repeated per type of construct] re-join lines that match a set of tags
-    $matchPattern = 'memory|libgdexample|libgodot-cpp|  󰞷'
+    $matchPattern = 'memory|Lib\.exe|link\.exe|  󰞷'
     rg -M2048 $matchPattern "$traceLog" `
         | sed -E 's/ +/\n/g' `
         | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' `
