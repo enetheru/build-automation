@@ -171,7 +171,6 @@ function TestCommon {
     @($result.split( "`r`n" ) | ? { $_ -Match "FINI|PASS|FAIL|Godot" }) >> "$targetRoot\summary.log"
 }
 
-
 function RunActions {
     H2 "Processing - $config"
 
@@ -238,9 +237,16 @@ foreach( $script in $buildScripts ) {
         exit
     }
 
-    $matchPattern = 'register_types|memory|libgdexample|libgodot-cpp|  =>| ==|  󰞷'
-    rg -M2048 $matchPattern "$traceLog" | sed -E 's/ +/\n/g' `
-        | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' > "$cleanLog"
+    # Clean the logs
+    # it goes like this, for each line that matches the pattern.
+    # split each line along spaces.
+    # [repeated per type of construct] re-join lines that match a set of tags
+    $matchPattern = 'memory|libgdexample|libgodot-cpp|  󰞷'
+    rg -M2048 $matchPattern "$traceLog" `
+        | sed -E 's/ +/\n/g' `
+        | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' `
+        | sed -E ':a;$!N;s/(Program|Microsoft|Visual|vcxproj|->)\n/\1 /;ta;P;D' `
+        | sed -E ':a;$!N;s/(\.\.\.|omitted|end|of|long)\n/\1 /;ta;P;D' > "$cleanLog"
 }
 
 cd $prev_dir
