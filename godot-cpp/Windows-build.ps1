@@ -203,6 +203,7 @@ function RunActions {
     }
 
     if( $test ){
+        $result=("unknown")
         Test 2>&1 | Tee-Object -Variable result
         if( @($result | ? { $_ })[-1] -Match "PASSED" ) {
             Write-Output "Test Succeded"
