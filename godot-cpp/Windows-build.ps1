@@ -245,8 +245,9 @@ foreach( $script in $buildScripts ) {
 
     $matchPattern = 'memory|Lib\.exe|link\.exe|  󰞷'
     [array]$compilerDefaults = ("fp:precise", "Gd", "GR", "GS", "Zc:forScope", "Zc:wchar_t",
-            "DYNAMICBASE", "NXCOMPAT", "OPT:REF", "SUBSYSTEM:CONSOLE", "TLBID:1", "errorReport:queue",
-            "diagnostics:column", "INCREMENTAL")
+            "DYNAMICBASE", "NXCOMPAT", "OPT:REF", "SUBSYSTEM:CONSOLE", "TLBID:1",
+            "errorReport:queue", "ERRORREPORT:QUEUE",
+            "diagnostics:column", "INCREMENTAL", "NOLOGO", "nologo")
     rg -M2048 $matchPattern "$traceLog" `
         | sed -E 's/ +/\n/g' `
         | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' `

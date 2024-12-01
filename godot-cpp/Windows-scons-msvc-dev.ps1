@@ -23,15 +23,12 @@ function Build {
 
     $doVerbose = ($verbose) ? "verbose=yes" : $null
 
-    # Build Default
-    Format-Eval scons "$doVerbose target=template_debug"
+    # Build with dev_build=yes
+    Format-Eval scons "$doVerbose target=template_debug debug_symbols=yes"
 
     # Build with dev_build=yes
     Format-Eval scons "$doVerbose target=template_debug dev_build=yes"
 
-    # Build with debug_symbols=yes
-    Format-Eval scons "$doVerbose target=template_debug debug_symbols=yes"
-
-    # Build with debug_symbols=yes
+    # Build with dev_build=yes debug_symbols=no
     Format-Eval scons "$doVerbose target=template_debug dev_build=yes debug_symbols=no"
 }

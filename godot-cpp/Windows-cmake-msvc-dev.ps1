@@ -12,63 +12,49 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 
-$script:buildDir = ''
+$script:buildDebug = ''
+$script:buildDev = ''
 
 function Prepare {
     PrepareCommon
+
+    $doFresh = ($fresh) ? "--fresh" : $null
+
+    $script:buildDebug = "$buildRoot/cmake-build-debug"
+    $buildDir = $script:buildDebug
+    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
+        H4 "Creating $buildDir"
+        New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
+    }
+
+    $script:buildDev = "$buildRoot/cmake-build-dev"
+    $buildDir = $script:buildDev
+    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
+        H4 "Creating $buildDir"
+        New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
+    }
+
+    Set-Location $buildDebug
+    Format-Eval cmake "$doFresh .."
+
+    Set-Location $buildDev
+    Format-Eval cmake "$doFresh .. -DGODOT_DEV_BUILD=YES"
 }
 
 function Build {
     H1 "CMake Build"
 
     $doVerbose = ($verbose) ? "--verbose" : $null
-    $doFresh = ($fresh) ? "--fresh" : $null
-
     $MSBuildOptions = "/nologo /v:m /clp:ShowCommandLine;ForceNoAlign"
 
-    # == Build Default ==
-    $buildDir = "$buildRoot/cmake-build-default"
-    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
-        H4 "Creating $buildDir"
-        New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
-    }
-    Set-Location $buildDir
-
-    Format-Eval cmake "$doFresh .. "
+    Set-Location $buildDebug
+    # scons target=template_debug debug_symbols=yes"
     Format-Eval cmake "--build . $doVerbose -t godot-cpp-test --config Debug -- $MSBuildOptions"
 
-    # == Build with GODOT_DEV_BUILD=yes ==
-    $buildDir = "$buildRoot/cmake-build-dev_build"
-    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
-        H4 "Creating $buildDir"
-        New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
-    }
-    Set-Location $buildDir
-
-    Format-Eval cmake "$doFresh .. -DGODOT_DEV_BUILD=YES"
+    Set-Location $buildDev
+    # scons target=template_debug dev_build=yes"
     Format-Eval cmake "--build . $doVerbose -t godot-cpp-test --config Debug -- $MSBuildOptions"
 
-    # == Build with GODOT_DEBUG_SYMBOLS=yes ==
-    $buildDir = "$buildRoot/cmake-build-debug"
-    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
-        H4 "Creating $buildDir"
-        New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
-    }
-    Set-Location $buildDir
-
-    Format-Eval cmake "$doFresh .. -DGODOT_DEBUG_SYMBOLS=YES"
-    Format-Eval cmake "--build . $doVerbose -t godot-cpp-test --config Debug -- $MSBuildOptions"
-
-
-    # == Build with GODOT_DEV_BUILD=YES GODOT_DEBUG_SYMBOLS=NO ==
-    $buildDir = "$buildRoot/cmake-build-dev-strip"
-    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
-        H4 "Creating $buildDir"
-        New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
-    }
-    Set-Location $buildDir
-
-    Format-Eval cmake "$doFresh .. -DGODOT_DEBUG_SYMBOLS=YES -DGODOT_DEBUG_SYMBOLS=NO"
-    Format-Eval cmake "--build . $doVerbose -t godot-cpp-test --config Debug -- $MSBuildOptions"
-
+    # scons target=template_debug dev_build=yes debug_symbols=no"
+    Format-Eval cmake "--build . $doVerbose -t godot-cpp-test --config Release -- $MSBuildOptions"
 }
