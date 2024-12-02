@@ -55,6 +55,14 @@ PrepareCommon(){
         Warning "Deleting ${#artifacts} Artifacts"
         printf "%s\n" "${artifacts[@]}" | tee >(cat >&5) | xargs rm
     fi
+
+    H4 "Looking for generated files"
+    genDirs=(cmake-build-*/gen)
+    if [ ${#genDirs} -gt 0 ]; then
+        Warning "Deleting generated files"
+        printf "%s\n" "${genDirs[@]}" | tee >(cat >&5) | xargs rm -r
+    fi
+
     cd "$prev"
 }
 

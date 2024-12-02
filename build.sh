@@ -14,7 +14,7 @@ argv+=("${@}")
 
 Syntax()
 {
-   echo "Syntax: ./build.sh [-hfcbt] [--fresh] [--append] [--scriptFilter=<regex>] <target> [gitBranch]"
+   echo "Syntax: ./build.sh [-hfcbt] [--list] [--fresh] [--append] [--scriptFilter=<regex>] <target> [gitBranch]"
 }
 
 Help()
@@ -25,7 +25,6 @@ Help()
    Syntax
    echo "options:"
    echo "  h, --help      Print this help"
-   echo "  v, --verbose   Extra printing"
    echo "     --list      Only liste the scripts"
    echo
    echo "  f, --fetch     Fetch the source"
@@ -47,7 +46,7 @@ die() { echo "$*" >&2; exit 2; }  # complain to STDERR and exit with error
 needs_arg() { if [ -z "$OPTARG" ]; then Syntax; die "No arg for --$OPT option"; fi; }
 
 # Defaults
-verbose=0
+verbose=1
 list=0
 
 fetch=0
@@ -61,7 +60,7 @@ scriptFilter=".*"
 
 gitBranch=""
 
-while getopts :hvfcbt-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
+while getopts :hfcbt-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
     # support long options: https://stackoverflow.com/a/28466267/519360
     if [ "$OPT" = "-" ]; then   # long option: reformulate OPT and OPTARG
         OPT="${OPTARG%%=*}"       # extract long option name
@@ -71,7 +70,6 @@ while getopts :hvfcbt-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
     # shellcheck disable=SC2034
     case "$OPT" in
         h | help )      Help ;;
-        v | verbose )   verbose=1 ;;
         list )          list=1 ;;
         f | fetch )     fetch=1 ;;
         c | configure ) configure=1 ;;
