@@ -55,7 +55,7 @@ configure=0
 build=0
 test=0
 
-fresh=
+fresh=0
 logAppend=0
 scriptFilter=".*"
 
@@ -77,7 +77,7 @@ while getopts :hvfcbt-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
         c | configure ) configure=1 ;;
         b | build )     build=1 ;;
         t | test )      test=1 ;;
-        fresh )         fresh="--fresh" ;;
+        fresh )         fresh=1 ;;
         append )        logAppend=1 ;;
         scriptFilter )  needs_arg; scriptFilter="$OPTARG" ;;
         # c | charlie )  charlie="${OPTARG:-$charlie_default}" ;;  # optional argument

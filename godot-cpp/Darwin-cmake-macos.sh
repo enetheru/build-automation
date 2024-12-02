@@ -26,7 +26,7 @@ function Build {
     cmake "$fresh" ../ -GNinja
 
     # Build
-    cmake --build . -j 6 --verbose -t godot-cpp-test --config Release
+    cmake --build . -j 7 --verbose -t godot-cpp-test --config Release
 }
 
 function Test {

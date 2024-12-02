@@ -19,21 +19,23 @@ function Prepare {
 
 function Build {
     H1 "SCons Build"
+    if [ "$verbose" -eq 1 ]; then
+        doVerbose="verbose=yes"
+    fi
 
     H4 "Changing directory to $buildRoot/test"
     cd "$buildRoot/test" || return 1
 
-    $doVerbose=$( if [ "$verbose" -eq 1 ]; then echo "verbose=yes";fi)
-    $target= "target=template_debug"
-    $buildProfile="build_profile=build_profile.json"
-    $sconsOptions="$doVerbose $target $buildProfile"
+    target="target=template_debug"
+    buildProfile="build_profile=build_profile.json"
+    sconsOptions="$doVerbose $target $buildProfile"
 
     # build with dev_build=yes
-    format-eval "scons $sconsOptions debug_symbols=yes"
+    Format-Eval "scons $sconsOptions debug_symbols=yes"
 
     # build with dev_build=yes
-    format-eval "scons $sconsOptions dev_build=yes"
+    Format-Eval "scons $sconsOptions dev_build=yes"
 
     # build with dev_build=yes debug_symbols=no
-    format-eval "scons $sconsOptions dev_build=yes debug_symbols=no"
+    Format-Eval "scons $sconsOptions dev_build=yes debug_symbols=no"
 }

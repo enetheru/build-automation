@@ -12,40 +12,44 @@ fi
 
 gitUrl="https://github.com/enetheru/godot-cpp.git"
 gitBranch="dev_tag"
-buildDebug=''
-buildDev=''
 
 function Prepare {
     PrepareCommon
-
-    doFresh="$(if [ "$fresh" -eq 1 ]; then echo "--fresh"; fi)"
-
-    buildDebug="$buildRoot/cmake-build-debug"
-    mkdir -p "$buildDebug"
-
-    buildDev="$buildRoot/cmake-build-dev"
-    mkdir -p "$buildDev"
-
-    cd $buildDebug || return 1
-    Format-Eval "cmake $doFresh .."
-
-    cd $buildDev || return 1
-    Format-Eval "cmake $doFresh .. -DGODOT_DEV_BUILD=YES"
 }
 
 function Build {
     H1 "CMake Build"
 
+    if [ "$fresh" -eq 1 ]; then; doFresh="--fresh"; fi
     doVerbose="$(if [ "$verbose" -eq 1 ]; then echo "--verbose"; fi)"
 
-    cd $buildDebug || return 1
     # scons target=template_debug debug_symbols=yes"
-    Format-Eval "cmake --build . $doVerbose -t godot-cpp-test --config RelWithDebInfo"
+    buildType="RelWithDebInfo"
+    buildConfig="-DCMAKE_BUILD_TYPE=$buildType"
 
-    cd $buildDev || return 1
+    buildDir="$buildRoot/cmake-build-$buildType"
+    mkdir -p "$buildDir" && cd $buildDir || return 1
+
+    Format-Eval "cmake $doFresh .. -GNinja $buildConfig"
+    Format-Eval "cmake --build . -j 7 $doVerbose -t godot-cpp-test"
+
     # scons target=template_debug dev_build=yes"
-    Format-Eval "cmake --build . $doVerbose -t godot-cpp-test --config Debug"
+    buildType="Debug"
+    buildConfig="-DCMAKE_BUILD_TYPE=$buildType"
+    
+    buildDir="$buildRoot/cmake-build-$buildType"
+    mkdir -p "$buildDir" && cd $buildDir || return 1
+    
+    Format-Eval "cmake $doFresh .. -GNinja $buildConfig -DGODOT_DEV_BUILD=YES"
+    Format-Eval "cmake --build . -j 7 $doVerbose -t godot-cpp-test"
 
     # scons target=template_debug dev_build=yes debug_symbols=no"
-    Format-Eval "cmake --build . $doVerbose -t godot-cpp-test --config Release"
+    buildType="Release"
+    buildConfig="-DCMAKE_BUILD_TYPE=$buildType"
+
+    buildDir="$buildRoot/cmake-build-$buildType"
+    mkdir -p "$buildDir" && cd $buildDir || return 1
+
+    Format-Eval "cmake $doFresh .. -GNinja -DGODOT_DEV_BUILD=YES"
+    Format-Eval "cmake --build . -j 7 $doVerbose -t godot-cpp-test"
 }
