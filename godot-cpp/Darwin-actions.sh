@@ -6,14 +6,13 @@ exec 5>&1
 
 cd "$targetRoot" || return 1
 
-H2 " Build $target using $platform "
 
 declare -i columns=120
 source "$root/share/format.sh"
 
-# shellcheck disable=SC2154
-H2 "using $script ..."
+H2 " Build $target using $platform "
 echo "
+  script      = $script
   fetch       = $fetch
   configure   = $configure
   build       = $build
@@ -23,7 +22,7 @@ echo "
   log append  = $append"
 
 #gitUrl=http://github.com/enetheru/godot-cpp.git
-gitUrl=${gitUrl:-"C:\godot\src\godot-cpp"}
+gitUrl=${gitUrl:-"http://github.com/enetheru/godot-cpp.git"}
 gitBranch=${gitBranch:-"master"}
 
 echo "

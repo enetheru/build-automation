@@ -25,6 +25,8 @@ Help()
    Syntax
    echo "options:"
    echo "  h, --help      Print this help"
+   echo "  v, --verbose   Extra printing"
+   echo "     --list      Only liste the scripts"
    echo
    echo "  f, --fetch     Fetch the source"
    echo "  c, --configure Configure the source"
@@ -45,6 +47,9 @@ die() { echo "$*" >&2; exit 2; }  # complain to STDERR and exit with error
 needs_arg() { if [ -z "$OPTARG" ]; then Syntax; die "No arg for --$OPT option"; fi; }
 
 # Defaults
+verbose=0
+list=0
+
 fetch=0
 configure=0
 build=0
@@ -56,7 +61,7 @@ scriptFilter=".*"
 
 gitBranch=""
 
-while getopts :hfcbt-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
+while getopts :hvfcbt-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
     # support long options: https://stackoverflow.com/a/28466267/519360
     if [ "$OPT" = "-" ]; then   # long option: reformulate OPT and OPTARG
         OPT="${OPTARG%%=*}"       # extract long option name
@@ -66,6 +71,8 @@ while getopts :hfcbt-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
     # shellcheck disable=SC2034
     case "$OPT" in
         h | help )      Help ;;
+        v | verbose )   verbose=1 ;;
+        list )          list=1 ;;
         f | fetch )     fetch=1 ;;
         c | configure ) configure=1 ;;
         b | build )     build=1 ;;
@@ -157,33 +164,36 @@ for script in "${buildScripts[@]}"; do
     echo "    ${script}"
 done
 
+if [ $list -eq 1 ]; then exit; fi
+
 # Make sure the log directories exist.
 mkdir -p "$targetRoot/logs-raw"
 mkdir -p "$targetRoot/logs-clean"
 
 
-# Setup the options.
-declare -a vars
-vars+=("root='$root'")
-vars+=("script='$script'")
-vars+=("gitBranch='$gitBranch'")
-vars+=("fetch='$fetch'")
-vars+=("configure='$configure'")
-vars+=("build='$build'")
-vars+=("test='$test'")
-vars+=("fresh='$fresh'")
-vars+=("append='$append'")
 
 # Process Scripts
 for script in "${buildScripts[@]}"; do
+    # Setup the options each time to clobber any unintended changes.
+    declare -a vars
+    vars+=("root='$root'")
+    vars+=("gitBranch='$gitBranch'")
+    vars+=("fetch='$fetch'")
+    vars+=("configure='$configure'")
+    vars+=("build='$build'")
+    vars+=("test='$test'")
+    vars+=("fresh='$fresh'")
+    vars+=("append='$append'")
+    vars+=("verbose='$verbose'")
+    vars+=("script='$script'")
 
     H4 "starting $script"
     config="${script%.*}"
 
     traceLog="$targetRoot/logs-raw/${config}.txt"
     cleanLog="$targetRoot/logs-clean/${config}.txt"
-    echo "  traceLog    = $traceLog"
-    echo "  cleanLog    = $cleanLog"
+    echo "    traceLog    = $traceLog"
+    echo "    cleanLog    = $cleanLog"
 
     # source $envRun and $envActions from script.
     source "$targetRoot/$script" "get_env"
