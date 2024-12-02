@@ -1,14 +1,15 @@
 #!/bin/bash
-# shellcheck disable=SC2154
-# Compile the test project
 
-# Check whether this file is sourced or not.
-# https://stackoverflow.com/questions/2683279/how-to-detect-if-a-script-is-being-sourced
-(return 0 2>/dev/null) && sourced=1 || sourced=0
-if [ "$sourced" -eq 0 ]; then
-    echo "Do not run this script directly, it simply holds helper functions"
-    exit
+# tell the build command how to run ourselves.
+if [ "$1" = "get_env" ]; then
+    H4 "Env Settings"
+    envRun="$SHELL -c"
+    envActions="Darwin-actions.sh"
+    echo "    run command   = $envRun"
+    echo "    action script = $envActions"
+    return
 fi
+
 
 function Prepare {
     PrepareCommon

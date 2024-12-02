@@ -1,0 +1,144 @@
+#!/bin/zsh
+
+# Setup a secondary mechanism for piping to stdout so that we can split output
+# of commands to files and show them at the same time.
+exec 5>&1
+
+cd "$targetRoot" || return 1
+
+H2 " Build $target using $platform "
+
+declare -i columns=120
+source "$root/share/format.sh"
+
+# shellcheck disable=SC2154
+H2 "using $script ..."
+echo "
+  fetch       = $fetch
+  configure   = $configure
+  build       = $build
+  test        = $test
+
+  fresh build = $fresh
+  log append  = $append"
+
+#gitUrl=http://github.com/enetheru/godot-cpp.git
+gitUrl=${gitUrl:-"C:\godot\src\godot-cpp"}
+gitBranch=${gitBranch:-"master"}
+
+echo "
+  gitUrl      = $gitUrl
+  gitBranch   = $gitBranch"
+
+godot="/c/build/godot/msvc.master/bin/godot.windows.editor.x86_64.exe"
+godot_tr="/c/build/godot/msvc.master/bin/godot.windows.template_release.x86_64.exe"
+
+echo "
+  godot       = $godot
+  godot_tr    = $godot_tr"
+
+# Get the target root from this script location
+targetRoot=${targetRoot:-$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )}
+
+# Some steps are identical.
+PrepareCommon(){
+    local prev
+    prev="$(pwd)"
+
+    cd "$buildRoot" || exit 1
+    # Clean up key artifacts to trigger rebuild
+    declare -a artifacts
+    artifacts+=("$(rg -u --files | rg "(memory|example).*?o(bj)?$")")
+    artifacts+=("$(rg -u --files | rg "\.(a|lib|so|dll|dylib)$")")
+
+    if [ ${#artifacts} -gt 0 ]; then
+      H3 "Prepare"
+      Warning "Deleting key Artifacts"
+      for item in "${artifacts[@]}"; do
+        Format-Eval "rm '$item'"
+      done
+    fi
+    cd "$prev"
+}
+
+TestCommon(){
+    local result
+
+    H1 "Test"
+
+    printf "\n" >> "$targetRoot/summary.log"
+    H4 "$config" >> "$targetRoot/summary.log"
+
+    if [ ! -d "$buildRoot/test/project/.godot" ]; then
+        H4 "Generate the .godot folder"
+        Format-Command "$godot -e --path \"$buildRoot/test/project/\" --quit --headless"
+
+        # Capture the output of this one silently because it always fails, and
+        # succeeds. We can dump it if it's a real failure.
+        result=$($godot -e --path "$buildRoot/test/project/" --quit --headless 2>&1)
+
+        if [ ! -d "$buildRoot/test/project/.godot" ]; then
+            echo "$result"
+            Error "Creating .godot folder" >> "$targetRoot/summary.log"
+            return 1
+        fi
+    else
+        H4 "The .godot folder has already been generated."
+    fi
+
+    H4 "Run the test project"
+    Format-Command "$godot_tr --path \"$buildRoot/test/project/\" --quit --headless"
+
+    # Because of the capture of stdout for the variable, we need to tee it to a
+    # custom file descriptor which is being piped to stdout elsewhere.
+    result="$($godot_tr --path "$buildRoot/test/project/" --quit --headless 2>&1 \
+        | tee >(cat >&5))"
+
+    # Split the result into lines, skip the empty ones.
+    declare -a lines=()
+    while IFS=$'\n' read -ra line; do
+        if [ -n "${line//[[:space:]]/}" ]; then
+            lines+=("$line") 
+        fi
+    done <<< "$result"
+
+    printf "%s\n" "${lines[@]}" >> "$targetRoot/summary.log"
+
+    # returns true if the last line includes PASSED
+    [[ "${lines[-1]}" == *"PASSED"* ]]
+}
+
+
+
+config="${script%.*}"
+buildRoot="$targetRoot/$config"
+
+# generic build actions.
+source "$root/share/build-actions.sh"
+
+# override build actions
+source "$targetRoot/$script"
+
+H2 "Processing - $config"
+echo "  Build Root = $buildRoot"
+
+if [ "$fetch" -eq 1 ]; then
+  if ! Fetch;     then Error "Fetch Failure"  ; exit 1; fi
+fi
+
+if [ "$configure" -eq 1 ]; then
+  if ! Prepare;   then Error "Prepare Failure"; exit 1; fi
+fi
+
+if [ "$build" -eq 1 ]; then
+  if ! Build;     then Error "Build Failure"  ; exit 1; fi
+fi
+
+if [ "$test" -eq 1 ]; then
+  if ! Test 5>&1; then Error "Test Failure"   ; fi
+fi
+
+if ! Clean;     then Error "Clean Failure"  ; fi
+
+H3 "Completed - $config"
+

@@ -13,6 +13,12 @@ RED='\033[0;31m'
 ORANGE='\033[0;93m'
 NC='\033[0m' # No Color
 
+function use-line {
+    local line
+    read -r line
+    $1 $line
+}
+
 function Figlet {
   local customFiglet=/c/git/cmatsuoka/figlet/figlet
   # other figlet fonts I like are 'standard','Ogre', 'Stronger Than All' and 'ANSI Regular'

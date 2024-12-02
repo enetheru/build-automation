@@ -26,18 +26,13 @@ targetRoot=$( cd -- "$( dirname -- "$script}" )" &> /dev/null && pwd )
 echo "  targetRoot  = $targetRoot"
 cd "$targetRoot"
 
-# Set pattern variable from first argument
-if [ -n "${argv[1]}" ]; then
-    pattern="${argv[1]}"
-else
-    pattern='.*'
-fi
-echo "  pattern     = $pattern"
+regexFilter=${regexFilter:-".*"}
+echo "  regexFilter     = $regexFilter"
 
 # Get script count
 declare -a buildScripts
 buildScripts=($(find . -maxdepth 1 -type f -name "${platform}*" -print \
-    | grep -e "$pattern" \
+    | grep -e "$regexFilter" \
     | grep -v "build" ))
 
 echo "  Script count: ${#buildScripts}"
