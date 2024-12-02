@@ -22,13 +22,16 @@ function Build {
     Set-Location "$buildRoot/test"
 
     $doVerbose = ($verbose) ? "verbose=yes" : $null
+    $target = "target=template_debug"
+    $buildProfile = "build_profile=build_profile.json"
+    $sconsOptions = "$doVerbose $target $buildProfile"
 
-    # Build with dev_build=yes
-    Format-Eval scons "$doVerbose target=template_debug debug_symbols=yes"
+    # build with dev_build=yes
+    format-eval scons "$sconsOptions debug_symbols=yes"
 
-    # Build with dev_build=yes
-    Format-Eval scons "$doVerbose target=template_debug dev_build=yes"
+    # build with dev_build=yes
+    format-eval scons "$sconsOptions dev_build=yes"
 
-    # Build with dev_build=yes debug_symbols=no
-    Format-Eval scons "$doVerbose target=template_debug dev_build=yes debug_symbols=no"
+    # build with dev_build=yes debug_symbols=no
+    format-eval scons "$sconsOptions dev_build=yes debug_symbols=no"
 }

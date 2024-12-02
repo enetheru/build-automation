@@ -143,6 +143,12 @@ function PrepareCommon {
             Remove-Item $_
         }
     }
+
+    # SCons - Remove generated source files if exists.
+    if( Test-Path "$buildRoot\gen" -PathType Container ) {
+        H4 "Removing Generated Files"
+        Remove-Item -LiteralPath "$buildRoot\gen" -Force -Recurse
+    }
 }
 
 function TestCommon {
@@ -243,7 +249,7 @@ foreach( $script in $buildScripts ) {
     # [repeated per type of construct] re-join lines that match a set of tags
     # the remove the compiler defaults, since CMake adds so many.
 
-    $matchPattern = 'memory|Lib\.exe|link\.exe|  󰞷'
+    $matchPattern = '^lib|^link|memory|Lib\.exe|link\.exe|  󰞷'
     [array]$compilerDefaults = ("fp:precise", "Gd", "GR", "GS", "Zc:forScope", "Zc:wchar_t",
             "DYNAMICBASE", "NXCOMPAT", "OPT:REF", "SUBSYSTEM:CONSOLE", "TLBID:1",
             "errorReport:queue", "ERRORREPORT:QUEUE",
