@@ -49,7 +49,7 @@ function Build {
 
     Set-Location $buildDebug
     # scons target=template_debug debug_symbols=yes"
-    Format-Eval cmake "--build . $doVerbose -t godot-cpp-test --config Debug -- $MSBuildOptions"
+    Format-Eval cmake "--build . $doVerbose -t godot-cpp-test --config RelWithDebInfo -- $MSBuildOptions"
 
     Set-Location $buildDev
     # scons target=template_debug dev_build=yes"
