@@ -99,4 +99,28 @@ now it wants me to source the env.
 
 `source ~/emsdk/emsdk_env.sh`
 
+## Xcode
 
+Shit, the structure of how I have things setup is broken for Xcode.
+
+```text
+CMake Error in CMakeLists.txt:
+  The custom command generating
+
+    /Users/enetheru/build/godot-cpp/Darwin-cmake-xcode/cmake-build/gen/include/godot_cpp/core/ext_wrappers.gen.inc
+
+  is attached to multiple targets:
+
+    template_debug
+    editor
+    template_release
+
+  but none of these is a common dependency of the other(s).  This is not
+  allowed by the Xcode "new build system".
+```
+
+There is a way forward that works for a single target, but that means no
+multi-target in xcode. I can simply split out the generation in the loop into a
+function and generate for a single target.
+
+It might be worth doing that anyway.
