@@ -16,6 +16,7 @@ $script:buildDir = ''
 
 function Prepare {
     PrepareCommon
+    $doFresh = ($fresh) ? "--fresh" : $null
 
     $script:buildDir = "$buildRoot/cmake-build-default"
     if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
@@ -23,16 +24,15 @@ function Prepare {
         New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
     }
     Set-Location $buildDir
+
+    Format-Eval cmake "$doFresh .. "
 }
 
 function Build {
     H1 "CMake Build"
-
     $doVerbose = ($verbose) ? "--verbose" : $null
-    $doFresh = ($fresh) ? "--fresh" : $null
-
     $MSBuildOptions = "/nologo /v:m /clp:ShowCommandLine;ForceNoAlign"
 
-    Format-Eval cmake "$doFresh .. "
-    Format-Eval cmake "--build . $doVerbose -t godot-cpp-test --config Debug -- $MSBuildOptions"
+    Set-Location $buildDir
+    Format-Eval cmake "--build . $doVerbose -t godot-cpp-test --config RelWithDebInfo -- $MSBuildOptions"
 }

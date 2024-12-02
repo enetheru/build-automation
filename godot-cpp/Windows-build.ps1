@@ -251,7 +251,7 @@ foreach( $script in $buildScripts ) {
 
     $matchPattern = '^lib|^link|memory|Lib\.exe|link\.exe|  󰞷'
     [array]$compilerDefaults = ("fp:precise", "Gd", "GR", "GS", "Zc:forScope", "Zc:wchar_t",
-            "DYNAMICBASE", "NXCOMPAT", "OPT:REF", "SUBSYSTEM:CONSOLE", "TLBID:1",
+            "DYNAMICBASE", "NXCOMPAT", "SUBSYSTEM:CONSOLE", "TLBID:1",
             "errorReport:queue", "ERRORREPORT:QUEUE",
             "diagnostics:column", "INCREMENTAL", "NOLOGO", "nologo")
     rg -M2048 $matchPattern "$traceLog" `
