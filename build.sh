@@ -195,6 +195,9 @@ for script in "${buildScripts[@]}"; do
     echo "    traceLog    = $traceLog"
     echo "    cleanLog    = $cleanLog"
 
+    # set default environment and commands.
+    envRun="$SHELL -c"
+    envClean="CleanLog-Default"
     # source $envRun and $envActions from script.
     source "$targetRoot/$script" "get_env"
 
@@ -203,19 +206,5 @@ for script in "${buildScripts[@]}"; do
     $envRun "${vars[*]} . $targetRoot/$envActions" 2>&1 | tee "$traceLog"
 
     # Cleanup Logs
-    matchPattern='(register_types|memory|libgdexample|libgodot-cpp)'
-    rg -M2048 $matchPattern "$traceLog" | sed -E 's/ +/\n/g' \
-        | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' > "$cleanLog"
+    $envClean $traceLog > $cleanLog
 done
-
-# $matchPattern = '^lib|^link|memory|Lib\.exe|link\.exe|  󰞷'
-# [array]$compilerDefaults = ("fp:precise", "Gd", "GR", "GS", "Zc:forScope", "Zc:wchar_t",
-        # "DYNAMICBASE", "NXCOMPAT", "SUBSYSTEM:CONSOLE", "TLBID:1",
-        # "errorReport:queue", "ERRORREPORT:QUEUE",
-        # "diagnostics:column", "INCREMENTAL", "NOLOGO", "nologo")
-# rg -M2048 $matchPattern "$traceLog" `
-    # | sed -E 's/ +/\n/g' `
-    # | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' `
-    # | sed -E ':a;$!N;s/(Program|Microsoft|Visual|vcxproj|->)\n/\1 /;ta;P;D' `
-    # | sed -E ':a;$!N;s/(\.\.\.|omitted|end|of|long)\n/\1 /;ta;P;D' `
-    # | sed -E "/^\/($($compilerDefaults -Join '|'))$/d" > "$cleanLog"

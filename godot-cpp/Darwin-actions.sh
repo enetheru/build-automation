@@ -47,15 +47,13 @@ PrepareCommon(){
     cd "$buildRoot" || exit 1
     # Clean up key artifacts to trigger rebuild
     declare -a artifacts
-    artifacts+=("$(rg -u --files | rg "(memory|example).*?o(bj)?$")")
-    artifacts+=("$(rg -u --files | rg "\.(a|lib|so|dll|dylib)$")")
+    fragments=".*(memory|libgodot-cpp|libgdexample).*"
+    extensions="(o|a|lib|so|dll|dylib)"
+    artifacts=($(find -E . -type f -regex "$fragments\.$extensions" -print ))
 
     if [ ${#artifacts} -gt 0 ]; then
-      H3 "Prepare"
-      Warning "Deleting key Artifacts"
-      for item in "${artifacts[@]}"; do
-        Format-Eval "rm '$item'"
-      done
+        Warning "Deleting ${#artifacts} Artifacts"
+        printf "%s\n" "${artifacts[@]}" | tee >(cat >&5) | xargs rm
     fi
     cd "$prev"
 }

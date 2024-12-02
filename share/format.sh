@@ -117,3 +117,27 @@ function Warning {
 function Error {
   printf "\n${RED}Error: %s${NC}\n" "$1"
 }
+
+# Log re-formatting for easy comparison
+function CleanLog-Default {
+    matchPattern='(register_types|memory|libgdexample|libgodot-cpp)'
+    rg -M2048 $matchPattern "$1" | sed -E 's/ +/\n/g' \
+        | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D'
+}
+
+function CleanLog-macos {
+    # Cleanup Logs
+    keep='  󰞷 cmake|^ranlib|memory.cpp|Cocoa|libgdexample'
+    scrub="\[[0-9]+\/[0-9]+\]|&&|:|󰞷"
+    joins="-o|-arch|-framework|-t|-j|-MT|-MF|-isysroot|-install_name|Omitted|long|matching"
+    rg -M2048 "$keep" "$1" \
+        | sed -E ":start
+            s/ +/\n/g;t start
+            s/$scrub//;t start" \
+        | sed -E ":start
+            \$!N
+            s/($joins)\n/\1 /;t start
+            P;D" \
+        | sed "s/^cmake/\ncmake/" \
+        | sed 'N; /^\n$/d;P;D'
+}

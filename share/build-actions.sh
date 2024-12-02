@@ -72,28 +72,25 @@ function Clean {
     echo
 }
 
+function CleanLog-Default {
+    matchPattern='(register_types|memory|libgdexample|libgodot-cpp)'
+    rg -M2048 $matchPattern "$1" | sed -E 's/ +/\n/g' \
+        | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D'
+}
 
-function LogClean {
-    #Path
-    echo $1
-
+function CleanLog-macos {
     # Cleanup Logs
-    matchPattern='  󰞷|^ranlib|memory.cpp|Cocoa'
-    joins="o|arch|framework"
-    rg -M2048 $matchPattern "$1" \
-        | sed -E 's/ +/\n/g' \
-        | sed -e ':a' -Ee "\$!N;s/(-($joins))\n/\1 /;ta" -e'P;D'
-
-# $matchPattern = '^lib|^link|memory|Lib\.exe|link\.exe|  󰞷'
-# [array]$compilerDefaults = ("fp:precise", "Gd", "GR", "GS", "Zc:forScope", "Zc:wchar_t",
-        # "DYNAMICBASE", "NXCOMPAT", "SUBSYSTEM:CONSOLE", "TLBID:1",
-        # "errorReport:queue", "ERRORREPORT:QUEUE",
-        # "diagnostics:column", "INCREMENTAL", "NOLOGO", "nologo")
-# rg -M2048 $matchPattern "$traceLog" `
-    # | sed -E 's/ +/\n/g' `
-    # | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' `
-    # | sed -E ':a;$!N;s/(Program|Microsoft|Visual|vcxproj|->)\n/\1 /;ta;P;D' `
-    # | sed -E ':a;$!N;s/(\.\.\.|omitted|end|of|long)\n/\1 /;ta;P;D' `
-    # | sed -E "/^\/($($compilerDefaults -Join '|'))$/d" > "$cleanLog"
-
+    keep='  󰞷 cmake|^ranlib|memory.cpp|Cocoa|libgdexample'
+    scrub="\[[0-9]+\/[0-9]+\]|&&|:|󰞷"
+    joins="-o|-arch|-framework|-t|-j|-MT|-MF|-isysroot|-install_name|Omitted|long|matching"
+    rg -M2048 $keep "$1" \
+        | sed -E ":start
+            s/ +/\n/g;t start
+            s/$scrub//;t start" \
+        | sed -E ":start
+            \$!N
+            s/($joins)\n/\1 /;t start
+            P;D" \
+        | sed "s/^cmake/\ncmake/" \
+        | sed 'N; /^\n$/d;P;D'
 }

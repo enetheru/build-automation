@@ -5,6 +5,7 @@ if [ "$1" = "get_env" ]; then
     H4 "Env Settings"
     envRun="$SHELL -c"
     envActions="Darwin-actions.sh"
+    envClean="CleanLog-macos"
     echo "    run command   = $envRun"
     echo "    action script = $envActions"
     return
