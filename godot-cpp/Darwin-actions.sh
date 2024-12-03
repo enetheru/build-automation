@@ -56,8 +56,10 @@ PrepareCommon(){
         printf "%s\n" "${artifacts[@]}" | tee >(cat >&5) | xargs rm
     fi
 
-    H4 "Looking for generated files"
+    # zsh will error if there is a glob failure.
+    setopt NULL_GLOB
     genDirs=(cmake-build-*/gen)
+    unsetopt NULL_GLOB
     if [ ${#genDirs} -gt 0 ]; then
         Warning "Deleting generated files"
         printf "%s\n" "${genDirs[@]}" | tee >(cat >&5) | xargs rm -r
