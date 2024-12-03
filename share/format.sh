@@ -125,11 +125,29 @@ function CleanLog-Default {
         | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D'
 }
 
-function CleanLog-macos {
+function CleanLog-macos-scons {
+    # Cleanup Logs
+    keep='  󰞷 scons|^ranlib|^ar rc|memory.cpp|Cocoa|libgdexample'
+    scrub="\[[0-9]+\/[0-9]+\]|&&|:|󰞷"
+    joins="-o|-arch|-framework|-t|-j|-MT|-MF|-isysroot|-install_name"
+    splits="scons|clang|ranlib|ar"
+    rg -M2048 "$keep" "$1" \
+        | sed -E ":start
+            s/ +/\n/;t start
+            s/$scrub//;t start" \
+        | sed -E ":start
+            \$!N
+            s/($joins)\n/\1 /;t start
+            P;D" \
+        | sed -E "s/^($splits)/\n\1/" \
+        | sed 'N; /^\n$/d;P;D'
+}
+
+function CleanLog-macos-cmake {
     # Cleanup Logs
     keep='  󰞷 cmake|^ranlib|memory.cpp|Cocoa|libgdexample'
     scrub="\[[0-9]+\/[0-9]+\]|&&|:|󰞷"
-    joins="-o|-arch|-framework|-t|-j|-MT|-MF|-isysroot|-install_name|Omitted|long|matching"
+    joins="-o|-arch|-framework|-t|-j|-MT|-MF|-isysroot|-install_name"
     rg -M2048 "$keep" "$1" \
         | sed -E ":start
             s/ +/\n/g;t start

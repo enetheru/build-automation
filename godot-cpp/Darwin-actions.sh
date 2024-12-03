@@ -48,7 +48,7 @@ PrepareCommon(){
     # Clean up key artifacts to trigger rebuild
     declare -a artifacts
     fragments=".*(memory|libgodot-cpp|libgdexample).*"
-    extensions="(o|a|lib|so|dll|dylib)"
+    extensions="(o|os|a|lib|so|dll|dylib)"
     artifacts=($(find -E . -type f -regex "$fragments\.$extensions" -print ))
 
     if [ ${#artifacts} -gt 0 ]; then
