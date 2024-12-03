@@ -141,7 +141,7 @@ echo
 declare -a buildScripts
 buildScripts=($(
     find $targetRoot -maxdepth 1 -type f -name "$platform*" -print \
-    | xargs basename \
+    | xargs -I '{}' basename '{}' \
     | grep -v "build" \
     | grep -v "actions" \
     | grep -e "$scriptFilter"))
