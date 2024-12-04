@@ -168,13 +168,12 @@ if [ $list -eq 1 ]; then exit; fi
 mkdir -p "$targetRoot/logs-raw"
 mkdir -p "$targetRoot/logs-clean"
 
-
-
 # Process Scripts
 for script in "${buildScripts[@]}"; do
     # Setup the options each time to clobber any unintended changes.
     declare -a vars
     vars+=("root='$root'")
+    vars+=("targetRoot='$targetRoot'")
     vars+=("gitBranch='$gitBranch'")
     vars+=("fetch='$fetch'")
     vars+=("configure='$configure'")
@@ -200,7 +199,7 @@ for script in "${buildScripts[@]}"; do
     source "$targetRoot/$script" "get_env"
 
     # Run the action script
-    H2 "Start"
+    H3 "Start Action"
     $envRun "${vars[*]} . $targetRoot/$envActions" 2>&1 | tee "$traceLog"
 
     # Cleanup Logs
