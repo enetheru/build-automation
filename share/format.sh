@@ -145,7 +145,7 @@ function CleanLog-macos-cmake {
     # Cleanup Logs
     keep='  󰞷 cmake|^ranlib|memory.cpp|Cocoa|libgdexample'
     scrub="\[[0-9]+\/[0-9]+\]|&&|:|󰞷"
-    joins="-o|-arch|-framework|-t|-j|-MT|-MF|-isysroot|-install_name"
+    joins="-o|-arch|-framework|-t|-j|-MD|-MT|-MF|-isysroot|-install_name"
     rg -M2048 "$keep" "$1" \
         | sed -E ":start
             s/ +/\n/g;t start
@@ -155,5 +155,57 @@ function CleanLog-macos-cmake {
             s/($joins)\n/\1 /;t start
             P;D" \
         | sed "s/^cmake/\ncmake/" \
+        | sed 'N; /^\n$/d;P;D'
+}
+
+function CleanLog-ucrt-scons {
+    # Cleanup Logs
+    keep='  󰞷 scons|^ranlib|^ar rc|memory.cpp|Cocoa|libgdexample'
+    joins="-o|-arch|-framework|-t|-j|-MT|-MF|-isysroot|-install_name|ar"
+    scrub="\[[0-9]+\/[0-9]+\]|&&|:|󰞷|build_profile"
+    splits="^scons|^clang|^ranlib|^ar"
+    rg -M2048 "$keep" "$1" \
+        | sed -E "s/ +/\n/g" \
+        | sed -E ":start
+            \$!N; s/($joins)\n/\1 /;t start
+            P;D" \
+        | sed -E "/$scrub/d" \
+        | sed -E "s/($splits)/\n\1/" \
+        | sed 'N; /^\n$/d;P;D'
+}
+
+function CleanLog-ucrt-cmake {
+    # Cleanup Logs
+    keep='  󰞷 cmake|^ranlib|^ar rc|memory.cpp|Cocoa|libgdexample'
+    joins="-o|-arch|-framework|-t|-j|-MT|-MF|-isysroot|-install_name|ar"
+    scrub="^\[[0-9]+\/[0-9]+\]|^&&|^:|^󰞷|^build_profile|^-MD|^-MT|^-MF"
+    splits="^cmake|^ranlib|^ar"
+    sed -E 's/&&/\n/g' "$1"\
+        | rg -M2048 "$keep" \
+        | sed -E "s/ +/\n/g" \
+        | sed -E ":start
+            \$!N; s/($joins)\n/\1 /;t start
+            P;D" \
+        | sed -E "/$scrub/d" \
+        | sed -E "s/($splits)/\n\1/" \
+        | sed 'N; /^\n$/d;P;D'
+}
+
+
+function CleanLog-gcc-scons {
+    # Cleanup Logs
+    keep=' scons|gcc-ar q|memory.cpp|libgdexample'
+    joins="-o|-arch|-framework|-t|-j|-MT|-MF|-isysroot|-install_name|ar"
+    scrub="^\[[0-9]+\/[0-9]+\]|^&&|^:|󰞷|^build_profile|^-MD|^-MT|^-MF"
+    splits="mingw32-"
+    sed -E 's/&&/\n/g' "$1"\
+        | cut -c 1-1024 \
+        | sed -En "/$keep/p" \
+        | sed -E "s/ +/\n/g" \
+        | sed -E ":start
+            \$!N; s/($joins)\n/\1 /;t start
+            P;D" \
+        | sed -E "/$scrub/d" \
+        | sed -E "/($splits)/{x;p;x;}" \
         | sed 'N; /^\n$/d;P;D'
 }
