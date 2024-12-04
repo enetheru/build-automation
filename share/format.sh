@@ -128,18 +128,16 @@ function CleanLog-Default {
 function CleanLog-macos-scons {
     # Cleanup Logs
     keep='  󰞷 scons|^ranlib|^ar rc|memory.cpp|Cocoa|libgdexample'
-    scrub="\[[0-9]+\/[0-9]+\]|&&|:|󰞷"
-    joins="-o|-arch|-framework|-t|-j|-MT|-MF|-isysroot|-install_name"
-    splits="scons|clang|ranlib|ar"
+    joins="-o|-arch|-framework|-t|-j|-MT|-MF|-isysroot|-install_name|ar"
+    scrub="\[[0-9]+\/[0-9]+\]|&&|:|󰞷|build_profile"
+    splits="^scons|^clang|^ranlib|^ar"
     rg -M2048 "$keep" "$1" \
+        | sed -E "s/ +/\n/g" \
         | sed -E ":start
-            s/ +/\n/;t start
-            s/$scrub//;t start" \
-        | sed -E ":start
-            \$!N
-            s/($joins)\n/\1 /;t start
+            \$!N; s/($joins)\n/\1 /;t start
             P;D" \
-        | sed -E "s/^($splits)/\n\1/" \
+        | sed -E "/$scrub/d" \
+        | sed -E "s/($splits)/\n\1/" \
         | sed 'N; /^\n$/d;P;D'
 }
 

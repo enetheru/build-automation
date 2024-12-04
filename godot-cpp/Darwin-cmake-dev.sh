@@ -25,32 +25,23 @@ function Build {
     doVerbose="$(if [ "$verbose" -eq 1 ]; then echo "--verbose"; fi)"
 
     # scons target=template_debug debug_symbols=yes"
-    buildType="RelWithDebInfo"
-    buildConfig="-DCMAKE_BUILD_TYPE=$buildType"
-
-    buildDir="$buildRoot/cmake-build-$buildType"
+    buildDir="$buildRoot/cmake-build-RelWithDebInfo"
     mkdir -p "$buildDir" && cd $buildDir || return 1
 
-    Format-Eval "cmake $doFresh .. -GNinja $buildConfig"
+    Format-Eval "cmake $doFresh .. -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo"
     Format-Eval "cmake --build . -j 7 $doVerbose -t godot-cpp-test"
 
     # scons target=template_debug dev_build=yes"
-    buildType="Debug"
-    buildConfig="-DCMAKE_BUILD_TYPE=$buildType"
-    
-    buildDir="$buildRoot/cmake-build-$buildType"
+    buildDir="$buildRoot/cmake-build-Debug"
     mkdir -p "$buildDir" && cd $buildDir || return 1
     
-    Format-Eval "cmake $doFresh .. -GNinja $buildConfig -DGODOT_DEV_BUILD=YES"
+    Format-Eval "cmake $doFresh .. -GNinja -DCMAKE_BUILD_TYPE=Debug -DGODOT_DEV_BUILD=YES"
     Format-Eval "cmake --build . -j 7 $doVerbose -t godot-cpp-test"
 
     # scons target=template_debug dev_build=yes debug_symbols=no"
-    buildType="Release"
-    buildConfig="-DCMAKE_BUILD_TYPE=$buildType"
-
-    buildDir="$buildRoot/cmake-build-$buildType"
+    buildDir="$buildRoot/cmake-build-Release"
     mkdir -p "$buildDir" && cd $buildDir || return 1
 
-    Format-Eval "cmake $doFresh .. -GNinja -DGODOT_DEV_BUILD=YES"
+    Format-Eval "cmake $doFresh .. -GNinja -DCMAKE_BUILD_TYPE=Release -DGODOT_DEV_BUILD=YES"
     Format-Eval "cmake --build . -j 7 $doVerbose -t godot-cpp-test"
 }
