@@ -13,7 +13,9 @@ $config = Split-Path -Path $script -LeafBase
 
 H2 "Build '$target' on '$platform' using '$config'"
 Write-Output @"
-  thisScript  = $thisScript
+  envActions  = $thisScript
+  buildScript = $script
+
   fetch       = $fetch
   configure   = $configure
   build       = $build

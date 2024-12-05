@@ -25,7 +25,7 @@ $script:buildDir = ''
 
 function Prepare {
     PrepareCommon
-    $doFresh = ($fresh) ? "--fresh" : $null
+    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
 
     $script:buildDir = "$buildRoot/cmake-build-default"
     if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
@@ -39,7 +39,7 @@ function Prepare {
 
 function Build {
     H1 "CMake Build"
-    $doVerbose = ($verbose) ? "--verbose" : $null
+    $doVerbose = ($verbose -eq $true) ? "--verbose" : $null
     $MSBuildOptions = "/nologo /v:m /clp:ShowCommandLine;ForceNoAlign"
 
     Set-Location $buildDir

@@ -55,13 +55,17 @@ function Fetch {
 }
 
 function Prepare {
+    H4 "No Prepare Actions Specified"
 }
 
 function Build {
+    H4 "No Build Actions Specified"
 }
 
 function Test {
+    H4 "No Test Actions Specified"
 }
 
 function Clean {
+    H4 "No Clean Actions Specified"
 }

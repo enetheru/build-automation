@@ -13,14 +13,14 @@ if( $args -eq "get_env" ) {
     return
 }
 
-$toolchain = "C:\androidsdk\ndk\23.2.8568313\build\cmake\android.toolchain.cmake"
-$options = "-DANDROID_PLATFORM=android-29 -DANDROID_ABI=x86_64"
 $script:buildDir = ''
 
 function Prepare {
+    H1 "Prepare"
+
     PrepareCommon
 
-    $doFresh = ($fresh) ? "--fresh" : $null
+    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
 
     $script:buildDir = "$buildRoot/cmake-build-android"
     if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
@@ -29,21 +29,24 @@ function Prepare {
     }
     Set-Location $buildDir
 
-    $cmakeVars = "-DGODOT_ENABLE_TESTING=YES -DTEST_TARGET=template_release --toolchain $toolchain"
-    Format-Eval cmake "$doFresh .. $cmakeVars"
+    H3 "CMake Configure"
+    $toolchain = "C:\androidsdk\ndk\23.2.8568313\build\cmake\android.toolchain.cmake"
+    [array]$cmakeVars = "-GNinja"
+    $cmakeVars += "-DGODOT_ENABLE_TESTING=YES"
+    $cmakeVars += "-DTEST_TARGET=template_release"
+    $cmakeVars += "-DANDROID_PLATFORM=android-29"
+    $cmakeVars += "-DANDROID_ABI=x86_64"
+    $cmakeVars += "--toolchain $toolchain"
+    Format-Eval cmake "$doFresh .. $($cmakeVars -Join ' ')"
 }
 
 function Build {
     H1 "CMake Build"
 
-    $doVerbose = ($verbose) ? "--verbose" : $null
+    $doVerbose = ($verbose -eq $true) ? "--verbose" : $null
 
     Set-Location $buildDir
 
     $cmakeVars = "--target godot-cpp-test --config Release"
-    Format-Eval cmake "--build .. $doVerbose $cmakeVars"
-}
-
-function Test {
-    H4 "TODO Testing"
+    Format-Eval cmake "--build . $doVerbose $cmakeVars"
 }
