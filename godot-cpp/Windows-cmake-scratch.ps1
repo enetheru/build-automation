@@ -37,7 +37,7 @@ function Prepare {
     }
     Set-Location $buildDir
 
-    Format-Eval cmake "$doFresh .. "
+    Format-Eval cmake "$doFresh .. -DGODOT_ENABLE_TESTING=ON"
 }
 
 function Build {

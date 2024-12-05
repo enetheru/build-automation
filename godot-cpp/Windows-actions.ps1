@@ -65,7 +65,7 @@ Write-Output @"
   targetRoot  = $targetRoot
 "@
 
-cd "$targetRoot"
+Set-Location "$targetRoot"
 
 
 
@@ -85,7 +85,7 @@ function PrepareCommon {
 
     if( $artifacts.Length -gt 0 ) {
         H3 "Removing key Artifacts"
-        $artifacts | Sort-Object | Get-Unique | %{
+        $artifacts | Sort-Object | Get-Unique | ForEach-Object {
             Write-Host "Removing $_"
             Remove-Item $_
         }
@@ -121,7 +121,7 @@ function TestCommon {
     H4 "Run the test project"
     Format-Command "$godot_tr --path `"$buildRoot\test\project\`" --quit --headless`n"
     & $godot_tr --path "$buildRoot\test\project\" --quit --headless | Tee-Object -Variable result
-    @($result.split( "`r`n" ) | ? { $_ -Match "FINI|PASS|FAIL|Godot" }) >> "$targetRoot\summary.log"
+    @($result.split( "`r`n" ) | Where-Object { $_ -Match "FINI|PASS|FAIL|Godot" }) >> "$targetRoot\summary.log"
 }
 
 H2 "Processing - $config"
@@ -146,17 +146,17 @@ if( $configure ) {
     }
 }
 
-if( $build ){
+if( $build ) {
     Build 2>&1
     if( $LASTEXITCODE ) {
         Write-Error "build-Failure"
     }
 }
 
-if( $test ){
-    $result=("unknown")
+if( $test ) {
+    $result = ("unknown")
     Test 2>&1 | Tee-Object -Variable result
-    if( @($result | ? { $_ })[-1] -Match "PASSED" ) {
+    if( @($result | Where-Object { $_ })[-1] -Match "PASSED" ) {
         Write-Output "Test Succeded"
     } else {
         Write-Output "Test-Failure"

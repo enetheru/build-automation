@@ -30,11 +30,11 @@ trap {
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-if( -Not( $fetch -Or $configure -Or $build -Or $test)){
-    $fetch=$true; $configure=$true; $build=$true; $test=$true
+if( -Not ( $fetch -Or $configure -Or $build -Or $test) ) {
+    $fetch = $true; $configure = $true; $build = $true; $test = $true
 }
 
-$verbose=$verbosePreference
+$verbose = $verbosePreference
 
 $prev_dir = $(Get-Location)
 

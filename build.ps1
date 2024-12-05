@@ -111,7 +111,7 @@ if( $scriptCount -eq 0 ) {
 Write-Output "  Scripts:"
 $buildScripts | ForEach-Object { Write-Output "    $_" }
 
-if( $list ){
+if( $list ) {
     exit
 }
 
@@ -150,7 +150,7 @@ foreach( $script in $buildScripts ) {
 `$test='$test'
 `$fresh='$fresh'
 `$append='$append'
-`$verbose=1
+`$verbose='$VerbosePreference'
 `$script='$script'
 $targetRoot/$envActions
 "@ 2>&1 | Tee-Object "$traceLog"
