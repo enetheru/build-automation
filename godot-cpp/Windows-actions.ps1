@@ -121,28 +121,28 @@ H3 "Processing - $config"
 . "$root\share\build-actions.ps1"
 . "$targetRoot\$script"
 
-if( $fetch -eq 1 ) {
+if( $fetch -eq $true ) {
     Fetch 2>&1
     if( $LASTEXITCODE ) {
         Write-Error "Fetch-Failure"
     }
 }
 
-if( $configure -eq 1 ) {
+if( $configure -eq $true ) {
     Prepare 2>&1
     if( $LASTEXITCODE ) {
         Write-Error "Prep-Failure"
     }
 }
 
-if( $build -eq 1 ) {
+if( $build -eq $true ) {
     Build 2>&1
     if( $LASTEXITCODE ) {
         Write-Error "build-Failure"
     }
 }
 
-if( $test -eq 1 ) {
+if( $test -eq $true ) {
     $result = ("unknown")
     Test 2>&1 | Tee-Object -Variable result
     if( @($result | Where-Object { $_ })[-1] -Match "PASSED" ) {
