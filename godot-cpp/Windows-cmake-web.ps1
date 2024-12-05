@@ -7,49 +7,52 @@ if( -Not ($MyInvocation.InvocationName -eq '.') ) {
     exit 1
 }
 
-# Powershell execution options
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+# tell the build command how to run ourselves.
+if( $args -eq "get_env" ) {
+    H4 "Using Default env Settings"
+    return
+}
 
-$emsdk = "C:\emsdk"
+$script:buildDir = ''
 
 function Prepare {
+    H1 "Prepare"
+    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
+
     PrepareCommon
 
-    H1 "Update EmSDK"
-    Set-Location $emsdk
-    git pull
+    H3 "Update EmSDK"
+    Set-Location "C:\emsdk"
+    Format-Eval git pull
 
     # perform any updates to emscripten as required.
-    &"$emsdk\emsdk.ps1" install latest
+    Format-Eval ./emsdk.ps1 install latest
+
+    H3 "Activate EmSDK"
+    Format-Eval ./emsdk.ps1 activate latest
+
+    # Create cmake-build directory
+    $script:buildDir = "$buildRoot/cmake-build"
+    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
+        H4 "Creating $buildDir"
+        New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
+    }
+    Set-Location $buildDir
+
+    H3 "CMake Configure"
+    [array]$cmakeVars = $null
+    $cmakeVars += "-DGODOT_ENABLE_TESTING=YES"
+    $cmakeVars += "-DTEST_TARGET=template_release"
+
+    Format-Eval "emcmake.bat" "cmake $doFresh .. $($cmakeVars -Join ' ')"
 }
 
 function Build {
-    H4 "Activate EmSDK"
-    #    Set-Location $emsdk
-    &"$emsdk\emsdk.ps1" activate latest
-
     H1 "CMake Build"
+    $doVerbose = ($verbose -eq $true) ? "--verbose" : $null
 
-    H4 "Creating build Dir"
-    $buildDir = "$buildRoot\cmake-build"
-    New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
     Set-Location $buildDir
 
-    H4 "CMake Configure"
-    if( $fresh ) {
-        $doFresh = '--fresh'
-    } else {
-        $doFresh = ''
-    }
-    Format-Command "emcmake.bat cmake $doFresh ..\ -DTEST_TARGET=template_release"
-    emcmake.bat cmake $doFresh ..\ -DTEST_TARGET=template_release
-
-    H4 "CMake Build"
-    Format-Command "cmake --build . -j 12 --verbose -t godot-cpp-test --config Release"
-    cmake --build . -j 12 --verbose -t godot-cpp-test --config Release
-}
-
-function Test {
-    H4 "TODO Testing"
+    $cmakeVars = "--target godot-cpp-test --config Release"
+    Format-Eval cmake "--build . $doVerbose $cmakeVars"
 }

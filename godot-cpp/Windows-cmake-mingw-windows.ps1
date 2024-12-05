@@ -7,47 +7,49 @@ if( -Not ($MyInvocation.InvocationName -eq '.') ) {
     exit 1
 }
 
-# Powershell execution options
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+# tell the build command how to run ourselves.
+if( $args -eq "get_env" ) {
+    H4 "Using Default env Settings"
+    return
+}
 
-$toolChain = "$root\toolchains\w64-mingw-w64.cmake"
+$script:buildDir = ''
 
 function Prepare {
+    H1 "Prepare"
+    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
+
     PrepareCommon
+
+    $toolChain = "$root\toolchains\w64-mingw-w64.cmake"
+
+    $script:buildDir = "$buildRoot/cmake-build"
+    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
+        H4 "Creating $buildDir"
+        New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
+    }
+    Set-Location $buildDir
+
+    H3 "Prepend `$env:path with C:\mingw64\bin"
+    $env:Path = 'C:\mingw64\bin;' + $env:Path
+
+    H3 "CMake Configure"
+    $toolChain = "$root\toolchains\w64-mingw-w64.cmake"
+
+    [array]$cmakeVars = "-G'MinGW Makefiles'"
+    $cmakeVars += "-DGODOT_ENABLE_TESTING=YES"
+    $cmakeVars += "-DTEST_TARGET=template_release"
+    $cmakeVars += "--toolchain $toolchain"
+
+    Format-Eval cmake "$doFresh .. $($cmakeVars -Join ' ')"
 }
 
 function Build {
     H1 "CMake Build"
+    $doVerbose = ($verbose -eq $true) ? "--verbose" : $null
 
-    H4 "Creating build Dir"
-    $buildDir = "$buildRoot\cmake-build"
-    New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
-    Set-Location $buildDir
-
-    $oldPath = $env:Path
-    $env:Path = 'C:\mingw64\bin;' + $env:Path     # attach to the beginning
-
-    H4 "CMake Configure"
-    if( $fresh ) {
-        $doFresh = '--fresh'
-    } else {
-        $doFresh = ''
-    }
-    Format-Command "cmake $doFresh ..\ -G`"MinGW Makefiles`" -DTEST_TARGET=template_release --toolchain $toolChain"
-    cmake $doFresh ..\ -G"MinGW Makefiles" -DTEST_TARGET=template_release --toolchain $toolChain
-
-    if( $LASTEXITCODE ) {
-        Write-Error "Configuration failure"
-    }
-
-    Write-Output "Last Output Code '$LASTEXITCODE'"
-
-    H4 "CMake Build"
-    Format-Command "cmake --build . -j 12 --verbose -t godot-cpp-test --config Release"
-    cmake --build . -j 12 --verbose -t godot-cpp-test --config Release
-
-    $env:Path = $oldPath
+    $cmakeVars = "--target godot-cpp-test --config Release"
+    Format-Eval cmake "--build . $doVerbose $cmakeVars"
 }
 
 function Test {

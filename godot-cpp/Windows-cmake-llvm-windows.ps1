@@ -7,38 +7,50 @@ if( -Not ($MyInvocation.InvocationName -eq '.') ) {
     exit 1
 }
 
-# Powershell execution options
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+# tell the build command how to run ourselves.
+if( $args -eq "get_env" ) {
+    H4 "Using Default env Settings"
+    return
+}
 
-$toolChain = "$root\toolchains\w64-llvm.cmake"
+$script:buildDir = ''
 
 function Prepare {
+    H1 "Prepare"
+    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
+
     PrepareCommon
+
+    # Create cmake-build directory
+    $script:buildDir = "$buildRoot/cmake-build"
+    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
+        H4 "Creating $buildDir"
+        New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
+    }
+    Set-Location $buildDir
+
+    H3 "CMake Configure"
+    $toolChain = "$root\toolchains\w64-llvm.cmake"
+
+    [array]$cmakeVars = "-GNinja"
+    $cmakeVars += "-DGODOT_ENABLE_TESTING=YES"
+    $cmakeVars += "-DTEST_TARGET=template_release"
+    $cmakeVars += "--toolchain $toolchain"
+
+    Format-Eval cmake "$doFresh .. $($cmakeVars -Join ' ')"
 }
 
 function Build {
     H1 "CMake Build"
+    $doVerbose = ($verbose -eq $true) ? "--verbose" : $null
 
-    H4 "Creating build Dir"
-    $buildDir = "$buildRoot\cmake-build"
-    New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
     Set-Location $buildDir
 
-    H4 "CMake Configure"
-    if( $fresh ) {
-        $doFresh = '--fresh'
-    } else {
-        $doFresh = ''
-    }
-    Format-Command "cmake $doFresh ..\ -GNinja -DTEST_TARGET=template_release --toolchain $toolChain"
-    cmake $doFresh ..\ -GNinja -DTEST_TARGET=template_release --toolchain $toolChain
-
-    H4 "CMake Build"
-    Format-Command "cmake --build . -j 12 --verbose -t godot-cpp-test --config Release"
-    cmake --build . -j 12 --verbose -t godot-cpp-test --config Release
+    $cmakeVars = "--target godot-cpp-test --config Release"
+    Format-Eval cmake "--build . $doVerbose $cmakeVars"
 }
 
 function Test {
+    H1 "Test"
     TestCommon
 }
