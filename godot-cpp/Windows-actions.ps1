@@ -1,15 +1,6 @@
 #!/usr/bin/env pwsh
 #Requires -Version 7.4
 
-# Because CLion starts this script in a pipeline, it errors if the script exits too fast.
-# Trapping the exit condition and sleeping for 1 prevents the error message.
-
-trap {
-    Write-Output "trap triggered on exception. Sleeping 1"
-    Set-Location $root
-    Start-Sleep -Seconds 1
-}
-
 # PowerShell execution options
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -20,8 +11,7 @@ $ErrorActionPreference = "Stop"
 
 $config = Split-Path -Path $script -LeafBase
 
-
-H2 "Build $target using $platform"
+H2 "Build '$target' on '$platform' using '$config'"
 Write-Output @"
   thisScript  = $thisScript
   fetch       = $fetch
@@ -58,16 +48,17 @@ Write-Output @"
 
 # Get the target root from this script location
 $targetRoot = $thisScript  | split-path -parent
+$buildRoot = "$targetRoot\$config"
+
 Write-Output @"
 
   platform    = $platform
   root        = $root
   targetRoot  = $targetRoot
+  buildRoot   = $buildRoot
 "@
 
 Set-Location "$targetRoot"
-
-
 
 # Some steps are identical.
 function PrepareCommon {
@@ -124,36 +115,34 @@ function TestCommon {
     @($result.split( "`r`n" ) | Where-Object { $_ -Match "FINI|PASS|FAIL|Godot" }) >> "$targetRoot\summary.log"
 }
 
-H2 "Processing - $config"
+H3 "Processing - $config"
 
-$buildRoot = "$targetRoot\$config"
-Write-Output "  buildRoot  = $buildRoot"
-
+# Source generic actions, and then override.
 . "$root\share\build-actions.ps1"
 . "$targetRoot\$script"
 
-if( $fetch ) {
+if( $fetch -eq 1 ) {
     Fetch 2>&1
     if( $LASTEXITCODE ) {
         Write-Error "Fetch-Failure"
     }
 }
 
-if( $configure ) {
+if( $configure -eq 1 ) {
     Prepare 2>&1
     if( $LASTEXITCODE ) {
         Write-Error "Prep-Failure"
     }
 }
 
-if( $build ) {
+if( $build -eq 1 ) {
     Build 2>&1
     if( $LASTEXITCODE ) {
         Write-Error "build-Failure"
     }
 }
 
-if( $test ) {
+if( $test -eq 1 ) {
     $result = ("unknown")
     Test 2>&1 | Tee-Object -Variable result
     if( @($result | Where-Object { $_ })[-1] -Match "PASSED" ) {
@@ -163,4 +152,5 @@ if( $test ) {
     }
 }
 
-H3 "Completed - $config"
+H2 "Completed - $config"
+Start-Sleep 1

@@ -31,8 +31,9 @@ $columns = 120
 
 # We really want sed for formatting and log cleaning.
 $sedCommand = $(Get-Command "sed")
-if( $sedCommand ) {
-    Write-Host "Sed found: " $sedCommand.Path
+if( -Not $sedCommand ) {
+    Write-Error "'sed' command is missing."
+    exit 1
 }
 
 
@@ -158,4 +159,27 @@ function Print-Last-Error {
     H4 "last exit?     = $LASTEXITCODE"
     H4 "auto var `$?   = $?"
     H4 "Error?         = $Error"
+}
+
+function CleanLog-Default {
+    # Clean the logs
+    # it goes like this, for each line that matches the pattern.
+    # split each line along spaces.
+    # [repeated per type of construct] re-join lines that match a set of tags
+    # the remove the compiler defaults, since CMake adds so many.
+
+    $matchPattern = '^lib|^link|memory|Lib\.exe|link\.exe|  󰞷'
+    [array]$compilerDefaults = (
+        "fp:precise",
+        "Gd", "GR", "GS",
+        "Zc:forScope", "Zc:wchar_t",
+        "DYNAMICBASE", "NXCOMPAT", "SUBSYSTEM:CONSOLE", "TLBID:1",
+        "errorReport:queue", "ERRORREPORT:QUEUE", "EHsc",
+        "diagnostics:column", "INCREMENTAL", "NOLOGO", "nologo")
+    rg -M2048 $matchPattern "$args" `
+        | sed -E 's/ +/\n/g' `
+        | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' `
+        | sed -E ':a;$!N;s/(Program|Microsoft|Visual|vcxproj|->)\n/\1 /;ta;P;D' `
+        | sed -E ':a;$!N;s/(\.\.\.|omitted|end|of|long)\n/\1 /;ta;P;D' `
+        | sed -E "/^\/($($compilerDefaults -Join '|'))$/d"
 }

@@ -9,20 +9,17 @@ if( -Not ($MyInvocation.InvocationName -eq '.') ) {
 
 # tell the build command how to run ourselves.
 if( $args -eq "get_env" ) {
-    H4 "Env Settings"
     $envRun = "pwsh"
     $envActions = "Windows-actions.ps1"
     $envClean = "CleanLog-Default"
-    Write-Output "    run command   = $envRun"
-    Write-Output "    action script = $envActions"
-    Write-Output "    clean action  = $envClean"
+    Write-Output @"
+
+    envRun        = $envRun
+    envActions    = $envActions
+    envClean      = $envClean
+"@
     return
 }
-
-# Powershell execution options
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
-
 
 $script:buildDir = ''
 

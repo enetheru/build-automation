@@ -56,8 +56,6 @@ Write-Output @"
 
   fresh build = $fresh
   log append  = $append
-  
-  scriptFilter = $scriptFilter
 "@
 
 if( $target -eq "" ) {
@@ -66,6 +64,7 @@ if( $target -eq "" ) {
 }
 
 Write-Output @"
+
   target      = $target
   branch      = $gitBranch
 "@
@@ -85,8 +84,8 @@ elseif( $IsWindows ) {
 
 $targetRoot = "$root\$target"
 
-Fill "- " | Center " Automatic "
 Write-Output @"
+
   platform    = $platform
   targetRoot  = $targetRoot
 "@
@@ -99,7 +98,11 @@ $buildScripts = @( Get-Item $targetRoot/$platform*.ps1 `
     | ForEach-Object { $_.Name } )
 
 $scriptCount = $buildScripts.count
-Write-Output "`n  Script count: $scriptCount"
+Write-Output @"
+
+  scriptFilter = $scriptFilter
+  Script count: $scriptCount
+"@
 
 #Fail if no scripts
 if( $scriptCount -eq 0 ) {
@@ -122,22 +125,28 @@ New-Item -Force -ItemType Directory -Path "$targetRoot/logs-clean" | Out-Null
 # Process Scripts
 foreach( $script in $buildScripts ) {
 
-    H4 "Starting $script"
+    H3 "Starting $script"
     $config = Split-Path -Path $script -LeafBase
 
     $traceLog = "$targetRoot\logs-raw\$config.txt"
     $cleanLog = "$targetRoot\logs-clean\$config.txt"
-    Write-Output "  traceLog   = $traceLog"
-    Write-Output "  cleanLog   = $cleanLog"
+    Write-Output "    traceLog   = $traceLog"
+    Write-Output "    cleanLog   = $cleanLog"
 
     # set default environment and commands.
-    $envRun = "pwsh -c"
+    $envRun = "pwsh"
+    $envActions = "$platform-actions.ps1"
     $envClean = "CleanLog-Default"
     # source $envRun and $envActions from script.
     . "$targetRoot/$script" "get_env"
 
     # Run the action script
-    H3 "Start Action"
+    #    try {
+    #        RunActions 2>&1 | Tee-Object -FilePath "$traceLog"
+    #    } catch {
+    #        Get-Error
+    #        exit
+    #    }
     &$envRun "-Command" @"
 `$root='$root'
 `$targetRoot='$targetRoot'
@@ -157,30 +166,4 @@ $targetRoot/$envActions
 
     # Cleanup Logs
     &$envClean "$traceLog" > $cleanLog
-
-
-#    try {
-#        RunActions 2>&1 | Tee-Object -FilePath "$traceLog"
-#    } catch {
-#        Get-Error
-#        exit
-#    }
-
-    # Clean the logs
-    # it goes like this, for each line that matches the pattern.
-    # split each line along spaces.
-    # [repeated per type of construct] re-join lines that match a set of tags
-    # the remove the compiler defaults, since CMake adds so many.
-
-    $matchPattern = '^lib|^link|memory|Lib\.exe|link\.exe|  󰞷'
-    [array]$compilerDefaults = ("fp:precise", "Gd", "GR", "GS", "Zc:forScope", "Zc:wchar_t",
-        "DYNAMICBASE", "NXCOMPAT", "SUBSYSTEM:CONSOLE", "TLBID:1",
-        "errorReport:queue", "ERRORREPORT:QUEUE", "EHsc",
-        "diagnostics:column", "INCREMENTAL", "NOLOGO", "nologo")
-    rg -M2048 $matchPattern "$traceLog" `
-        | sed -E 's/ +/\n/g' `
-        | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' `
-        | sed -E ':a;$!N;s/(Program|Microsoft|Visual|vcxproj|->)\n/\1 /;ta;P;D' `
-        | sed -E ':a;$!N;s/(\.\.\.|omitted|end|of|long)\n/\1 /;ta;P;D' `
-        | sed -E "/^\/($($compilerDefaults -Join '|'))$/d" > "$cleanLog"
 }
