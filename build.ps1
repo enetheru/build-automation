@@ -1,35 +1,6 @@
 #!/usr/bin/env pwsh
 #Requires -Version 7.4
 
-<#
-.SYNOPSIS
-    Build all the things
-.DESCRIPTION
-    I kept repeating myself, changing directories, forgetting commands,
-    so I thought I would automate it all away, this my attempt at doing so.
-    My ADHD and completionist mind makes me write these help things.
-.PARAMETER Fresh
-    Perform a cleanup prior to building
-.PARAMETER Append
-    Add to the build logs, rather than clobber them on each build
-.PARAMETER NoTest
-    Dont perform testing
-.PARAMETER Target
-    The target project to build
-.PARAMETER regexFilter
-    An extended regex filter to use when looking for build scripts
-.EXAMPLE
-    ./build godot-cpp
-    Will build all available configuration from the host system.
-.NOTES
-    Author: Samuel Nicholas
-    Date:   2024-11-15
-#.LINK
-#    http://whatver.com
-.
-#>
-
-
 [CmdletBinding( PositionalBinding = $false )]
 param(
     [Alias( "f" )] [switch] $fetch,
@@ -37,17 +8,21 @@ param(
     [Alias( "b" )] [switch] $build,
     [Alias( "t" )] [switch] $test,
 
+    [switch] $list,                 # show the list of scripts and exit
     [switch] $fresh,                # re-fresh the configuration
     [switch] $clean,                # clean the build directory
     [switch] $append,               # Append to the logs rather than clobber
-    [string] $regexFilter = ".*",   #Filter which scripts are used.
+    [string] $scriptFilter = ".*",  # Filter which scripts are used.
 
     [Parameter( Position = 0 )] [string] $target,       # Which target to use
     [Parameter( Position = 1 )] [string] $gitBranch,    # Which git branch to use
 
     [Parameter( ValueFromRemainingArguments = $true )]$passThrough #All remaining arguments
 )
-# Remaining arguments are treated as targets
+
+# Powershell execution options
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
 
 # Because Clion starts this script in a pipeline, it errors if the script exits too fast.
 # Trapping the exit condition and sleeping for 1 prevents the error message.
@@ -55,30 +30,25 @@ trap {
     Start-Sleep -Seconds 1
 }
 
-# Powershell execution options
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
-
-if( -Not( $fetch -Or $configure -Or $build -Or $test)){
-    $fetch=$true; $configure=$true; $build=$true; $test=$true
-}
-
-if( $regexFilter -eq "--" ) {
-    Clear-Variable -name regexFilter
-}
+$root = $PSScriptRoot
 
 . ./share/format.ps1
 
-H1 "AutoBuild"
-
 function Syntax {
-    Write-Output 'Syntax: ./build.sh [-hfa] [--longopts] <target> ["regexFilter"]'
+    Write-Output 'Syntax: ./build.sh -[fcbt] [-scriptFilter <regex>] <target>'
 }
 
+H1 "AutoBuild"
 H2 "Options"
+
+if( -Not ($fetch -Or $configure -Or $build -Or $test) ) {
+    $fetch = $true; $configure = $true; $build = $true; $test = $true
+}
 
 Write-Output @"
   command     = '$($(Get-PSCallStack)[0].InvocationInfo.Line)'
+  root        = $root
+
   fetch       = $fetch
   configure   = $configure
   build       = $build
@@ -86,18 +56,20 @@ Write-Output @"
 
   fresh build = $fresh
   log append  = $append
-
-  target      = $target
-  branch      = $gitBranch
   
-  regexFilter = $regexFilter
-  passThrough = $passThrough
+  scriptFilter = $scriptFilter
 "@
 
 if( $target -eq "" ) {
     Syntax
     Write-Error "Missing <target>"
 }
+
+Write-Output @"
+  target      = $target
+  branch      = $gitBranch
+"@
+
 
 if( $IsLinux ) {
     $platform = "Linux"
@@ -111,20 +83,89 @@ elseif( $IsWindows ) {
     $platform = "Unknown"
 }
 
-$root = $PSScriptRoot
 $targetRoot = "$root\$target"
-$mainScript = "$root\$target\$platform-build.ps1"
 
 Fill "- " | Center " Automatic "
 Write-Output @"
   platform    = $platform
-  root        = $root
   targetRoot  = $targetRoot
-  script      = $mainScript
 "@
 
-# shellcheck disable=SC1090
-## Run target build script ##
+# Get script count
+$buildScripts = @( Get-Item $targetRoot/$platform*.ps1 `
+    | Where-Object Name -Match "$scriptFilter" `
+    | Where-Object Name -NotMatch 'build' `
+    | Where-Object Name -NotMatch 'actions' `
+    | ForEach-Object { $_.Name } )
 
-&$mainScript -f:$fetch -c:$configure -b:$build -t:$test -regexFilter $regexFilter $gitBranch $passThrough
-# -VHDL2008:$VHDL2008.IsPresent
+$scriptCount = $buildScripts.count
+Write-Output "`n  Script count: $scriptCount"
+
+#Fail if no scripts
+if( $scriptCount -eq 0 ) {
+    Write-Error "No build scripts found"
+    exit 1
+}
+
+# Print Scripts
+Write-Output "  Scripts:"
+$buildScripts | ForEach-Object { Write-Output "    $_" }
+
+if( $list ){
+    exit
+}
+
+# Make sure the log directories exist.
+New-Item -Force -ItemType Directory -Path "$targetRoot/logs-raw" | Out-Null
+New-Item -Force -ItemType Directory -Path "$targetRoot/logs-clean" | Out-Null
+
+# Process Scripts
+foreach( $script in $buildScripts ) {
+
+    H4 "Starting $script"
+    $config = Split-Path -Path $script -LeafBase
+
+    $traceLog = "$targetRoot\logs-raw\$config.txt"
+    $cleanLog = "$targetRoot\logs-clean\$config.txt"
+    Write-Output "  traceLog   = $traceLog"
+    Write-Output "  cleanLog   = $cleanLog"
+
+    # set default environment and commands.
+    $envRun = "pwsh -c"
+    $envClean = "CleanLog-Default"
+    # source $envRun and $envActions from script.
+    . "$targetRoot/$script" "get_env"
+
+    # Run the action script
+    H3 "Start Action"
+    &$envRun "-c '. $targetRoot/$envActions'" 2>&1 | Tee-Object "$traceLog"
+
+    # Cleanup Logs
+    &$envClean "$traceLog" > $cleanLog
+
+
+#    try {
+#        RunActions 2>&1 | Tee-Object -FilePath "$traceLog"
+#    } catch {
+#        Get-Error
+#        exit
+#    }
+
+    # Clean the logs
+    # it goes like this, for each line that matches the pattern.
+    # split each line along spaces.
+    # [repeated per type of construct] re-join lines that match a set of tags
+    # the remove the compiler defaults, since CMake adds so many.
+
+    $matchPattern = '^lib|^link|memory|Lib\.exe|link\.exe|  󰞷'
+    [array]$compilerDefaults = ("fp:precise", "Gd", "GR", "GS", "Zc:forScope", "Zc:wchar_t",
+        "DYNAMICBASE", "NXCOMPAT", "SUBSYSTEM:CONSOLE", "TLBID:1",
+        "errorReport:queue", "ERRORREPORT:QUEUE", "EHsc",
+        "diagnostics:column", "INCREMENTAL", "NOLOGO", "nologo")
+    rg -M2048 $matchPattern "$traceLog" `
+        | sed -E 's/ +/\n/g' `
+        | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' `
+        | sed -E ':a;$!N;s/(Program|Microsoft|Visual|vcxproj|->)\n/\1 /;ta;P;D' `
+        | sed -E ':a;$!N;s/(\.\.\.|omitted|end|of|long)\n/\1 /;ta;P;D' `
+        | sed -E "/^\/($($compilerDefaults -Join '|'))$/d" > "$cleanLog"
+}

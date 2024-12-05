@@ -152,15 +152,12 @@ echo "  Script count: $scriptCount"
 #Fail if no scripts
 if [ $scriptCount -eq 0 ]; then
     Error "No build scripts found"
-    cd "$prev_dir"
     exit 1
 fi
 
 # Print Scripts
 echo "  Scripts:"
-for script in "${buildScripts[@]}"; do
-    echo "    ${script}"
-done
+printf "    %s\n" "${buildScripts[@]}"
 
 if [ $list -eq 1 ]; then exit; fi
 
