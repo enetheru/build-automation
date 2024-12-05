@@ -34,9 +34,6 @@ Write-Output @"
 
   target      = $target
   branch      = $gitBranch
-
-  regexFilter = $regexFilter
-  passThrough = $passThrough
 "@
 
 # Main Variables

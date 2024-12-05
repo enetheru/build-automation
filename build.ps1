@@ -138,7 +138,22 @@ foreach( $script in $buildScripts ) {
 
     # Run the action script
     H3 "Start Action"
-    &$envRun "-c '. $targetRoot/$envActions'" 2>&1 | Tee-Object "$traceLog"
+    &$envRun "-Command" @"
+`$root='$root'
+`$targetRoot='$targetRoot'
+`$platform='$platform'
+`$target='$target'
+`$gitBranch='$gitBranch'
+`$fetch='$fetch'
+`$configure='$configure'
+`$build='$build'
+`$test='$test'
+`$fresh='$fresh'
+`$append='$append'
+`$verbose=1
+`$script='$script'
+$targetRoot/$envActions
+"@ 2>&1 | Tee-Object "$traceLog"
 
     # Cleanup Logs
     &$envClean "$traceLog" > $cleanLog
