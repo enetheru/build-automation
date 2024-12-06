@@ -92,8 +92,6 @@ function PrepareCommon {
 }
 
 function TestCommon {
-    H1 "Test"
-
     Write-Output "" >> "$targetRoot\summary.log"
     H4 "$config" >> "$targetRoot\summary.log"
 
