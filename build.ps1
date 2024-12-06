@@ -141,16 +141,10 @@ foreach( $script in $buildScripts ) {
     $envRun = "pwsh"
     $envActions = "$platform-actions.ps1"
     $envClean = "CleanLog-Default"
-    # source $envRun and $envActions from script.
+
+    # source command overrides
     . "$targetRoot/$script" "get_env"
 
-    # Run the action script
-    #    try {
-    #        RunActions 2>&1 | Tee-Object -FilePath "$traceLog"
-    #    } catch {
-    #        Get-Error
-    #        exit
-    #    }
     &$envRun "-Command" @"
 `$root='$root'
 `$targetRoot='$targetRoot'
