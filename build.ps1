@@ -20,13 +20,18 @@ param(
     [Parameter( ValueFromRemainingArguments = $true )]$passThrough #All remaining arguments
 )
 
-# Powershell execution options
+# Setup Powershell Preferences
+# https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_preference_variables?view=powershell-7.4
 Set-StrictMode -Version Latest
+
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
 
 $OutputEncoding = New-Object System.Text.UTF8Encoding
 [console]::InputEncoding = $OutputEncoding
 [console]::OutputEncoding = $OutputEncoding
+
+$verbose = ($VerbosePreference -eq "Continue") ? $true : $false
 
 # Because Clion starts this script in a pipeline, it errors if the script exits too fast.
 # Trapping the exit condition and sleeping for 1 prevents the error message.
@@ -126,6 +131,8 @@ if( $list ) {
 New-Item -Force -ItemType Directory -Path "$targetRoot/logs-raw" | Out-Null
 New-Item -Force -ItemType Directory -Path "$targetRoot/logs-clean" | Out-Null
 
+[array]$summary = @()
+
 # Process Scripts
 foreach( $script in $buildScripts ) {
 
@@ -144,8 +151,19 @@ foreach( $script in $buildScripts ) {
 
     # source command overrides
     . "$targetRoot/$script" "get_env"
+    
+    $statsSchema = @{
+        target   = "$target"
+        config   = "$config"
+        status   = "dnf"
+        duration = "dnf"
+    }
+    $statistics = [PSCustomObject]$statsSchema
+    
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
 
-    &$envRun "-Command" @"
+    try {
+        &$envRun "-Command" @"
 `$root='$root'
 `$targetRoot='$targetRoot'
 `$platform='$platform'
@@ -157,13 +175,25 @@ foreach( $script in $buildScripts ) {
 `$test='$test'
 `$fresh='$fresh'
 `$append='$append'
-`$verbose='$VerbosePreference'
+`$verbose='$verbose'
 `$script='$script'
 $targetRoot/$envActions
 "@ 2>&1 | Tee-Object "$traceLog"
-
+        ($statistics).status = "Completed"
+    } catch {
+        Write-Output "Error during $config"
+    }
+    
+    $timer.Stop()
+    ($statistics).duration = $timer.Elapsed
+    
+    $summary += $statistics
+    
     # Cleanup Logs
     &$envClean "$traceLog" > $cleanLog
+    
+#    H2 "Completed - $config"
 }
 
-# TODO Lasly dump a summary of any failures after it finishes
+Write-Output "  Originl Command: $($(Get-PSCallStack)[0].InvocationInfo.Line)"
+$summary | Format-Table -Property target,config,status,duration

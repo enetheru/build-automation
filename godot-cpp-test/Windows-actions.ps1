@@ -1,9 +1,17 @@
 #!/usr/bin/env pwsh
 #Requires -Version 7.4
 
-# PowerShell execution options
+# Setup Powershell Preferences
+# https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_preference_variables?view=powershell-7.4#verbosepreference
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# Because Clion starts this script in a pipeline, it errors if the script exits too fast.
+# Trapping the exit condition and sleeping for 1 prevents the error message.
+trap {
+    Write-Host $_
+    Start-Sleep -Seconds 1
+}
 
 . "$root/share/format.ps1"
 
@@ -99,17 +107,29 @@ function TestCommon {
 
     if( -Not (Test-Path "$projectDir\.godot" -PathType Container) ) {
         H4 "Generate the .godot folder"
-        &$godot -e --path '$projectDir' --quit --headless *> $null
-        Start-Sleep -Seconds 1
-
+        & {
+            $PSNativeCommandUseErrorActionPreference = $false
+            &$godot -e --path "$projectDir" --quit --headless *> $null
+            # Godot spawns and detaches another process, making this harder than it needs to be.
+            # FIXME find a way to get the actual process ID that I want to wait on.
+            while( Get-Process | Where-Object -Property "ProcessName" -Match "godot" ) {
+                #This is a slightly better fix than before, but I still want to get the specific process.
+                Start-Sleep -Seconds 1
+            }
+        }
         if( -Not (Test-Path "$projectDir\.godot" -PathType Container) ) {
-            Write-Output "Failed to create .godot folder" >> "$targetRoot\summary.log"
-            return 1
+            Write-Error "Failed to create .godot folder" >> "$targetRoot\summary.log"
         }
     }
-
+    
     H4 "Run the test project"
-    &$godot_tr --path $projectDir --quit --headless  | Out-String
+    $result = ("unknown")
+    &$godot_tr --path "$projectDir" --quit --headless  | Out-String | Tee-Object -Variable result
+    if( @($result | Where-Object { $_ })[-1] -Match "PASSED" ) {
+        Write-Output "Test Succeded"
+    } else {
+        Write-Error "Test-Failure"
+    }
 }
 
 H3 "Processing - $config"
@@ -118,37 +138,17 @@ H3 "Processing - $config"
 . "$root\share\build-actions.ps1"
 . "$targetRoot\$script"
 
-if( $fetch -eq $true ) {
-    Fetch 2>&1
-    if( $LASTEXITCODE ) {
-        Write-Error "Fetch-Failure"
-    }
+if( $fetch      -eq $true ) { Fetch     }
+
+if( $configure  -eq $true ) { Prepare   }
+
+if( $build      -eq $true ) {
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
+    Build
+    $timer.Stop();
+    H3 "Build Duration: $($timer.Elapsed)"
 }
 
-if( $configure -eq $true ) {
-    Prepare 2>&1
-    if( $LASTEXITCODE ) {
-        Write-Error "Prep-Failure"
-    }
-}
+if( $test       -eq $true ) { Test      }
 
-#TODO  Add timing information
-if( $build -eq $true ) {
-    Build 2>&1
-    if( $LASTEXITCODE ) {
-        Write-Error "build-Failure"
-    }
-}
-
-if( $test -eq $true ) {
-    $result = ("unknown")
-    Test 2>&1 | Tee-Object -Variable result
-    if( @($result | Where-Object { $_ })[-1] -Match "PASSED" ) {
-        Write-Output "Test Succeded"
-    } else {
-        Write-Error "Test-Failure"
-    }
-}
-
-H2 "Completed - $config"
 Start-Sleep 1
