@@ -39,10 +39,11 @@ function Prepare {
     H3 "CMake Configure"
     $toolchain = "C:\androidsdk\ndk\23.2.8568313\build\cmake\android.toolchain.cmake"
     [array]$cmakeVars = "-GNinja"
+    $cmakeVars += "-DCMAKE_BUILD_TYPE=Release"
     $cmakeVars += "-DANDROID_PLATFORM=android-29"
     $cmakeVars += "-DANDROID_ABI=x86_64"
     $cmakeVars += "--toolchain $toolchain"
-    Format-Eval cmake "$doFresh .. $($cmakeVars -Join ' ')"
+    Format-Eval "cmake $doFresh .. $($cmakeVars -Join ' ')"
 }
 
 function Build {
@@ -51,6 +52,6 @@ function Build {
 
     Set-Location $buildDir
 
-    $cmakeVars = "--config Release"
-    Format-Eval cmake "--build . $doVerbose $cmakeVars"
+    $cmakeVars = $null
+    Format-Eval "cmake --build . $doVerbose $cmakeVars"
 }

@@ -45,8 +45,9 @@ function Prepare {
     $toolChain = "$root\toolchains\w64-mingw-w64.cmake"
 
     [array]$cmakeVars = "-G'MinGW Makefiles'"
+    $cmakeVars += "-DCMAKE_BUILD_TYPE=Release"
     $cmakeVars += "--toolchain $toolchain"
-    Format-Eval cmake "$doFresh .. $($cmakeVars -Join ' ')"
+    Format-Eval "cmake $doFresh .. $($cmakeVars -Join ' ')"
 }
 
 function Build {
@@ -55,8 +56,8 @@ function Build {
     
     Set-Location $buildDir
 
-    $cmakeVars = "--config Release"
-    Format-Eval cmake "--build . $doVerbose $cmakeVars"
+    $cmakeVars = $null
+    Format-Eval "cmake --build . $doVerbose $cmakeVars"
 }
 
 function Test {

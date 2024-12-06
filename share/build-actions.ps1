@@ -56,16 +56,20 @@ function Fetch {
 
 function Prepare {
     H4 "No Prepare Actions Specified"
+    Write-Output "-"
 }
 
 function Build {
     H4 "No Build Actions Specified"
+    Write-Output "-"
 }
 
 function Test {
     H4 "No Test Actions Specified"
+    Write-Output "-"
 }
 
 function Clean {
     H4 "No Clean Actions Specified"
+    Write-Output "-"
 }

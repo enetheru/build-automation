@@ -48,8 +48,9 @@ function Prepare {
     Set-Location $buildDir
 
     H3 "CMake Configure"
-    $cmakeVars = $null
-    Format-Eval "emcmake.bat" "cmake $doFresh .. $cmakeVars"
+    [array]$cmakeVars = "-DCMAKE_BUILD_TYPE=Release"
+    Format-Eval "emcmake.bat cmake $doFresh .. $($cmakeVars -Join ' ')"
+    
 }
 
 function Build {
@@ -58,6 +59,6 @@ function Build {
 
     Set-Location $buildDir
 
-    $cmakeVars = "--config Release"
-    Format-Eval cmake "--build . $doVerbose $cmakeVars"
+    $cmakeVars = $null
+    Format-Eval "cmake --build . $doVerbose $cmakeVars"
 }

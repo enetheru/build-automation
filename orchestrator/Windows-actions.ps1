@@ -180,8 +180,10 @@ function TestCommon {
     Write-Output $result
     if( $result -Match "ERROR: GDExtension dynamic library not found" ) {
         Write-Error "Test Failure"
+        Write-Error "Fail"
     } else {
         Write-Output "Test Succeded"
+        Write-Output "OK"
     }
 }
 
@@ -214,8 +216,8 @@ if( $build      -eq $true ) {
 
 if( $test       -eq $true ) {
     $Host.UI.RawUI.WindowTitle = "$target | $config | Test"
-    Test
-    ($stats).test = "OK"
+    Test | Tee-Object -Variable result
+    ($stats).test = ($result | Select-Object -Last 1)
 }
 
 PrintStats
