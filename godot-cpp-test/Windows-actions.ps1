@@ -99,7 +99,7 @@ function TestCommon {
 
     if( -Not (Test-Path "$projectDir\.godot" -PathType Container) ) {
         H4 "Generate the .godot folder"
-        Format-Eval "$godot -e --path '$projectDir' --quit --headless" 2>&1 | Tee-Object -Variable result
+        &$godot -e --path '$projectDir' --quit --headless *> $null
         Start-Sleep -Seconds 1
 
         if( -Not (Test-Path "$projectDir\.godot" -PathType Container) ) {
@@ -109,8 +109,7 @@ function TestCommon {
     }
 
     H4 "Run the test project"
-    Format-Eval "$godot_tr --path '$projectDir' --quit --headless" | Tee-Object -Variable result
-    @($result.split( "`r`n" ) | Where-Object { $_ -Match "FINI|PASS|FAIL|Godot" }) >> "$targetRoot\summary.log"
+    &$godot_tr --path $projectDir --quit --headless  | Out-String
 }
 
 H3 "Processing - $config"
@@ -133,6 +132,7 @@ if( $configure -eq $true ) {
     }
 }
 
+#TODO  Add timing information
 if( $build -eq $true ) {
     Build 2>&1
     if( $LASTEXITCODE ) {
@@ -146,7 +146,7 @@ if( $test -eq $true ) {
     if( @($result | Where-Object { $_ })[-1] -Match "PASSED" ) {
         Write-Output "Test Succeded"
     } else {
-        Write-Output "Test-Failure"
+        Write-Error "Test-Failure"
     }
 }
 

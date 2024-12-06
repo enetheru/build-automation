@@ -43,6 +43,8 @@ function Build {
     $cmakeVars = "--config Release"
     $vsExtraOptions = "-- /nologo /v:m /clp:'ShowCommandLine;ForceNoAlign'"
     Format-Eval "cmake --build . $doVerbose $cmakeVars $vsExtraOptions"
+
+    # TODO Add artifact summary, like name, size,
 }
 
 function Test {
