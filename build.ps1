@@ -24,6 +24,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+$OutputEncoding = New-Object System.Text.UTF8Encoding
+[console]::InputEncoding = $OutputEncoding
+[console]::OutputEncoding = $OutputEncoding
+
 # Because Clion starts this script in a pipeline, it errors if the script exits too fast.
 # Trapping the exit condition and sleeping for 1 prevents the error message.
 trap {

@@ -145,14 +145,11 @@ function Format-Command {
 }
 
 function Format-Eval {
-    param(
-        [Parameter( Position = 0 )][string]$command,
-        [Parameter( ValueFromRemainingArguments = $true )][string]$args
-    )
-    Write-Output ""
-    Write-Output "  󰝰 $((get-location).Path)"
-    Write-Output "  󰞷 $command $args"
-    &"$command" (-Split $args)
+    Write-Output @"
+  󰝰 $((get-location).Path)
+  󰞷 $args
+"@
+    Invoke-Expression "$args"
 }
 
 function Print-Last-Error {
