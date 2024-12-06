@@ -165,3 +165,5 @@ $targetRoot/$envActions
     # Cleanup Logs
     &$envClean "$traceLog" > $cleanLog
 }
+
+# TODO Lasly dump a summary of any failures after it finishes
