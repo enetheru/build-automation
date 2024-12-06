@@ -138,6 +138,7 @@ foreach( $script in $buildScripts ) {
 
     H3 "Starting $script"
     $config = Split-Path -Path $script -LeafBase
+    $Host.UI.RawUI.WindowTitle = "$target | $config"
 
     $traceLog = "$targetRoot\logs-raw\$config.txt"
     $cleanLog = "$targetRoot\logs-clean\$config.txt"

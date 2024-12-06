@@ -175,16 +175,19 @@ H3 "Processing - $config"
 . "$targetRoot\$script"
 
 if( $fetch      -eq $true ) {
+    $Host.UI.RawUI.WindowTitle = "$target | $config | Fetch"
     Fetch
     ($stats).fetch = "OK"
 }
 
 if( $prepare  -eq $true ) {
+    $Host.UI.RawUI.WindowTitle = "$target | $config | Prepare"
     Prepare
     ($stats).prepare = "OK"
 }
 
 if( $build      -eq $true ) {
+    $Host.UI.RawUI.WindowTitle = "$target | $config | Build"
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     Build
     $timer.Stop();
@@ -193,6 +196,7 @@ if( $build      -eq $true ) {
 }
 
 if( $test       -eq $true ) {
+    $Host.UI.RawUI.WindowTitle = "$target | $config | Test"
     Test
     ($stats).test = "OK"
 }
