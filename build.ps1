@@ -4,7 +4,7 @@
 [CmdletBinding( PositionalBinding = $false )]
 param(
     [Alias( "f" )] [switch] $fetch,
-    [Alias( "c" )] [switch] $configure,
+    [Alias( "c" )] [switch] $prepare,
     [Alias( "b" )] [switch] $build,
     [Alias( "t" )] [switch] $test,
 
@@ -50,8 +50,8 @@ function Syntax {
 H1 "AutoBuild"
 H2 "Options"
 
-if( -Not ($fetch -Or $configure -Or $build -Or $test) ) {
-    $fetch = $true; $configure = $true; $build = $true; $test = $true
+if( -Not ($fetch -Or $prepare -Or $build -Or $test) ) {
+    $fetch = $true; $prepare = $true; $build = $true; $test = $true
 }
 
 Write-Output @"
@@ -59,7 +59,7 @@ Write-Output @"
   root        = $root
 
   fetch       = $fetch
-  configure   = $configure
+  prepare     = $prepare
   build       = $build
   test        = $test
 
@@ -153,10 +153,14 @@ foreach( $script in $buildScripts ) {
     . "$targetRoot/$script" "get_env"
     
     $statsSchema = @{
-        target   = "$target"
-        config   = "$config"
-        status   = "dnf"
-        duration = "dnf"
+        target      = "$target"
+        config      = "$config"
+        status      = "dnf"
+        duration    = "dnf"
+        fetch       = ""
+        prepare     = ""
+        build       = ""
+        test        = ""
     }
     $statistics = [PSCustomObject]$statsSchema
     
@@ -170,7 +174,7 @@ foreach( $script in $buildScripts ) {
 `$target='$target'
 `$gitBranch='$gitBranch'
 `$fetch='$fetch'
-`$configure='$configure'
+`$prepare='$prepare'
 `$build='$build'
 `$test='$test'
 `$fresh='$fresh'
@@ -187,13 +191,22 @@ $targetRoot/$envActions
     $timer.Stop()
     ($statistics).duration = $timer.Elapsed
     
+    # Try to fetch any stats from the bottom of the file.
+    Get-Content "$traceLog" | Select-Object -Last 4 | ForEach-Object {
+        if( $_.StartsWith( '($statistics).' ) ) {
+            Invoke-Expression "$_"
+        }
+    }
+    
     $summary += $statistics
     
     # Cleanup Logs
     &$envClean "$traceLog" > $cleanLog
     
-#    H2 "Completed - $config"
+    H2 "Completed - $config"
 }
 
-Write-Output "  Originl Command: $($(Get-PSCallStack)[0].InvocationInfo.Line)"
-$summary | Format-Table -Property target,config,status,duration
+H3 "Finished"
+H4 "Original Command: $($(Get-PSCallStack)[0].InvocationInfo.Line)"
+H4 "Summary"
+$summary | Format-Table -Property target,config,fetch,prepare,build,test,status,duration

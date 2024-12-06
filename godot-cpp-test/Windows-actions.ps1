@@ -6,10 +6,28 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+$statsSchema = @{
+    fetch   = ($fetch -eq $true) ? "Fail" : "-"
+    prepare = ($prepare -eq $true) ? "Fail" : "-"
+    build   = ($build -eq $true) ? "Fail" : "-"
+    test    = ($test -eq $true) ? "Fail" : "-"
+}
+$stats = [PSCustomObject]$statsSchema
+
+function PrintStats {
+    @"
+(`$statistics).fetch    = "$(($stats).fetch)"
+(`$statistics).prepare  = "$(($stats).prepare)"
+(`$statistics).build    = "$(($stats).build)"
+(`$statistics).test     = "$(($stats).test)"
+"@
+}
+
 # Because Clion starts this script in a pipeline, it errors if the script exits too fast.
 # Trapping the exit condition and sleeping for 1 prevents the error message.
 trap {
     Write-Host $_
+    PrintStats
     Start-Sleep -Seconds 1
 }
 
@@ -25,7 +43,7 @@ Write-Output @"
   buildScript = $script
 
   fetch       = $fetch
-  configure   = $configure
+  prepare     = $prepare
   build       = $build
   test        = $test
 
@@ -138,17 +156,29 @@ H3 "Processing - $config"
 . "$root\share\build-actions.ps1"
 . "$targetRoot\$script"
 
-if( $fetch      -eq $true ) { Fetch     }
+if( $fetch      -eq $true ) {
+    Fetch
+    ($stats).fetch = "OK"
+}
 
-if( $configure  -eq $true ) { Prepare   }
+if( $prepare  -eq $true ) {
+    Prepare
+    ($stats).prepare = "OK"
+}
 
 if( $build      -eq $true ) {
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     Build
     $timer.Stop();
     H3 "Build Duration: $($timer.Elapsed)"
+    ($stats).build = "OK"
 }
 
-if( $test       -eq $true ) { Test      }
+if( $test       -eq $true ) {
+    Test
+    ($stats).test = "OK"
+}
+
+PrintStats
 
 Start-Sleep 1
