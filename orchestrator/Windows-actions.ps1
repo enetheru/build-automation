@@ -101,7 +101,8 @@ function FetchSubmodules {
     Set-Location "$moduleDir"
     
     if( -Not (git remote -v | Select-String -Pattern "local" -Quiet) ) {
-        Format-Eval "git remote add local C:\godot\src\godot-cpp"
+        Format-Eval "git remote add local C:/godot/src/godot-cpp"
+        Format-Eval "git fetch --all"
     }
     
     if( (git fetch --dry-run 2>&1) ){

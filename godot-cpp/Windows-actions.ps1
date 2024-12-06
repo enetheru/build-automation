@@ -17,7 +17,7 @@ Write-Output @"
   buildScript = $script
 
   fetch       = $fetch
-  configure   = $configure
+  prepare     = $prepare
   build       = $build
   test        = $test
 
@@ -128,7 +128,7 @@ if( $fetch -eq $true ) {
     }
 }
 
-if( $configure -eq $true ) {
+if( $prepare -eq $true ) {
     Prepare 2>&1
     if( $LASTEXITCODE ) {
         Write-Error "Prep-Failure"

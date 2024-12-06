@@ -41,6 +41,7 @@ function Prepare {
 
     H3 "CMake Configure"
     [array]$cmakeVars = $null
+    $cmakeVars += "-DCMAKE_BUILD_TYPE=Release"
     $cmakeVars += "-DGODOT_ENABLE_TESTING=YES"
     $cmakeVars += "-DTEST_TARGET=template_release"
 
@@ -53,6 +54,6 @@ function Build {
 
     Set-Location $buildDir
 
-    $cmakeVars = "--target godot-cpp-test --config Release"
+    $cmakeVars = "--target godot-cpp-test"
     Format-Eval cmake "--build . $doVerbose $cmakeVars"
 }

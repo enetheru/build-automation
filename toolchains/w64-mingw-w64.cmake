@@ -15,7 +15,7 @@ set( CMAKE_SYSROOT "C:/mingw64" )
 ##set(CMAKE_CXX_COMPILER_TARGET ${triple})
 
 # which compilers to use for C and C++
-set( CMAKE_C_COMPILER C:/mingw64/bin/g++.exe )
+set( CMAKE_C_COMPILER C:/mingw64/bin/gcc.exe )
 set( CMAKE_CXX_COMPILER C:/mingw64/bin/c++.exe )
 
 # where is the target environment located

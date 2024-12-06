@@ -37,6 +37,7 @@ function Prepare {
     $toolChain = "$root\toolchains\w64-mingw-w64.cmake"
 
     [array]$cmakeVars = "-G'MinGW Makefiles'"
+    $cmakeVars += "-DCMAKE_BUILD_TYPE=Release"
     $cmakeVars += "-DGODOT_ENABLE_TESTING=YES"
     $cmakeVars += "-DTEST_TARGET=template_release"
     $cmakeVars += "--toolchain $toolchain"
@@ -48,7 +49,7 @@ function Build {
     H1 "CMake Build"
     $doVerbose = ($verbose -eq $true) ? "--verbose" : $null
 
-    $cmakeVars = "--target godot-cpp-test --config Release"
+    $cmakeVars = "--target godot-cpp-test"
     Format-Eval cmake "--build . $doVerbose $cmakeVars"
 }
 

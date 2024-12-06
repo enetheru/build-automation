@@ -32,6 +32,7 @@ function Prepare {
     H3 "CMake Configure"
     $toolchain = "C:\androidsdk\ndk\23.2.8568313\build\cmake\android.toolchain.cmake"
     [array]$cmakeVars = "-GNinja"
+    $cmakeVars += "-DCMAKE_BUILD_TYPE=Release"
     $cmakeVars += "-DGODOT_ENABLE_TESTING=YES"
     $cmakeVars += "-DTEST_TARGET=template_release"
     $cmakeVars += "-DANDROID_PLATFORM=android-29"
@@ -47,6 +48,6 @@ function Build {
 
     Set-Location $buildDir
 
-    $cmakeVars = "--target godot-cpp-test --config Release"
+    $cmakeVars = "--target godot-cpp-test"
     Format-Eval cmake "--build . $doVerbose $cmakeVars"
 }

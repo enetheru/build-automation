@@ -33,6 +33,7 @@ function Prepare {
     $toolChain = "$root\toolchains\w64-llvm.cmake"
 
     [array]$cmakeVars = "-GNinja"
+    $cmakeVars += "-DCMAKE_BUILD_TYPE=Release"
     $cmakeVars += "-DGODOT_ENABLE_TESTING=YES"
     $cmakeVars += "-DTEST_TARGET=template_release"
     $cmakeVars += "--toolchain $toolchain"
@@ -46,7 +47,7 @@ function Build {
 
     Set-Location $buildDir
 
-    $cmakeVars = "--target godot-cpp-test --config Release"
+    $cmakeVars = "--target godot-cpp-test"
     Format-Eval cmake "--build . $doVerbose $cmakeVars"
 }
 
