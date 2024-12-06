@@ -18,12 +18,9 @@ $script:buildDir = ''
 # Fetch Override
 function MyFetch {
     Remove-Item 'Alias:\Fetch' -Force
-
-    #Original Fetch
-    Fetch
+    Fetch #Original Fetch
     FetchSubmodules
 }
-
 New-Alias -Name 'Fetch' -Value 'MyFetch' -Scope Global
 
 function Prepare {

@@ -159,6 +159,7 @@ function Print-Last-Error {
 }
 
 function CleanLog-Default {
+    H3 "Cleaning $args"
     # Clean the logs
     # it goes like this, for each line that matches the pattern.
     # split each line along spaces.
@@ -173,10 +174,13 @@ function CleanLog-Default {
         "DYNAMICBASE", "NXCOMPAT", "SUBSYSTEM:CONSOLE", "TLBID:1",
         "errorReport:queue", "ERRORREPORT:QUEUE", "EHsc",
         "diagnostics:column", "INCREMENTAL", "NOLOGO", "nologo")
-    rg -M2048 $matchPattern "$args" `
-        | sed -E 's/ +/\n/g' `
-        | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' `
-        | sed -E ':a;$!N;s/(Program|Microsoft|Visual|vcxproj|->)\n/\1 /;ta;P;D' `
-        | sed -E ':a;$!N;s/(\.\.\.|omitted|end|of|long)\n/\1 /;ta;P;D' `
-        | sed -E "/^\/($($compilerDefaults -Join '|'))$/d"
+    & {
+        $PSNativeCommandUseErrorActionPreference = $false
+        rg -M2048 $matchPattern "$args" `
+            | sed -E 's/ +/\n/g' `
+            | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' `
+            | sed -E ':a;$!N;s/(Program|Microsoft|Visual|vcxproj|->)\n/\1 /;ta;P;D' `
+            | sed -E ':a;$!N;s/(\.\.\.|omitted|end|of|long)\n/\1 /;ta;P;D' `
+            | sed -E "/^\/($($compilerDefaults -Join '|'))$/d"
+    }
 }

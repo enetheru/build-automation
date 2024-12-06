@@ -193,7 +193,7 @@ $targetRoot/$envActions
     ($statistics).duration = $timer.Elapsed
     
     # Try to fetch any stats from the bottom of the file.
-    Get-Content "$traceLog" | Select-Object -Last 4 | ForEach-Object {
+    Get-Content "$traceLog" | Select-Object -Last 20 | ForEach-Object {
         if( $_.StartsWith( '($statistics).' ) ) {
             Invoke-Expression "$_"
         }

@@ -34,11 +34,13 @@ function Fetch {
     Set-Location "$buildRoot"
 
     # Fetch any changes and reset to latest
+    [string]$gitStatus = $(git status)
     [bool]$fetchNeeded = $(git fetch --dry-run 2>&1)
     [string]$currentBranch = $(git branch --show-current)
     [bool]$wrongBranch = -Not ($currentBranch -match $gitBranch)
+    [bool]$fastForward = $gitStatus -match "can be fast-forwarded"
 
-    if( $fetchNeeded -Or $wrongBranch ) {
+    if( $fetchNeeded -Or $wrongBranch -Or $fastForward ) {
         H4 "Fetching Latest"
         git fetch --all
         git reset --hard '@{u}'
@@ -50,7 +52,6 @@ function Fetch {
     #TODO fix when the tree diverges and needs to be clobbered.
     H4 "Git Status"
     git status
-    Set-Location "$targetRoot"
 }
 
 function Prepare {

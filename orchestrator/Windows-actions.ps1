@@ -91,26 +91,36 @@ Set-Location "$targetRoot"
 function FetchSubmodules {
     H3 "Update Submodules"
     
+    H4 "godot-cpp"
     $moduleDir = "$buildRoot/extern/godot-cpp"
+    
     if( -Not (Test-Path "$moduleDir/*") ) {
-        git submodule update --init --remote "$moduleDir"
+        Format-Eval "git submodule update --init --remote `"$moduleDir`""
     }
     
     Set-Location "$moduleDir"
     
     if( -Not (git remote -v | Select-String -Pattern "local" -Quiet) ) {
-        git remote add local C:\godot\src\godot-cpp
-        git fetch local
+        Format-Eval "git remote add local C:\godot\src\godot-cpp"
     }
     
-    if( -Not (git branch | Select-String -Pattern "privatise" -Quiet) ) {
-        git checkout "local/privatise" --track
+    if( (git fetch --dry-run 2>&1) ){
+        Format-Eval "git fetch --all"
     }
-    Set-Location "$buildRoot"
+    
+    $modBranch="4.3-modernise"
+    if( -Not (git branch --show-current | Select-String -Pattern "$modBranch" -Quiet) ) {
+        Format-Eval "git checkout `"local/$modBranch`" --track"
+    }
+    
+    # Fetch any changes and reset to latest
+    H4 "Status"
+    git status
 }
 
 # Some steps are identical.
 function PrepareCommon {
+    Set-Location "$buildRoot"
 
     # Clean up key artifacts to trigger rebuild
 #    '(orchestration.cpp|orchestrator.windows)'
@@ -139,33 +149,40 @@ function TestCommon {
 #    Write-Output "" >> "$targetRoot\summary.log"
 #    H4 "$config" >> "$targetRoot\summary.log"
 
-#    $projectDir = "$buildRoot\project"
-#
-#    if( -Not (Test-Path "$projectDir\.godot" -PathType Container) ) {
-#        H4 "Generate the .godot folder"
-#        & {
-#            $PSNativeCommandUseErrorActionPreference = $false
-#            &$godot -e --path "$projectDir" --quit --headless *> $null
-#            # Godot spawns and detaches another process, making this harder than it needs to be.
-#            # FIXME find a way to get the actual process ID that I want to wait on.
-#            while( Get-Process | Where-Object -Property "ProcessName" -Match "godot" ) {
-#                #This is a slightly better fix than before, but I still want to get the specific process.
-#                Start-Sleep -Seconds 1
-#            }
-#        }
-#        if( -Not (Test-Path "$projectDir\.godot" -PathType Container) ) {
-#            Write-Error "Failed to create .godot folder" >> "$targetRoot\summary.log"
-#        }
-#    }
+    $projectDir = "$buildRoot\project"
+
+    if( -Not (Test-Path "$projectDir\.godot" -PathType Container) ) {
+        H4 "Generate the .godot folder"
+        & {
+            $PSNativeCommandUseErrorActionPreference = $false
+            &$godot -e --path "$projectDir" --quit --headless *> $null
+            # Godot spawns and detaches another process, making this harder than it needs to be.
+            # FIXME find a way to get the actual process ID that I want to wait on.
+            while( Get-Process | Where-Object -Property "ProcessName" -Match "godot" ) {
+                #This is a slightly better fix than before, but I still want to get the specific process.
+                Start-Sleep -Seconds 1
+            }
+        }
+        if( -Not (Test-Path "$projectDir\.godot" -PathType Container) ) {
+            Write-Error "Failed to create .godot folder" >> "$targetRoot\summary.log"
+        }
+    }
     
-#    H4 "Run the test project"
-#    $result = ("unknown")
-#    &$godot_tr --path "$projectDir" --quit --headless  | Out-String | Tee-Object -Variable result
-#    if( @($result | Where-Object { $_ })[-1] -Match "PASSED" ) {
-#        Write-Output "Test Succeded"
-#    } else {
-#        Write-Error "Test-Failure"
-#    }
+    H4 "Run the test project"
+    $result = ("ERROR")
+    &$godot --path "$projectDir" --quit --headless 2>&1 | Out-String | Tee-Object -Variable result
+    
+    while( Get-Process | Where-Object -Property "ProcessName" -Match "godot" ) {
+        #This is a slightly better fix than before, but I still want to get the specific process.
+        Start-Sleep -Seconds 1
+    }
+
+    Write-Output $result
+    if( $result -Match "ERROR: GDExtension dynamic library not found" ) {
+        Write-Error "Test Failure"
+    } else {
+        Write-Output "Test Succeded"
+    }
 }
 
 H3 "Processing - $config"

@@ -15,6 +15,14 @@ if( $args -eq "get_env" ) {
 
 $script:buildDir = ''
 
+# Fetch Override
+function MyFetch {
+    Remove-Item 'Alias:\Fetch' -Force
+    Fetch #Original Fetch
+    FetchSubmodules
+}
+New-Alias -Name 'Fetch' -Value 'MyFetch' -Scope Global
+
 function Prepare {
     H1 "Prepare"
     $doFresh = ($fresh -eq $true) ? "--fresh" : $null
@@ -33,7 +41,6 @@ function Prepare {
     $toolChain = "$root\toolchains\w64-llvm.cmake"
 
     [array]$cmakeVars = "-GNinja"
-    $cmakeVars += "-DTEST_TARGET=template_release"
     $cmakeVars += "--toolchain $toolchain"
 
     Format-Eval cmake "$doFresh .. $($cmakeVars -Join ' ')"
@@ -45,7 +52,7 @@ function Build {
 
     Set-Location $buildDir
 
-    $cmakeVars = "--target godot-cpp-test --config Release"
+    $cmakeVars = "--config Release"
     Format-Eval cmake "--build . $doVerbose $cmakeVars"
 }
 

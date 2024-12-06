@@ -15,12 +15,19 @@ if( $args -eq "get_env" ) {
 
 $script:buildDir = ''
 
+# Fetch Override
+function MyFetch {
+    Remove-Item 'Alias:\Fetch' -Force
+    Fetch #Original Fetch
+    FetchSubmodules
+}
+New-Alias -Name 'Fetch' -Value 'MyFetch' -Scope Global
+
 function Prepare {
     H1 "Prepare"
+    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
 
     PrepareCommon
-
-    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
 
     $script:buildDir = "$buildRoot/cmake-build"
     if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
@@ -32,7 +39,6 @@ function Prepare {
     H3 "CMake Configure"
     $toolchain = "C:\androidsdk\ndk\23.2.8568313\build\cmake\android.toolchain.cmake"
     [array]$cmakeVars = "-GNinja"
-    $cmakeVars += "-DTEST_TARGET=template_release"
     $cmakeVars += "-DANDROID_PLATFORM=android-29"
     $cmakeVars += "-DANDROID_ABI=x86_64"
     $cmakeVars += "--toolchain $toolchain"
@@ -41,11 +47,10 @@ function Prepare {
 
 function Build {
     H1 "CMake Build"
-
     $doVerbose = ($verbose -eq $true) ? "--verbose" : $null
 
     Set-Location $buildDir
 
-    $cmakeVars = "--target godot-cpp-test --config Release"
+    $cmakeVars = "--config Release"
     Format-Eval cmake "--build . $doVerbose $cmakeVars"
 }
