@@ -19,12 +19,11 @@ function Fetch {
 
     if( -Not (Test-Path "$buildRoot" -PathType Container) ) {
         H4 "Creating $buildRoot"
-        New-Item -Force -ItemType Directory -Path "$buildRoot"
+        New-Item -Force -ItemType Directory -Path "$buildRoot" | Out-Null
     }
 
     # Clone if not already
     if( -Not (Test-Path -Path "$buildRoot/.git" -PathType Container) ) {
-        H4 "Cloning $target"
         Format-Eval git "clone $gitUrl $buildRoot"
         if( $LASTEXITCODE ) {
             Write-Error "Clone Failure"
