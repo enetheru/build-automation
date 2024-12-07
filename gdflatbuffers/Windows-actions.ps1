@@ -129,24 +129,26 @@ function TestCommon {
             Write-Error "Failed to create .godot folder" >> "$targetRoot\summary.log"
         }
     }
-    
-#    H4 "Run the test project"
-#    $result = ("ERROR")
-#    &$godot --path "$projectDir" --quit --headless 2>&1 | Out-String | Tee-Object -Variable result
-#
-#    while( Get-Process | Where-Object -Property "ProcessName" -Match "godot" ) {
-#        #This is a slightly better fix than before, but I still want to get the specific process.
-#        Start-Sleep -Seconds 1
-#    }
-#
-#    Write-Output $result
-#    if( $result -Match "ERROR: GDExtension dynamic library not found" ) {
-#        Write-Error "Test Failure"
-#        Write-Error "Fail"
-#    } else {
-#        Write-Output "Test Succeded"
-#        Write-Output "OK"
-#    }
+    H4 "Run the test project"
+    $result = ("ERROR")
+    &$godot --headless --path C:\Godot\extensions\gdflatbuffers\project\ -s test.gd 2>&1 `
+        | Out-String `
+        | Tee-Object -Variable result
+
+    while( Get-Process | Where-Object -Property "ProcessName" -Match "godot" ) {
+        #This is a slightly better fix than before, but I still want to get the specific process.
+        Start-Sleep -Seconds 1
+    }
+
+    Write-Output $result
+    if( $result -Match "ERROR: GDExtension dynamic library not found" ) {
+        Write-Error "Test Failure"
+        Write-Error "Fail"
+    } else {
+        Write-Output "Test Succeded"
+        Write-Output "OK"
+    }
+    Write-Output '-'
 }
 
 H3 "Processing - $config"

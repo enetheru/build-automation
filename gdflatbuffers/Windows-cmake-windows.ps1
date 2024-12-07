@@ -49,7 +49,7 @@ function Build {
     $cmakeVars = "-t flatc --config Release"
     Format-Eval "cmake --build . $doVerbose $cmakeVars $vsExtraOptions"
 
-    $cmakeVars = "-t gdflatbuffers.template_release --config Release"
+    $cmakeVars = "-t gdflatbuffers.template_debug --config Release"
     Format-Eval "cmake --build . $doVerbose $cmakeVars $vsExtraOptions"
 
     # TODO Add artifact summary, like name, size,
