@@ -1,10 +1,4 @@
-
-# Compile the test project
-
-
 #!/bin/bash
-# shellcheck disable=SC2154
-# Compile the test project
 
 # Check whether this file is sourced or not.
 # https://stackoverflow.com/questions/2683279/how-to-detect-if-a-script-is-being-sourced
@@ -14,26 +8,34 @@ if [ "$sourced" -eq 0 ]; then
     exit
 fi
 
+# tell the build command how to run ourselves.
+if [ "$1" = "get_env" ]; then
+    H4 "Use default Env Settings"
+    return
+fi
+
+
+gitUrl="https://github.com/enetheru/godot-cpp.git"
+gitBranch="master"
+
 function Prepare {
     PrepareCommon
 
-    cd "$buildRoot/cmake-build" || exit 1
+    if [ "$fresh" -eq 1 ]; then doFresh="--fresh"; fi
 
-    if [ -n "$fresh" ]; then
-        doFresh="--fresh"
-    fi
+    buildDir="$buildRoot/cmake-build-$buildType"
+    mkdir -p "$buildDir" && cd $buildDir || return 1
 
-    H1 "CMake Configure"
-    Format-Command "cmake $doFresh .. -GNinja"
-    cmake $doFresh .. -GNinja
+    Format-Eval "cmake $doFresh .. -GNinja -DCMAKE_BUILD_TYPE=Release"
 }
 
 function Build {
     H1 "CMake Build"
-    cd "$buildRoot/cmake-build" || return 1
+    if [ "$verbose" -eq 1 ]; then doVerbose="--verbose"; fi
 
-    Format-Command "cmake --build . --verbose -t godot-cpp-test --config Release"
-    cmake --build . -j 6 --verbose -t godot-cpp-test --config Release
+    cd $buildDir || return 1
+
+    Format-Eval "cmake --build . -j 7 $doVerbose -t godot-cpp-test"
 }
 
 function Test {
