@@ -120,9 +120,9 @@ function TestCommon {
             &$godot -e --path "$projectDir" --quit --headless *> $null
             # Godot spawns and detaches another process, making this harder than it needs to be.
             # FIXME find a way to get the actual process ID that I want to wait on.
-            while( Get-Process | Where-Object -Property "ProcessName" -Match "godot" ) {
+            while( Get-Process | Where-Object ProcessName -Match "godot" ) {
                 #This is a slightly better fix than before, but I still want to get the specific process.
-                Start-Sleep -Seconds 1
+                Start-Sleep -Milliseconds 250
             }
         }
         if( -Not (Test-Path "$projectDir\.godot" -PathType Container) ) {
@@ -131,24 +131,23 @@ function TestCommon {
     }
     H4 "Run the test project"
     $result = ("ERROR")
-    &$godot --headless --path C:\Godot\extensions\gdflatbuffers\project\ -s test.gd 2>&1 `
+    &$godot --headless --path "$buildRoot\project\" -s test.gd 2>&1 `
         | Out-String `
         | Tee-Object -Variable result
 
-    while( Get-Process | Where-Object -Property "ProcessName" -Match "godot" ) {
+    while( Get-Process | Where-Object ProcessName -Match "godot" ) {
         #This is a slightly better fix than before, but I still want to get the specific process.
-        Start-Sleep -Seconds 1
+        Start-Sleep -Milliseconds 250
     }
 
-    Write-Output $result
-    if( $result -Match "ERROR: GDExtension dynamic library not found" ) {
-        Write-Error "Test Failure"
-        Write-Error "Fail"
-    } else {
-        Write-Output "Test Succeded"
+    $script:success = $false
+    if($result -Split [Environment]::NewLine `
+        | Select-String -Quiet -Pattern "LoadedExtensions.*gdflatbuffers"){
         Write-Output "OK"
+    } else{
+        Write-Error "Fail"
+        
     }
-    Write-Output '-'
 }
 
 H3 "Processing - $config"
