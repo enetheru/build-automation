@@ -4,7 +4,7 @@
 [CmdletBinding( PositionalBinding = $false )]
 param(
     [Alias( "f" )] [switch] $fetch,
-    [Alias( "c" )] [switch] $prepare,
+    [Alias( "p" )] [switch] $prepare,
     [Alias( "b" )] [switch] $build,
     [Alias( "t" )] [switch] $test,
 
@@ -44,7 +44,7 @@ $root = $PSScriptRoot
 . ./share/format.ps1
 
 function Syntax {
-    Write-Output 'Syntax: ./build.sh -[fcbt] [-scriptFilter <regex>] <target>'
+    Write-Output 'Syntax: ./build.sh -[fpbt] [-scriptFilter <regex>] <target>'
 }
 
 H1 "AutoBuild"
