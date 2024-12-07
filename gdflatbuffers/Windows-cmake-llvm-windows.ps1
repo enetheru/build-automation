@@ -13,7 +13,7 @@ if( $args -eq "get_env" ) {
     return
 }
 
-$script:buildDir = ''
+$script:buildDir = "$buildRoot/cmake-build"
 
 function Prepare {
     H1 "Prepare"
@@ -22,7 +22,6 @@ function Prepare {
     PrepareCommon
 
     # Create cmake-build directory
-    $script:buildDir = "$buildRoot/cmake-build"
     if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
         H4 "Creating $buildDir"
         New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
@@ -42,10 +41,17 @@ function Prepare {
 function Build {
     H1 "CMake Build"
     $doVerbose = ($verbose -eq $true) ? "--verbose" : $null
-
+    
+    # Check for cmake-build directory
+    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
+        Write-Error "Missing buildDir:'$buildDir'"
+    }
     Set-Location $buildDir
-
-    $cmakeVars = $null
+    
+    $cmakeVars = "-t flatc"
+    Format-Eval "cmake --build . $doVerbose $cmakeVars"
+    
+    $cmakeVars = "-t gdflatbuffers.editor"
     Format-Eval "cmake --build . $doVerbose $cmakeVars"
 }
 
