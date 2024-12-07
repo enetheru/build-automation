@@ -191,7 +191,7 @@ for script in "${buildScripts[@]}"; do
 
     # set default environment and commands.
     envRun="$SHELL -c"
-    envActions="$targetRoot/$platform-actions.sh"
+    envActions="$platform-actions.sh"
     envClean="CleanLog-Default"
     # source env overrides from script.
     source "$targetRoot/$script" "get_env"

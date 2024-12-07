@@ -14,7 +14,6 @@ if [ "$1" = "get_env" ]; then
     return
 fi
 
-
 gitUrl="https://github.com/enetheru/godot-cpp.git"
 gitBranch="master"
 
@@ -26,7 +25,10 @@ function Prepare {
     buildDir="$buildRoot/cmake-build-$buildType"
     mkdir -p "$buildDir" && cd $buildDir || return 1
 
-    Format-Eval "cmake $doFresh .. -GNinja -DCMAKE_BUILD_TYPE=Release"
+    declare -a cmakeVars
+    cmakeVars=("-DCMAKE_BUILD_TYPE=Release")
+    # cmakeVars+=("-DGODOT_ENABLE_TESTING=ON")
+    Format-Eval "cmake $doFresh .. -GNinja ${cmakeVars[@]}"
 }
 
 function Build {
