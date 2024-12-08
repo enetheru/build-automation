@@ -52,10 +52,10 @@ function Build {
     Set-Location $buildDir
     
     $cmakeVars = "-t flatc"
-    Format-Eval "cmake --build . $doVerbose $cmakeVars"
+    Format-Eval "cmake --build . -j 15 $doVerbose $cmakeVars"
     
     $cmakeVars = "-t gdflatbuffers.editor"
-    Format-Eval "cmake --build . $doVerbose $cmakeVars"
+    Format-Eval "cmake --build . -j 15 $doVerbose $cmakeVars"
 }
 
 function Test {
