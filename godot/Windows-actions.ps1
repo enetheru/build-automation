@@ -47,6 +47,8 @@ Write-Output @"
   prepare     = $prepare
   build       = $build
   test        = $test
+  
+  proc_count  = $jobs
 
   fresh build = $fresh
   log append  = $append
@@ -64,7 +66,8 @@ Write-Output @"
 
 # Get the target root from this script location
 $targetRoot = $thisScript  | split-path -parent
-$buildRoot = "$targetRoot\$config"
+$buildLeaf = ($config -split "-", 2)[-1]
+$buildRoot = "$targetRoot\build-$buildleaf"
 
 Write-Output @"
 

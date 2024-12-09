@@ -7,6 +7,8 @@ param(
     [Alias( "p" )] [switch] $prepare,
     [Alias( "b" )] [switch] $build,
     [Alias( "t" )] [switch] $test,
+    
+    [Alias( "j" )] [int] $jobs = ([Environment]::ProcessorCount -1),
 
     [switch] $list,                 # show the list of scripts and exit
     [switch] $fresh,                # re-fresh the configuration
@@ -62,6 +64,8 @@ Write-Output @"
   prepare     = $prepare
   build       = $build
   test        = $test
+  
+  proc_count  = $jobs
 
   fresh build = $fresh
   log append  = $append
@@ -177,6 +181,7 @@ foreach( $script in $buildScripts ) {
 `$fetch='$fetch'
 `$prepare='$prepare'
 `$build='$build'
+`$jobs='$jobs'
 `$test='$test'
 `$fresh='$fresh'
 `$append='$append'
