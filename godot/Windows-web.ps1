@@ -34,8 +34,12 @@ function Prepare {
     
     # Update worktree
     Set-Location "$buildRoot"
-    Format-Eval git status
-    
+    $status = $(git status)
+    if( $status | ForEach-Object { $_ -Match "Changes not staged for commit" } ){
+        Format-Eval "git reset --hard"
+    } else {
+        Write-Error $status
+    }
     
     H4 "Update EmSDK"
     Set-Location $emsdk
@@ -55,6 +59,6 @@ function Build {
     Format-Eval "$emsdk\emsdk.ps1" activate latest
     
     H4 "Build using SCons"
-    Format-Eval "scons -j$jobs $doVerbose dlink_enabled=yes target=template_debug"
-    Format-Eval "scons -j$jobs $doVerbose dlink_enabled=yes target=template_release"
+    Format-Eval "scons -j$jobs $doVerbose platform=web dlink_enabled=yes target=template_debug"
+    Format-Eval "scons -j$jobs $doVerbose platform=web dlink_enabled=yes target=template_release"
 }

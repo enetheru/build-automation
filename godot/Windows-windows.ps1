@@ -29,8 +29,12 @@ function Prepare {
     
     # Update worktree
     Set-Location "$buildRoot"
-    
-    Format-Eval git status
+    $status = $(git status)
+    if( $status | ForEach-Object { $_ -Match "Changes not staged for commit" } ){
+        Format-Eval "git reset --hard"
+    } else {
+        Write-Error $status
+    }
     
     # DeleteBuildArtifacts
 }
