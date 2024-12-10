@@ -5,6 +5,7 @@
 # https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_preference_variables?view=powershell-7.4#verbosepreference
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
 
 $statsSchema = @{
     fetch   = ($fetch -eq $true) ? "Fail" : "-"
@@ -65,8 +66,8 @@ Write-Output @"
 "@
 
 # [System.Uri]$gitUrl = "http://github.com/godotengine/godot-cpp-test.git"
-[System.Uri]$gitUrl = "C:\Godot\src\godot-cpp-test"
-# [string]$gitBranch = "ipo-lto"
+[System.Uri]$gitUrl = "C:/Godot/src/godot-cpp-test"
+[string]$gitBranch = "main"
 
 Write-Output @"
 
@@ -76,7 +77,8 @@ Write-Output @"
 
 # Get the target root from this script location
 $targetRoot = $thisScript  | split-path -parent
-$buildRoot = "$targetRoot\$config"
+$buildLeaf = ($config -split "-", 2)[-1]
+$buildRoot = "$targetRoot\build-$buildleaf"
 
 Write-Output @"
 

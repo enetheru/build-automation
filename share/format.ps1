@@ -55,6 +55,27 @@ function Figlet {
     }
 }
 
+# Simplest to read from all the junk surrounding this question.
+# https://stackoverflow.com/a/51268514
+function DisplayInBytes()
+{
+    param(
+        [int]$num
+    )
+    $suffix = "oct", "Kib", "Mib", "Gib", "Tib", "Pib", "Eib", "Zib", "Yib"
+    $index = 0
+    while ($num -gt 1kb)
+    {
+        $num = $num / 1kb
+        $index++
+    }
+    
+    $sFmt="{0:N"
+    if ($index -eq 0) {$sFmt += "0"} else {$sFmt += "1"}
+    $sFmt += "} {1}"
+    $sFmt -f $num, $suffix[$index]
+}
+
 
 # Fill Command
 function Fill {

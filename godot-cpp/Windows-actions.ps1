@@ -4,6 +4,7 @@
 # PowerShell execution options
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
 
 . "$root/share/format.ps1"
 
@@ -62,25 +63,28 @@ Write-Output @"
 
 Set-Location "$targetRoot"
 
-# Some steps are identical.
+# Host Platform Values and Functions
+. "$root\share\build-actions.ps1"
+
+# Project overrides and functions
 function PrepareCommon {
 
     # Clean up key artifacts to trigger rebuild
-    [array]$artifacts = @($(rg -u --files "$buildRoot" `
-        | rg "(memory|example).*?o(bj)?$"))
-
-    $artifacts += @($(rg -u --files "$buildRoot" `
-        | rg "\.(a|lib|so|dll|dylib|wasm32|wasm)$"))
-    #    ($array1 + $array2) | Select-Object -Unique -Property Name
-
-    #Ignore exit code from ripgrep failure to match files.
-    $global:LASTEXITCODE = 0
-
-    if( $artifacts.Length -gt 0 ) {
-        H3 "Removing key Artifacts"
-        $artifacts | Sort-Object | Get-Unique | ForEach-Object {
-            Write-Host "Removing $_"
-            Remove-Item $_
+    & {
+        # ignore the error result from ripgrep not finding any files 
+        $PSNativeCommandUseErrorActionPreference = $false
+        [array]$artifacts = @($(rg -u --files "$buildRoot" `
+            | rg "(memory|example).*?o(bj)?$"))
+    
+        $artifacts += @($(rg -u --files "$buildRoot" `
+            | rg "\.(a|lib|so|dll|dylib|wasm32|wasm)$"))
+    
+        if( $artifacts.Length -gt 0 ) {
+            H3 "Removing key Artifacts"
+            $artifacts | Sort-Object | Get-Unique | ForEach-Object {
+                Write-Host "Removing $_"
+                Remove-Item $_
+            }
         }
     }
 
@@ -115,42 +119,36 @@ function TestCommon {
     @($result.split( "`r`n" ) | Where-Object { $_ -Match "FINI|PASS|FAIL|Godot" }) >> "$targetRoot\summary.log"
 }
 
-H3 "Processing - $config"
-
-# Source generic actions, and then override.
-. "$root\share\build-actions.ps1"
+# Per config Overrides and functions
 . "$targetRoot\$script"
+
+H3 "$config - Processing"
 
 if( $fetch -eq $true ) {
     Fetch 2>&1
-    if( $LASTEXITCODE ) {
-        Write-Error "Fetch-Failure"
-    }
 }
 
 if( $prepare -eq $true ) {
     Prepare 2>&1
-    if( $LASTEXITCODE ) {
-        Write-Error "Prep-Failure"
-    }
 }
 
-if( $build -eq $true ) {
-    Build 2>&1
-    if( $LASTEXITCODE ) {
-        Write-Error "build-Failure"
-    }
+if( $build      -eq $true ) {
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
+    Build
+    $timer.Stop();
+    H3 "$config - Build Duration: $($timer.Elapsed)"
+    ($stats).build = "OK"
 }
 
 if( $test -eq $true ) {
     $result = ("unknown")
     Test 2>&1 | Tee-Object -Variable result
     if( @($result | Where-Object { $_ })[-1] -Match "PASSED" ) {
-        Write-Output "Test Succeded"
+        Write-Output "$config - Test Succeded"
     } else {
-        Write-Output "Test-Failure"
+        Write-Output "$config - Test-Failure"
     }
 }
 
-H2 "Completed - $config"
+H2 "$config - Completed"
 Start-Sleep 1

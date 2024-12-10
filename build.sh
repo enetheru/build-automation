@@ -24,16 +24,18 @@ Help()
    echo
    Syntax
    echo "options:"
-   echo "  h, --help      Print this help"
-   echo "     --list      Only liste the scripts"
+   echo "  h, --help        Print this help"
+   echo "     --list        Only list the scripts"
    echo
-   echo "  f, --fetch     Fetch the source"
-   echo "  c, --configure Configure the source"
-   echo "  b, --build     Build the code"
-   echo "  t, --test      Test the code"
+   echo "  f, --fetch       Fetch the source"
+   echo "  c, --configure   Configure the source"
+   echo "  b, --build       Build the code"
+   echo "  t, --test        Test the code"
    echo
-   echo "     --fresh     Re-Fresh the configuration before building"
-   echo "     --append    Append to the log rather than clobber it"
+   echo "     --jobs=<int>  How many processors to use"
+   echo "     --quiet       Disable verbose"
+   echo "     --fresh       Re-Fresh the configuration before building"
+   echo "     --append      Append to the log rather than clobber it"
    echo
    echo "     --scriptFilter=<regex> Regex pattern matching script name"
    echo
@@ -48,6 +50,7 @@ needs_arg() { if [ -z "$OPTARG" ]; then Syntax; die "No arg for --$OPT option"; 
 # Defaults
 verbose=1
 list=0
+jobs=$(( $(nproc) -1 ))
 
 fetch=0
 configure=0
@@ -76,7 +79,9 @@ while getopts :hfcbt-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
         b | build )     build=1 ;;
         t | test )      test=1 ;;
         fresh )         fresh=1 ;;
+        quiet )         verbose=0 ;;
         append )        logAppend=1 ;;
+        jobs )          needs_arg; jobs="$OPTARG" ;;
         scriptFilter )  needs_arg; scriptFilter="$OPTARG" ;;
         # c | charlie )  charlie="${OPTARG:-$charlie_default}" ;;  # optional argument
         \? )           echo "Error: Bad short option" >&2; Syntax; exit 2 ;;  # bad short option (error reported via getopts)
@@ -108,6 +113,7 @@ echo "  configure   = $configure"
 echo "  build       = $build"
 echo "  test        = $test"
 echo
+echo "  jobs        = $jobs"
 echo "  fresh       = $fresh"
 echo "  append      = $logAppend"
 echo
@@ -140,8 +146,8 @@ echo
 # Get script count
 declare -a buildScripts
 buildScripts=($(
-    find $targetRoot -maxdepth 1 -type f -name "$platform*" -print \
-    | xargs -I '{}' basename '{}' \
+    find "$targetRoot" -maxdepth 1 -type f -name "$platform*" -print0 \
+    | xargs -0 -I '{}' basename '{}' \
     | grep -v "build" \
     | grep -v "actions" \
     | grep -e "$scriptFilter"))
@@ -176,6 +182,7 @@ for script in "${buildScripts[@]}"; do
     vars+=("configure='$configure'")
     vars+=("build='$build'")
     vars+=("test='$test'")
+    vars+=("jobs='$jobs'")
     vars+=("fresh='$fresh'")
     vars+=("append='$append'")
     vars+=("verbose='$verbose'")
@@ -201,5 +208,5 @@ for script in "${buildScripts[@]}"; do
     $envRun "${vars[*]} . $targetRoot/$envActions" 2>&1 | tee "$traceLog"
 
     # Cleanup Logs
-    $envClean $traceLog > $cleanLog
+    $envClean "$traceLog" > "$cleanLog"
 done

@@ -206,10 +206,8 @@ $targetRoot/$envActions
     
     $summary += $statistics
     
-    # Cleanup Logs
+    H3 Process Logs
     &$envClean "$traceLog" > $cleanLog
-    
-    H2 "Completed - $config"
 }
 
 H3 "Finished"

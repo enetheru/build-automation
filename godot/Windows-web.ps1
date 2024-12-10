@@ -59,6 +59,6 @@ function Build {
     Format-Eval "$emsdk\emsdk.ps1" activate latest
     
     H4 "Build using SCons"
-    Format-Eval "scons -j$jobs $doVerbose platform=web dlink_enabled=yes target=template_debug"
-    Format-Eval "scons -j$jobs $doVerbose platform=web dlink_enabled=yes target=template_release"
+    Format-Eval "scons -j$jobs $doVerbose platform=web dlink_enabled=yes threads=no target=template_debug"
+    Format-Eval "scons -j$jobs $doVerbose platform=web dlink_enabled=yes threads=no target=template_release"
 }
