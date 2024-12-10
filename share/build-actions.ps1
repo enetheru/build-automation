@@ -20,7 +20,6 @@ function Fetch {
     # Clone if not already
     if( -Not (Test-Path -Path "$targetRoot\git" -PathType Container) ) {
         Format-Eval git clone --bare "$gitUrl" "$targetroot\git"
-        Format-Eval git config remote.origin.fetch 'refs/heads/*:refs/heads/*'
     }
     Set-Location "$targetroot\git"
     
