@@ -121,9 +121,23 @@ function PrepareCommon {
 }
 
 # Clean up Binaries to trigger rebuild
+function EraseKeyObjects {
+    [array]$binaries = @(Get-ChildItem -Recurse `
+        | Where-Object { $_.Name -match "(memory|example).*?o(bj)?$" })
+    
+    if( $binaries.Length -gt 0 ) {
+        H3 "Removing Objects"
+        $binaries | ForEach-Object {
+            Write-Host "Removing $_"
+            Remove-Item $_
+        }
+    }
+}
+
+# Clean up Binaries to trigger rebuild
 function EraseBinaries {
-    [array]$binaries = Get-ChildItem -Recurse `
-        | Where-Object { $_.Name -match "\.(so|dll|dylib|wasm32|wasm)$" }
+    [array]$binaries = @(Get-ChildItem -Recurse `
+        | Where-Object { $_.Name -match "\.(so|dll|dylib|wasm32|wasm)$" })
     
     if( $binaries.Length -gt 0 ) {
         H3 "Removing Binaries"

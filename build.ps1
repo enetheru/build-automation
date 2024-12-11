@@ -152,12 +152,12 @@ foreach( $script in $buildScripts ) {
     # set default environment and commands.
     $envRun = "pwsh"
     $envActions = "$platform-actions.ps1"
-    $envClean = "CleanLog-Default"
+    $envClean = "CleanLog"
 
     # source command overrides
     . "$targetRoot/$script" "get_env"
     
-    $statsSchema = @{
+    $statistics = [PSCustomObject]@{
         target      = "$target"
         config      = "$config"
         status      = "dnf"
@@ -167,7 +167,6 @@ foreach( $script in $buildScripts ) {
         build       = ""
         test        = ""
     }
-    $statistics = [PSCustomObject]$statsSchema
     
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
 

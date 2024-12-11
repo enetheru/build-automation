@@ -17,9 +17,10 @@ $script:buildDir = "$buildRoot/cmake-build"
 
 function Prepare {
     H1 "Prepare"
-    $doFresh = ($fresh) ? "--fresh" : $null
+    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
     
-    PrepareCommon
+    Set-Location "$buildRoot"
+    EraseKeyObjects
 
     # Create Build Directory if it doesn't already exist.
     if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
@@ -41,10 +42,10 @@ function Prepare {
 }
 
 function Build {
-    $doJobs     = ($jobs) ? "-j $jobs" : $null
+    $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
     
     #CMake verbose
-    $doVerbose  = ($verbose) ? "--verbose" : $null
+    $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
     
     # FIXME get arch somehow.
     $arch = "x86_64"
@@ -61,10 +62,10 @@ function Build {
         Format-Eval "cmake --build . $doJobs $doVerbose -t godot-cpp.test.$target"
         
         $timer.Stop()
-        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.$platform.$arch.$target.$arch.so"
+        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$arch.$target.$arch.so"
         
         $statArray += [PSCustomObject] @{
-            target      = $target
+            target      = "cmake.$target"
             duration    = $timer.Elapsed
             size        = DisplayInBytes $artifact.Length
         }
@@ -72,7 +73,7 @@ function Build {
     }
     
     #SCons verbose
-    $doVerbose  = ($verbose) ? "verbose=yes" : $null
+    $doVerbose  = ($verbose -eq $true) ? "verbose=yes" : $null
     
     [array]$sconsVars = @()
     $sconsVars += "platform=android"
@@ -87,10 +88,10 @@ function Build {
         Format-Eval "scons $doJobs $doVerbose target=$target $($sconsVars -Join ' ')"
         
         $timer.Stop()
-        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.$platform.$arch.$target.$arch.so"
+        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$target.$arch.so"
         
         $statArray += [PSCustomObject] @{
-            target      = $target
+            target      = "scons.$target"
             duration    = $timer.Elapsed
             size        = DisplayInBytes $artifact.Length
         }
