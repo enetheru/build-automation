@@ -7,13 +7,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
-$statsSchema = @{
+$stats = [PSCustomObject]@{
     fetch   = ($fetch -eq $true) ? "Fail" : "-"
     prepare = ($prepare -eq $true) ? "Fail" : "-"
     build   = ($build -eq $true) ? "Fail" : "-"
     test    = ($test -eq $true) ? "Fail" : "-"
 }
-$stats = [PSCustomObject]$statsSchema
 
 function PrintStats {
     @"
@@ -35,8 +34,13 @@ trap {
 . "$root/share/format.ps1"
 
 [string]$thisScript = $(Get-PSCallStack)[0].scriptName
-
 $config = Split-Path -Path $script -LeafBase
+$targetRoot = $thisScript  | split-path -parent
+$buildLeaf = ($config -split "-", 2)[-1]
+$buildRoot = "$targetRoot\build-$buildleaf"
+
+[System.Uri]$gitUrl = "http://github.com/godotengine/godot.git"
+[string]$gitBranch = "4.3"
 
 H2 "Build '$target' on '$platform' using '$config'"
 Write-Output @"
@@ -52,24 +56,9 @@ Write-Output @"
 
   fresh build = $fresh
   log append  = $append
-"@
-
-# [System.Uri]$sourceOrigin = "https://github.com/godotengine/godot.git"
-[System.Uri]$gitUrl = "C:\Godot\src\godot"
-[string]$gitBranch = "4.3"
-
-Write-Output @"
 
   gitUrl      = $gitUrl
   gitBranch   = $gitBranch
-"@
-
-# Get the target root from this script location
-$targetRoot = $thisScript  | split-path -parent
-$buildLeaf = ($config -split "-", 2)[-1]
-$buildRoot = "$targetRoot\build-$buildleaf"
-
-Write-Output @"
 
   platform    = $platform
   root        = $root
@@ -81,26 +70,6 @@ Set-Location "$targetRoot"
 
 # Source generic actions
 . "$root\share\build-actions.ps1"
-
-# Common actions and overrides here
-function Fetch {
-    H1 "Fetch"
-    
-    # Clone if not already
-    if( -Not (Test-Path -Path "$targetRoot\git" -PathType Container) ) {
-        Format-Eval git clone --bare "$gitUrl" "$targetroot\git"
-    }
-    Set-Location "$targetroot\git"
-    
-    Format-Eval git fetch --all
-    
-    # Fetch any changes and reset to latest
-#    [bool]$fetchNeeded = $(git fetch --all --dry-run 2>&1)
-#    if( $fetchNeeded ) {
-#        H4 "Fetching Latest"
-#        git fetch --all
-#    }
-}
 
 # Some steps are identical.
 function DeleteBuildArtifacts {

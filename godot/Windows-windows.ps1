@@ -12,41 +12,35 @@ if( $args -eq "get_env" ) {
     return
 }
 
-[string]$gitBranch = "4.3"
-
-function Prepare {
-    H3 "Prepare"
-    
-    if( -Not (Test-Path -Path "$targetRoot\git" -PathType Container) ) {
-        Write-Error "bare git repo is missing."
-    }
-    
-    # Create worktree is missing
-    if( -Not (Test-Path -Path "$buildRoot" -PathType Container) ) {
-        Set-Location "$targetRoot\git"
-        Format-Eval git worktree add "$buildRoot" "$gitBranch"
-    }
-    
-    # Update worktree
-    Set-Location "$buildRoot"
-    $status = $(git status)
-    if( $status | ForEach-Object { $_ -Match "Changes not staged for commit" } ){
-        Format-Eval "git reset --hard"
-    } else {
-        Write-Error $status
-    }
-    
-    # DeleteBuildArtifacts
-}
-
 function Build {
-    H1 "SCons Build"
     $doVerbose = ($verbose -eq $true) ? "verbose=yes" : $null
+    $doJobs = ($jobs -gt 0) ? "-j $jobs" : $null
     
+    [array]$statArray = @()
     
-    H4 "Changing directory to '$buildRoot'"
+    $targets = @(
+        "template_debug",
+        "template_release",
+        "editor"
+    )
+    
     Set-Location "$buildRoot"
-    Format-Eval "scons -j$jobs $doVerbose target=template_debug"
-    Format-Eval "scons -j$jobs $doVerbose target=template_release"
-    Format-Eval "scons -j$jobs $doVerbose target=editor"
+    
+    foreach( $target in $targets ) {
+        H2 "$target"; H1 "SCons Build"
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        
+        Format-Eval "scons $doJobs $doVerbose target=$target"
+        
+        H4 "$target duration: $($timer.Stop();$timer.Elapsed)"
+        
+        $artifact = Get-ChildItem "$buildRoot\bin\godot.windows.$target.x86_64.exe"
+        $statArray += [PSCustomObject] @{
+            target      = "scons.$target"
+            duration    = $timer.Elapsed
+            size        = DisplayInBytes $artifact.Length
+        }
+    }
+    
+    $statArray | Format-Table
 }
