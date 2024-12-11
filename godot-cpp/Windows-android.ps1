@@ -81,9 +81,10 @@ function Build {
     #SCons verbose
     $doVerbose  = ($verbose -eq $true) ? "verbose=yes" : $null
     
-    [array]$sconsVars = @()
-    $sconsVars += "platform=android"
-    $sconsVars += "arch=x86_64"
+    [array]$sconsVars = @(
+        "platform=android"
+        "arch=x86_64"
+    )
 
     # Build Targets using SCons
     Set-Location "$buildRoot/test"
