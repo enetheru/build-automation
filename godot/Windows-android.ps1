@@ -12,17 +12,16 @@ if( $args -eq "get_env" ) {
     return
 }
 
-$emsdk = "C:\emsdk"
+$androidSDK = "C:\androidsdk\cmdline-tools\latest\bin"
 
 function Prepare {
+    $doVerbose = ($verbose -eq $true) ? "--verbose" : $null
     H1 "Prepare"
     
-    H4 "Update EmSDK"
-    Set-Location $emsdk
-    Format-Eval git pull
+    H3 "Add Android SDK Manager to PATH"
+    $env:Path = "$androidSDK;" + $env:Path
     
-    # perform any updates to emscripten as required.
-    &"$emsdk\emsdk.ps1" install latest
+    sdkmanager --update $doVerbose
 }
 
 function Build {
@@ -38,15 +37,11 @@ function Build {
     )
     
     [array]$sconsVars = @(
-        "platform=web"
-        "dlink_enabled=yes"
-        "threads=no"
+        "platform=android"
+        "arch=x86_64"
     )
     
     Set-Location "$buildRoot"
-    
-    H4 "Activate EmSDK"
-    Format-Eval "$emsdk\emsdk.ps1" activate latest
     
     foreach( $target in $targets ) {
         H2 "$target"; H1 "SCons Build"

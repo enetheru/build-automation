@@ -52,10 +52,16 @@ function Build {
     
     
     [array]$statArray = @()
+    
+    $targets = @(
+        "template_debug",
+        "template_release",
+        "editor"
+    )
 
     # Build Targets using CMake
     Set-Location $buildDir
-    foreach( $target in @("template_debug", "template_release", "editor") ){
+    foreach( $target in $targets ){
         H2 "$target"; H1 "CMake Build"
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         
@@ -81,7 +87,8 @@ function Build {
 
     # Build Targets using SCons
     Set-Location "$buildRoot/test"
-    foreach( $target in @("template_debug", "template_release", "editor") ){
+    
+    foreach( $target in $targets ){
         H2 "$target"; H1 "Scons Build"
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
 
