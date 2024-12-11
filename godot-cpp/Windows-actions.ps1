@@ -6,6 +6,31 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
+$statsSchema = @{
+    fetch   = ($fetch -eq $true) ? "Fail" : "-"
+    prepare = ($prepare -eq $true) ? "Fail" : "-"
+    build   = ($build -eq $true) ? "Fail" : "-"
+    test    = ($test -eq $true) ? "Fail" : "-"
+}
+$stats = [PSCustomObject]$statsSchema
+
+function PrintStats {
+    @"
+(`$statistics).fetch    = "$(($stats).fetch)"
+(`$statistics).prepare  = "$(($stats).prepare)"
+(`$statistics).build    = "$(($stats).build)"
+(`$statistics).test     = "$(($stats).test)"
+"@
+}
+
+# Because Clion starts this script in a pipeline, it errors if the script exits too fast.
+# Trapping the exit condition and sleeping for 1 prevents the error message.
+trap {
+    Write-Host $_
+    PrintStats
+    Start-Sleep -Seconds 1
+}
+
 . "$root/share/format.ps1"
 
 [string]$thisScript = $(Get-PSCallStack)[0].scriptName
@@ -125,11 +150,13 @@ function TestCommon {
 H3 "$config - Processing"
 
 if( $fetch -eq $true ) {
-    Fetch 2>&1
+    Fetch
+    ($stats).fetch = "OK"
 }
 
 if( $prepare -eq $true ) {
-    Prepare 2>&1
+    Prepare
+    ($stats).prepare = "OK"
 }
 
 if( $build      -eq $true ) {
@@ -142,13 +169,11 @@ if( $build      -eq $true ) {
 
 if( $test -eq $true ) {
     $result = ("unknown")
-    Test 2>&1 | Tee-Object -Variable result
-    if( @($result | Where-Object { $_ })[-1] -Match "PASSED" ) {
-        Write-Output "$config - Test Succeded"
-    } else {
-        Write-Output "$config - Test-Failure"
-    }
+    Test
+    ($stats).test = "OK"
 }
 
 H2 "$config - Completed"
+
+PrintStats
 Start-Sleep 1

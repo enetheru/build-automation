@@ -31,7 +31,7 @@ function Prepare {
 
     [array]$cmakeVars = $null
     $cmakeVars += "-DGODOT_ENABLE_TESTING=YES"
-    $cmakeVars += "-DGODOT_BUILD_PROFILE=test/build_profile.json"
+    $cmakeVars += "-DGODOT_BUILD_PROFILE='..\test\build_profile.json'"
     
     Format-Eval "cmake $doFresh .. $($cmakeVars -Join ' ')"
 }
