@@ -28,32 +28,21 @@ function Fetch {
     echo "  Git URL       = $gitUrl"
     echo "  Git Branch    = $gitBranch"
 
+    # Clone to bare repo if not already
+    if [ ! -d "$targetRoot/git" ]; then
+        Format-Eval "git clone --bare \"$gitUrl\" \"$targetRoot/git\""
+    fi
+
+    # Checkout worktree if not already
     if [ ! -d "$buildRoot" ]; then
-        H4 "Creating ${buildRoot}"
-        mkdir -p "$buildRoot"
+        Format-Eval "git --git-dir \"$targetRoot/git\" worktree add -d \"$buildRoot\""
     fi
 
-    # Clone if not already
-    if [ -n "$(find "$buildRoot" -maxdepth 0 -empty)" ]; then
-        H4 "Cloning ${target}"
-        Format-Eval "git clone '$gitUrl' '$buildRoot'"
-    fi
-
-    # Change working directory
-    cd "$buildRoot" || exit
-
-    # Fetch any changes and reset to latest
-    if eval git fetch --dry-run 2>&1 ; then
-      H4 "Fetching Latest"
-      Format-Eval "git fetch --all"
-      Format-Eval "git reset --hard '@{u}'"
-      if [ -n "$gitBranch" ]; then
-          Format-Eval "git checkout $gitBranch"
-      fi
-    fi
-
-    #TODO fix when the tree diverges and needs to be clobbered.
-    cd "$targetRoot" || exit
+    # Update worktree
+    cd "$buildRoot" || return 1
+    Format-Eval "git reset --hard"
+    Format-Eval "git checkout -d $gitBranch"
+    Format-Eval "git status"
 }
 
 function Prepare {
