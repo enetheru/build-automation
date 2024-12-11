@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # The root is wherever this script is
+platform=$(basename "$(uname -o)")
 root=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
 
 # Set Columns width, and source the formatting script
@@ -50,7 +51,11 @@ needs_arg() { if [ -z "$OPTARG" ]; then Syntax; die "No arg for --$OPT option"; 
 # Defaults
 verbose=1
 list=0
-jobs=$(( $(nproc) -1 ))
+if [ "$platform" = "Darwin" ]; then
+    jobs=$(( $(sysctl -n hw.ncpu) -1 ))
+else
+    jobs=$(( $(nproc) -1 ))
+fi
 
 fetch=0
 configure=0
@@ -137,7 +142,6 @@ if [ -n "$1" ]; then
 fi
 
 Fill "- " | Center " Automatic "
-platform=$(basename "$(uname -o)")
 targetRoot="$root/$target"
 echo "  platform    = $platform"
 echo "  targetRoot  = $targetRoot"
