@@ -29,3 +29,9 @@ That's for another day though, because it's too much work for the simple thing I
 wish to do right now.
 
 I could default to if nothing is specified then all.
+
+
+ytnuf's godot-cpp vcpkg
+https://github.com/microsoft/vcpkg/pull/37931
+
+I have to create projects using vcpkg and conan to see if anything needs to change.

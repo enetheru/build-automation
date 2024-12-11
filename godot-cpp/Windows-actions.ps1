@@ -120,6 +120,20 @@ function PrepareCommon {
     }
 }
 
+# Clean up Binaries to trigger rebuild
+function EraseBinaries {
+    [array]$binaries = Get-ChildItem -Recurse `
+        | Where-Object { $_.Name -match "\.(so|dll|dylib|wasm32|wasm)$" }
+    
+    if( $binaries.Length -gt 0 ) {
+        H3 "Removing Binaries"
+        $binaries | ForEach-Object {
+            Write-Host "Removing $_"
+            Remove-Item $_
+        }
+    }
+}
+
 function TestCommon {
     Write-Output "" >> "$targetRoot\summary.log"
     H4 "$config" >> "$targetRoot\summary.log"

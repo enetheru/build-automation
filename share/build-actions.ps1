@@ -21,25 +21,19 @@ function Fetch {
     if( -Not (Test-Path -Path "$targetRoot\git" -PathType Container) ) {
         Format-Eval git clone --bare "$gitUrl" "$targetroot\git"
     }
-    Set-Location "$targetroot\git"
-    
-    Format-Eval git fetch -u --force --all
+    # FIXME Update the clone
+#    Format-Eval git --git-dir "$targetRoot\git" fetch -u --force --all
     
     # Create worktree is missing
     if( -Not (Test-Path -Path "$buildRoot" -PathType Container) ) {
-        Format-Eval git worktree add --force "$buildRoot" "$gitBranch"
-        Format-Eval git config remote.origin.fetch 'refs/heads/*:refs/heads/*'
+        Format-Eval git --git-dir "$targetRoot/git" worktree add -d "$buildRoot"
     }
     
     # Update worktree
     Set-Location "$buildRoot"
-    Format-Eval git fetch -u --force
     Format-Eval git reset --hard
+    Format-Eval git checkout -d $gitBranch
     Format-Eval git status
-
-    #TODO fix when the tree diverges and needs to be clobbered.
-    
-    
 }
 
 function Prepare {
