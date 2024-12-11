@@ -55,30 +55,3 @@ function Clean {
     H3 "No Clean Action Specified"
     Write-Output "-"
 }
-
-function CleanLog {
-    H3 "Cleaning $args"
-    # Clean the logs
-    # it goes like this, for each line that matches the pattern.
-    # split each line along spaces.
-    # [repeated per type of construct] re-join lines that match a set of tags
-    # the remove the compiler defaults, since CMake adds so many.
-    
-    $matchPattern = '^lib|^link|memory|Lib\.exe|link\.exe|  󰞷'
-    [array]$compilerDefaults = (
-    "fp:precise",
-    "Gd", "GR", "GS",
-    "Zc:forScope", "Zc:wchar_t",
-    "DYNAMICBASE", "NXCOMPAT", "SUBSYSTEM:CONSOLE", "TLBID:1",
-    "errorReport:queue", "ERRORREPORT:QUEUE", "EHsc",
-    "diagnostics:column", "INCREMENTAL", "NOLOGO", "nologo")
-    & {
-        $PSNativeCommandUseErrorActionPreference = $false
-        rg -M2048 $matchPattern "$args" `
-            | sed -E 's/ +/\n/g' `
-            | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' `
-            | sed -E ':a;$!N;s/(Program|Microsoft|Visual|vcxproj|->)\n/\1 /;ta;P;D' `
-            | sed -E ':a;$!N;s/(\.\.\.|omitted|end|of|long)\n/\1 /;ta;P;D' `
-            | sed -E "/^\/($($compilerDefaults -Join '|'))$/d"
-    }
-}
