@@ -26,20 +26,23 @@ function Prepare {
 }
 
 function Build {
-    $doVerbose = ($verbose -eq $true) ? "verbose=yes" : $null
-    $doJobs = ($jobs -gt 0) ? "-j $jobs" : $null
-    
     [array]$statArray = @()
     
-    $targets = @(
+    [array]$targets = @(
         "template_debug",
         "template_release",
         "editor"
     )
     
+    #SCons build
+    $doVerbose = ($verbose -eq $true) ? "verbose=yes" : $null
+    $doJobs = ($jobs -gt 0) ? "-j $jobs" : $null
+    
     [array]$sconsVars = @(
-        "platform=web"
-        "dlink_enabled=yes"
+        "$doVerbose",
+        "$doJobs",
+        "platform=web",
+        "dlink_enabled=yes",
         "threads=no"
     )
     

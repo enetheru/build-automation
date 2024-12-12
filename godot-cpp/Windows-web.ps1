@@ -14,75 +14,72 @@ if( $args -eq "get_env" ) {
 }
 
 $script:buildDir = "$buildRoot/cmake-build"
+$script:emsdk = "C:\emsdk"
 
 function Prepare {
     H1 "Prepare"
     
-    H3 "Update Android SDK"
-    $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
-    $env:Path = "$androidSDK;" + $env:Path
-    
-    Format-Eval sdkmanager --update $doVerbose
-    
-    H3 "CMake Configure"
-    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
-    
-    # Create Build Directory
-    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
-        H4 "Creating $buildDir"
-        New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
-    }
-    Set-Location $buildDir
+    H4 "Update EmSDK"
+    Set-Location $emsdk
+    Format-Eval git pull
+    Format-Eval $emsdk\emsdk.ps1 install latest
     
     # CMake Configure
+    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
+    
+    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
+        H4 "Creating $buildDir"
+        New-Item -Path "$buildDir" -ItemType Directory -Force | Out-Null
+    }
+    Set-Location "$buildDir"
+    
+    H3 "Activate EmSDK"
+    Format-Eval ./emsdk.ps1 activate latest
+    
+    H1 "CMake Configure"
     [array]$cmakeVars = @(
         "-DCMAKE_BUILD_TYPE=Release",
         "-DGODOT_ENABLE_TESTING=YES",
-        "-DANDROID_PLATFORM=android-29",
-        "-DANDROID_ABI=x86_64",
-        "-GNinja",
-        "--toolchain `"C:\androidsdk\ndk\23.2.8568313\build\cmake\android.toolchain.cmake`""
+        "-GNinja"
     )
     
-    Format-Eval "cmake $doFresh .. $($cmakeVars -Join ' ')"
+    Format-Eval emcmake.bat cmake $doFresh .. $($cmakeVars -Join ' ')
 }
 
 function Build {
     [array]$statArray = @()
     
-    $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
-    
-    # FIXME get arch somehow.
-    $arch = "x86" + ([Environment]::Is64BitOperatingSystem) ? "_64" : ""
-    
-    $targets = @(
+    [array]$targets = @(
         "template_debug",
         "template_release",
         "editor"
     )
     
-    # Build Targets using SCons
+    # SCons build
     $doVerbose  = ($verbose -eq $true) ? "verbose=yes" : $null
+    $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
     
     [array]$sconsVars = @(
-        "platform=android"
-        "arch=x86_64"
+        "$doVerbose",
+        "$doJobs",
+        "platform=web"
     )
     
     Set-Location "$buildRoot/test"
+    
     foreach( $target in $targets ){
         H2 "$target"; H1 "Scons Build"
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
 
-        Format-Eval "scons $doJobs $doVerbose target=$target $($sconsVars -Join ' ')"
+        Format-Eval "scons target=$target $($sconsVars -Join ' ')"
         
         $timer.Stop()
-        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$target.$arch.so"
+#        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$target.$arch.so"
         
         $newStat += [PSCustomObject] @{
             target      = "scons.$target"
             duration    = $timer.Elapsed
-            size        = DisplayInBytes $artifact.Length
+#            size        = DisplayInBytes $artifact.Length
         }
         $newStat | Format-Table
         $statArray += $newStat
@@ -90,21 +87,28 @@ function Build {
     
     # Build Targets using CMake
     $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
+    $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
     
-    Set-Location "$buildDir"
+    [array]$sconsVars = @(
+        "$doVerbose",
+        "$doJobs"
+    )
+    
+    Set-Location $buildDir
     foreach( $target in $targets ){
         H2 "$target"; H1 "CMake Build"
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         
-        Format-Eval "cmake --build . $doJobs $doVerbose -t godot-cpp.test.$target"
+        Format-Eval emcmake.bat cmake --build . `
+            -t godot-cpp.test.$target $($cmakeVars -Join ' ')
         
         $timer.Stop()
-        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$arch.$target.$arch.so"
+#        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$arch.$target.$arch.so"
         
         $newStat += [PSCustomObject] @{
             target      = "cmake.$target"
             duration    = $timer.Elapsed
-            size        = DisplayInBytes $artifact.Length
+#            size        = DisplayInBytes $artifact.Length
         }
         $newStat | Format-Table
         $statArray += $newStat

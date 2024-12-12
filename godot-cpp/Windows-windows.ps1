@@ -18,12 +18,6 @@ $script:buildDir = "$buildRoot/cmake-build"
 function Prepare {
     H1 "Prepare"
     
-    H3 "Update Android SDK"
-    $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
-    $env:Path = "$androidSDK;" + $env:Path
-    
-    Format-Eval sdkmanager --update $doVerbose
-    
     H3 "CMake Configure"
     $doFresh = ($fresh -eq $true) ? "--fresh" : $null
     
@@ -36,15 +30,10 @@ function Prepare {
     
     # CMake Configure
     [array]$cmakeVars = @(
-        "-DCMAKE_BUILD_TYPE=Release",
-        "-DGODOT_ENABLE_TESTING=YES",
-        "-DANDROID_PLATFORM=android-29",
-        "-DANDROID_ABI=x86_64",
-        "-GNinja",
-        "--toolchain `"C:\androidsdk\ndk\23.2.8568313\build\cmake\android.toolchain.cmake`""
+        "-DGODOT_ENABLE_TESTING=YES"
     )
     
-    Format-Eval "cmake $doFresh .. $($cmakeVars -Join ' ')"
+    Format-Eval cmake $doFresh .. $($cmakeVars -Join ' ')
 }
 
 function Build {
@@ -64,10 +53,7 @@ function Build {
     # Build Targets using SCons
     $doVerbose  = ($verbose -eq $true) ? "verbose=yes" : $null
     
-    [array]$sconsVars = @(
-        "platform=android"
-        "arch=x86_64"
-    )
+    [array]$sconsVars = @()
     
     Set-Location "$buildRoot/test"
     foreach( $target in $targets ){
@@ -77,12 +63,12 @@ function Build {
         Format-Eval "scons $doJobs $doVerbose target=$target $($sconsVars -Join ' ')"
         
         $timer.Stop()
-        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$target.$arch.so"
+#        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$target.$arch.so"
         
         $newStat += [PSCustomObject] @{
             target      = "scons.$target"
             duration    = $timer.Elapsed
-            size        = DisplayInBytes $artifact.Length
+#            size        = DisplayInBytes $artifact.Length
         }
         $newStat | Format-Table
         $statArray += $newStat
@@ -90,21 +76,30 @@ function Build {
     
     # Build Targets using CMake
     $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
+    $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
+    
+    [array]$cmakeVars = @(
+        "$doVerbose",
+        "$doJobs",
+        "--config Release"
+    )
+    $vsExtraOptions = "-- /nologo /v:m /clp:'ShowCommandLine;ForceNoAlign'"
     
     Set-Location "$buildDir"
     foreach( $target in $targets ){
         H2 "$target"; H1 "CMake Build"
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         
-        Format-Eval "cmake --build . $doJobs $doVerbose -t godot-cpp.test.$target"
+        Format-Eval cmake --build . -t godot-cpp.test.$target `
+            $($cmakeVars -Join ' ') $vsExtraOptions
         
         $timer.Stop()
-        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$arch.$target.$arch.so"
+#        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$arch.$target.$arch.so"
         
         $newStat += [PSCustomObject] @{
             target      = "cmake.$target"
             duration    = $timer.Elapsed
-            size        = DisplayInBytes $artifact.Length
+#            size        = DisplayInBytes $artifact.Length
         }
         $newStat | Format-Table
         $statArray += $newStat

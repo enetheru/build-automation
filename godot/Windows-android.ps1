@@ -15,28 +15,31 @@ if( $args -eq "get_env" ) {
 $androidSDK = "C:\androidsdk\cmdline-tools\latest\bin"
 
 function Prepare {
-    $doVerbose = ($verbose -eq $true) ? "--verbose" : $null
     H1 "Prepare"
     
-    H3 "Add Android SDK Manager to PATH"
+    H3 "Update Android SDK"
+    $doVerbose = ($verbose -eq $true) ? "--verbose" : $null
     $env:Path = "$androidSDK;" + $env:Path
     
-    sdkmanager --update $doVerbose
+    Format-Eval sdkmanager --update $doVerbose
 }
 
 function Build {
-    $doVerbose = ($verbose -eq $true) ? "verbose=yes" : $null
-    $doJobs = ($jobs -gt 0) ? "-j $jobs" : $null
-    
     [array]$statArray = @()
     
-    $targets = @(
+    [array]$targets = @(
         "template_debug",
         "template_release",
         "editor"
     )
     
+    #SCons Build
+    $doVerbose = ($verbose -eq $true) ? "verbose=yes" : $null
+    $doJobs = ($jobs -gt 0) ? "-j $jobs" : $null
+    
     [array]$sconsVars = @(
+        "$doJobs",
+        "$doVerbose",
         "platform=android"
         "arch=x86_64"
     )
@@ -47,15 +50,15 @@ function Build {
         H2 "$target"; H1 "SCons Build"
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         
-        Format-Eval "scons $doJobs $doVerbose target=$target $($sconsVars -Join ' ')"
+        Format-Eval "scons `target=$target $($sconsVars -Join ' ')"
         
         $timer.Stop()
+        $artifact = Get-ChildItem "$buildRoot\bin\godot.android.$target.x86_64.so"
         
-#        $artifact = Get-ChildItem "$buildRoot\bin\godot.web.$target.x86_64.wasm"
         $newStat = [PSCustomObject] @{
             target      = "scons.$target"
             duration    = $timer.Elapsed
-#            size        = DisplayInBytes $artifact.Length
+            size        = DisplayInBytes $artifact.Length
         }
         $newStat | Format-Table
         $statArray += $newStat
