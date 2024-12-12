@@ -26,3 +26,8 @@ function Fetch {
     H3 "No Fetch Action Specified"
     echo "-"
 }
+
+function Test {
+    echo "Test Failure"
+    return 1
+}

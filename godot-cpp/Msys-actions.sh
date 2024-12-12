@@ -9,7 +9,24 @@ set -o pipefail # halt when a pipe failure occurs
 # of commands to files and show them at the same time.
 exec 5>&1
 
+declare -A stats=(
+    ["fetch"]="$(if [ "${fetch:-0}" = "1" ]; then echo "Fail"; else echo "-"; fi)"
+    ["prepare"]="$(if [ "${prepare:-0}" = "1" ]; then echo "Fail"; else echo "-"; fi)"
+    ["build"]="$(if [ "${build:-0}" = "1" ]; then echo "Fail"; else echo "-"; fi)"
+    ["test"]="$(if [ "${test:-0}" = "1" ]; then echo "Fail"; else echo "-"; fi)"
+)
+
+function PrintStats {
+    for key in "${!stats[@]}"; do
+        echo "stats[\"$key\"]=\"${stats[$key]}\""
+    done
+}
+
+trap "PrintStats; exit 1" 0
+
+# Check needed vars
 if [ -z "${root:-}" ]; then exit 1; fi
+if [ -z "${script:-}" ]; then exit 1; fi
 
 source "$root/share/format.sh"
 
@@ -17,15 +34,17 @@ source "$root/share/format.sh"
 targetRoot=${targetRoot:-$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )}
 cd "$targetRoot" || return 1
 
+# determine the config from the script name.
+config="${config:-${script%.*}}"
 
-config="${script%.*}"
 buildRoot="$targetRoot/$config"
 
-# generic build actions.
-source "$root/share/build-actions.sh"
+#gitUrl=http://github.com/enetheru/godot-cpp.git
+gitUrl=${gitUrl:-"http://github.com/enetheru/godot-cpp.git"}
+gitBranch=${gitBranch:-"master"}
 
-# override build actions
-source "$targetRoot/$script"
+godot="/c/build/godot/msvc.master/bin/godot.windows.editor.x86_64.exe"
+godot_tr="/c/build/godot/msvc.master/bin/godot.windows.template_release.x86_64.exe"
 
 H2 " Build ${target:-FailTarget} using ${platform:-FailPlatform} "
 echo "
@@ -33,31 +52,24 @@ echo "
   Build Root  = ${buildRoot:-}
 
   fetch       = ${fetch:-}
-  configure   = ${configure:-}
+  prepare     = ${prepare:-}
   build       = ${build:-}
   test        = ${test:-}
   jobs        = ${jobs:-}
 
   fresh build = ${fresh:-}
-  log append  = ${append:-}"
+  log append  = ${append:-}
 
-#gitUrl=http://github.com/enetheru/godot-cpp.git
-gitUrl=${gitUrl:-"http://github.com/enetheru/godot-cpp.git"}
-gitBranch=${gitBranch:-"master"}
-
-echo "
   gitUrl      = $gitUrl
-  gitBranch   = $gitBranch"
+  gitBranch   = $gitBranch
 
-godot="/c/build/godot/msvc.master/bin/godot.windows.editor.x86_64.exe"
-godot_tr="/c/build/godot/msvc.master/bin/godot.windows.template_release.x86_64.exe"
-
-echo "
   godot       = $godot
   godot_tr    = $godot_tr"
 
+# Host Platform Values and Functions
+source "$root/share/build-actions.sh"
 
-# Some steps are identical.
+# Some # Project overrides and functions are identical.
 PrepareCommon(){
     local prev
     prev="$(pwd)"
@@ -67,7 +79,9 @@ PrepareCommon(){
     declare -a artifacts
     fragments=".*(memory|libgodot-cpp|libgdexample).*"
     extensions="(o|os|a|lib|so|dll|dylib)"
-    artifacts=($(find . -type f -regex "$fragments\.$extensions" -print ))
+    mapfile -t artifacts < <(
+        find . -type f -regex "$fragments\.$extensions" -print
+        )
 
     if [ ${#artifacts} -gt 0 ]; then
         Warning "Deleting ${#artifacts} Artifacts"
@@ -125,7 +139,7 @@ TestCommon(){
     declare -a lines=()
     while IFS=$'\n' read -ra line; do
         if [ -n "${line//[[:space:]]/}" ]; then
-            lines+=("$line") 
+            lines+=("$line")
         fi
     done <<< "$result"
 
@@ -135,25 +149,32 @@ TestCommon(){
     [[ "${lines[-1]}" == *"PASSED"* ]]
 }
 
-H2 "Processing - $config"
+# override build actions
+source "$targetRoot/$script"
+
+H3 "$config - Processing"
 
 if [ "$fetch" -eq 1 ]; then
-  if ! Fetch;     then Error "Fetch Failure"  ; exit 1; fi
+    if ! Fetch;     then Error "Fetch Failure"  ; exit 1; fi
+    stats["fetch"]="OK"
 fi
 
-if [ "$configure" -eq 1 ]; then
-  if ! Prepare;   then Error "Prepare Failure"; exit 1; fi
+if [ "$prepare" -eq 1 ]; then
+    if ! Prepare;   then Error "Prepare Failure"; exit 1; fi
+    stats["prepare"]="OK"
 fi
 
 if [ "$build" -eq 1 ]; then
-  if ! Build;     then Error "Build Failure"  ; exit 1; fi
+    if ! Build;     then Error "Build Failure"  ; exit 1; fi
+    stats["build"]="OK"
 fi
 
 if [ "$test" -eq 1 ]; then
-  if ! Test 5>&1; then Error "Test Failure"   ; fi
+#    if ! Test 5>&1; then Error "Test Failure"   ; fi
+    Test
+    stats["test"]="OK"
 fi
 
-if ! Clean;     then Error "Clean Failure"  ; fi
+H2 "$config - completed"
 
-H3 "Completed - $config"
-
+PrintStats

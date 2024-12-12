@@ -6,13 +6,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
-$statsSchema = @{
+$stats = [PSCustomObject]@{
     fetch   = ($fetch -eq $true) ? "Fail" : "-"
     prepare = ($prepare -eq $true) ? "Fail" : "-"
     build   = ($build -eq $true) ? "Fail" : "-"
     test    = ($test -eq $true) ? "Fail" : "-"
 }
-$stats = [PSCustomObject]$statsSchema
 
 function PrintStats {
     @"
@@ -37,6 +36,19 @@ trap {
 
 $config = Split-Path -Path $script -LeafBase
 
+# [System.Uri]$gitUrl = "http://github.com/godotengine/godot-cpp.git"
+[System.Uri]$gitUrl = "C:\Godot\src\godot-cpp"
+# [string]$gitBranch = "ipo-lto"
+
+
+[string]$godot = "C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
+[string]$godot_tr = "C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
+
+# Get the target root from this script location
+$targetRoot = $thisScript  | split-path -parent
+$buildRoot = "$targetRoot\$config"
+
+
 H2 "Build '$target' on '$platform' using '$config'"
 Write-Output @"
   envActions  = $thisScript
@@ -52,33 +64,12 @@ Write-Output @"
 
   target      = $target
   branch      = $gitBranch
-"@
-
-# Main Variables
-[string]$godot = "C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
-[string]$godot_tr = "C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
-
-Write-Output @"
 
   godot.editor           = $godot
   godot.template_release = $godot_tr
-"@
-
-# [System.Uri]$gitUrl = "http://github.com/godotengine/godot-cpp.git"
-[System.Uri]$gitUrl = "C:\Godot\src\godot-cpp"
-# [string]$gitBranch = "ipo-lto"
-
-Write-Output @"
 
   gitUrl      = $gitUrl
   gitBranch   = $gitBranch
-"@
-
-# Get the target root from this script location
-$targetRoot = $thisScript  | split-path -parent
-$buildRoot = "$targetRoot\$config"
-
-Write-Output @"
 
   platform    = $platform
   root        = $root

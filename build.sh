@@ -31,7 +31,7 @@ Help()
    echo "     --list        Only list the scripts"
    echo
    echo "  f, --fetch       Fetch the source"
-   echo "  c, --configure   Configure the source"
+   echo "  p, --prepare     prepare the source"
    echo "  b, --build       Build the code"
    echo "  t, --test        Test the code"
    echo
@@ -56,7 +56,7 @@ else
 fi
 
 fetch=0
-configure=0
+prepare=0
 build=0
 test=0
 
@@ -84,7 +84,7 @@ while getopts :hfcbt-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
         h | help )      Help ;;
         list )          list=1 ;;
         f | fetch )     fetch=1 ;;
-        c | configure ) configure=1 ;;
+        p | prepare )   prepare=1 ;;
         b | build )     build=1 ;;
         t | test )      test=1 ;;
         fresh )         fresh=1 ;;
@@ -106,9 +106,9 @@ fi
 
 H1 "AutoBuild"
 
-if [ $fetch -eq 0 ] && [ $configure -eq 0 ] && [ $build -eq 0 ] && [ $test -eq 0 ]; then
+if [ $fetch -eq 0 ] && [ $prepare -eq 0 ] && [ $build -eq 0 ] && [ $test -eq 0 ]; then
     fetch=1
-    configure=1
+    prepare=1
     build=1
     test=1
 fi
@@ -119,7 +119,7 @@ echo "  root        = $root"
 echo "  platform    = $platform"
 echo
 echo "  fetch       = $fetch"
-echo "  configure   = $configure"
+echo "  prepare     = $prepare"
 echo "  build       = $build"
 echo "  test        = $test"
 echo
@@ -186,11 +186,15 @@ declare -a savedVars=(
     "targetRoot='$targetRoot'"
     "gitBranch='$gitBranch'"
     "fetch='$fetch'"
-    "configure='$configure'"
+    "prepare='$prepare'"
     "build='$build'"
     "test='$test'"
     "fresh='$fresh'"
     "append='$append'"
+)
+
+declare -a summary=(
+        "target config status duration fetch prepare build test"
 )
 
 # Process Scripts
@@ -210,8 +214,19 @@ for script in "${buildScripts[@]}"; do
     envClean="CleanLog-Default"
 
     # source env overrides from script.
-    H4 "Source variations"
-    . "$targetRoot/$script" "get_env"
+    H4 "Source variations from: '$targetRoot/$script'"
+    source "$targetRoot/$script" "get_env"
+
+    declare -A stats=(
+        ["target"]="$target"
+        ["config"]="$config"
+        ["status"]="dnf"
+        ["duration"]="dnf"
+        ["fetch"]=""
+        ["prepare"]=""
+        ["build"]=""
+        ["test"]=""
+    )
 
     declare -a useVars=(
         "verbose='$verbose'"
@@ -223,7 +238,7 @@ for script in "${buildScripts[@]}"; do
         "gitUrl='$gitUrl'"
         "gitBranch='$gitBranch'"
         "fetch='$fetch'"
-        "configure='$configure'"
+        "prepare='$prepare'"
         "build='$build'"
         "test='$test'"
         "fresh='$fresh'"
@@ -232,7 +247,7 @@ for script in "${buildScripts[@]}"; do
         "config='$config'"
     )
 
-    # Run the action script
+    # Show action startup details
     if [ $verbose ]; then
         H5 "Command: $envRun"
         H5 "With:"
@@ -242,9 +257,35 @@ for script in "${buildScripts[@]}"; do
         H5 "cleanLog: $cleanLog"
     fi
 
+    set +e
     H3 "Start Action"
-    $envRun "${useVars[*]} . $targetRoot/$envActions" 2>&1 | tee "$traceLog"
+    declare -i start=$SECONDS
+    $envRun "${useVars[*]} $targetRoot/$envActions" 2>&1 | tee "$traceLog"
+    stats["duration"]=$((SECONDS - start))
+    set -e
+
+    # read the last part of the raw log to collect stats
+    mapfile -t data < <(tail -n 20 "$traceLog" | sed -n "/stats\[\"/p")
+    for row in "${data[@]}"; do
+        eval "$row"
+    done
+
+    # Print out the stats in table.
+    H3 "$config - Statistics"
+
+    summary+=(
+        "$(for col in ${summary[0]}; do
+            printf "%s " "${stats[${col}]}"
+        done)"
+    )
+
+    printf "%s\n%s" "${summary[0]}" "${summary[-1]}" | column -t
 
     # Cleanup Logs
-    $envClean "$traceLog" > "$cleanLog"
+#    $envClean "$traceLog" > "$cleanLog"
 done
+
+H3 Finished
+H4 "Original Command: ${argv[*]}"
+H3 "Summary"
+printf "%s\n" "${summary[@]}" | column -t
