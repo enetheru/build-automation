@@ -53,12 +53,12 @@ function Build {
         Format-Eval "scons `target=$target $($sconsVars -Join ' ')"
         
         $timer.Stop()
-        $artifact = Get-ChildItem "$buildRoot\bin\godot.android.$target.x86_64.so"
+#        $artifact = Get-ChildItem "$buildRoot\bin\godot.android.$target.x86_64.so"
         
         $newStat = [PSCustomObject] @{
             target      = "scons.$target"
             duration    = $timer.Elapsed
-            size        = DisplayInBytes $artifact.Length
+#            size        = DisplayInBytes $artifact.Length
         }
         $newStat | Format-Table
         $statArray += $newStat
