@@ -52,9 +52,7 @@ function Prepare {
 
 function Build {
     statArray=(
-        "target"
-        "duration"
-        "size"
+        "target duration size"
     )
 
     unset doJobs

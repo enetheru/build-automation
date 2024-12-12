@@ -194,7 +194,7 @@ declare -a savedVars=(
 )
 
 declare -a summary=(
-        "target config status duration fetch prepare build test"
+        "target config fetch prepare build test status duration"
 )
 
 # Process Scripts
@@ -220,13 +220,13 @@ for script in "${buildScripts[@]}"; do
     declare -A stats=(
         ["target"]="$target"
         ["config"]="$config"
-        ["status"]="dnf"
-        ["duration"]="dnf"
         ["fetch"]=""
         ["prepare"]=""
         ["build"]=""
         ["test"]=""
-    )
+        ["status"]="dnf"
+        ["duration"]="dnf"
+)
 
     declare -a useVars=(
         "verbose='$verbose'"
@@ -261,6 +261,7 @@ for script in "${buildScripts[@]}"; do
     H3 "Start Action"
     declare -i start=$SECONDS
     $envRun "${useVars[*]} $targetRoot/$envActions" 2>&1 | tee "$traceLog"
+    if [ $? ]; then stats["status"]="Completed"; fi
     stats["duration"]=$((SECONDS - start))
     set -e
 

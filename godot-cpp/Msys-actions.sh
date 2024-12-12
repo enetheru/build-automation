@@ -176,5 +176,3 @@ if [ "$test" -eq 1 ]; then
 fi
 
 H2 "$config - completed"
-
-PrintStats
