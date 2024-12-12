@@ -18,6 +18,7 @@ if [ "${1:-}" = "get_env" ]; then
         "-where $targetRoot"
     )
     envRun="/msys2_shell.cmd ${runArgs[*]} -c"
+    gitBranch="name_clash"
 
     return
 fi
@@ -100,7 +101,7 @@ function Build {
             "$doVerbose"
         )
 
-    cd "$buildRoot" || return 1
+    cd "$buildRoot/cmake-build" || return 1
     for target in "${targets[@]}"; do
         H2 "$target"; H1 "CMake Build"
         start=$SECONDS
@@ -111,7 +112,7 @@ function Build {
         printf "%s\n%s" "${statArray[0]}" "${statArray[-1]}" | column -t
     done
 
-        statArray+=( "cmake.$target $((SECONDS - start)) n/a")
-        printf "%s\n" "${statArray[@]}" | column -t
+    H3 "sub-target summary"
+    printf "%s\n" "${statArray[@]}" | column -t
 }
 
