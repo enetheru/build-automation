@@ -24,9 +24,9 @@ function Prepare {
     # Create Build Directory
     if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
         H4 "Creating $buildDir"
-        New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
+        New-Item -Path "$buildDir" -ItemType Directory -Force | Out-Null
     }
-    Set-Location $buildDir
+    Set-Location "$buildDir"
     
     # CMake Configure
     [array]$cmakeVars = @(
@@ -53,14 +53,17 @@ function Build {
     # Build Targets using SCons
     $doVerbose  = ($verbose -eq $true) ? "verbose=yes" : $null
     
-    [array]$sconsVars = @()
+    [array]$sconsVars = @(
+        "$doJobs",
+        "$doVerbose"
+    )
     
     Set-Location "$buildRoot/test"
     foreach( $target in $targets ){
         H2 "$target"; H1 "Scons Build"
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
 
-        Format-Eval "scons $doJobs $doVerbose target=$target $($sconsVars -Join ' ')"
+        Format-Eval "scons $($sconsVars -Join ' ') target=$target"
         
         $timer.Stop()
 #        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$target.$arch.so"

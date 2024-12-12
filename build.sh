@@ -285,7 +285,7 @@ for script in "${buildScripts[@]}"; do
 #    $envClean "$traceLog" > "$cleanLog"
 done
 
-H3 Finished
+H2 "All Finished"
 H4 "Original Command: ${argv[*]}"
 H3 "Summary"
 printf "%s\n" "${summary[@]}" | column -t
