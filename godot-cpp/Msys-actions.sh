@@ -1,16 +1,22 @@
 #!/bin/bash
 
+set -e          # error and quit when( $? != 0 )
+set -u          # error and quit on unbound variable
+set -o pipefail # halt when a pipe failure occurs
+#set -x          # execute and print
+
 # Setup a secondary mechanism for piping to stdout so that we can split output
 # of commands to files and show them at the same time.
 exec 5>&1
 
-declare -i columns=120
+if [ -z "${root:-}" ]; then exit 1; fi
+
 source "$root/share/format.sh"
 
 # Get the target root from this script location
 targetRoot=${targetRoot:-$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )}
-
 cd "$targetRoot" || return 1
+
 
 config="${script%.*}"
 buildRoot="$targetRoot/$config"
@@ -23,8 +29,8 @@ source "$targetRoot/$script"
 
 H2 " Build ${target:-FailTarget} using ${platform:-FailPlatform} "
 echo "
-  script      = $script
-  Build Root  = $buildRoot
+  script      = ${script:-}
+  Build Root  = ${buildRoot:-}
 
   fetch       = ${fetch:-}
   configure   = ${configure:-}

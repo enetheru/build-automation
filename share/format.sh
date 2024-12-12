@@ -8,7 +8,7 @@ if [ "$sourced" -eq 0 ]; then
     exit
 fi
 
-columns=${columns:-$COLUMNS}
+columns=${columns:-$(tput cols)}
 RED='\033[0;31m'
 ORANGE='\033[0;93m'
 NC='\033[0m' # No Color

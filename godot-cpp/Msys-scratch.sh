@@ -10,7 +10,7 @@ if [ "$sourced" -eq 0 ]; then
 fi
 
 # tell the build command how to run ourselves.
-if [ "$1" = "get_env" ]; then
+if [ "${1:-}" = "get_env" ]; then
     runArgs=(
         "-ucrt64"
         "-defterm"
