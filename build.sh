@@ -1,14 +1,16 @@
 #!/bin/bash
 
+set -e          # error and quit when( $? != 0 )
+set -u          # error and quit on unbound variable
+set -o pipefail # halt when a pipe failure occurs
+#set -x          # execute and print
+
 # The root is wherever this script is
 platform=$(basename "$(uname -o)")
 root=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
 
-# Set Columns width, and source the formatting script
-# shellcheck disable=SC2034
-columns=120
+# Source the formatting script
 source "$root/share/format.sh"
-
 
 argv[0]="$0"
 argv+=("${@}")
@@ -43,14 +45,10 @@ Help()
    exit
 }
 
-# Option parsing pulled from this Stack Overflow Answer from Adam Katz
-# https://stackoverflow.com/a/28466267
-die() { echo "$*" >&2; exit 2; }  # complain to STDERR and exit with error
-needs_arg() { if [ -z "$OPTARG" ]; then Syntax; die "No arg for --$OPT option"; fi; }
-
 # Defaults
 verbose=1
 list=0
+
 if [ "$platform" = "Darwin" ]; then
     jobs=$(( $(sysctl -n hw.ncpu) -1 ))
 else
@@ -63,10 +61,16 @@ build=0
 test=0
 
 fresh=0
-logAppend=0
+append=0
 scriptFilter=".*"
 
+gitUrl=""
 gitBranch=""
+
+# Option parsing pulled from this Stack Overflow Answer from Adam Katz
+# https://stackoverflow.com/a/28466267
+die() { echo "$*" >&2; exit 2; }  # complain to STDERR and exit with error
+needs_arg() { if [ -z "$OPTARG" ]; then Syntax; die "No arg for --$OPT option"; fi; }
 
 while getopts :hfcbt-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
     # support long options: https://stackoverflow.com/a/28466267/519360
@@ -85,7 +89,7 @@ while getopts :hfcbt-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
         t | test )      test=1 ;;
         fresh )         fresh=1 ;;
         quiet )         verbose=0 ;;
-        append )        logAppend=1 ;;
+        append )        append=1 ;;
         jobs )          needs_arg; jobs="$OPTARG" ;;
         scriptFilter )  needs_arg; scriptFilter="$OPTARG" ;;
         # c | charlie )  charlie="${OPTARG:-$charlie_default}" ;;  # optional argument
@@ -112,6 +116,7 @@ fi
 H2 " Options "
 echo "  command     = ${argv[*]}"
 echo "  root        = $root"
+echo "  platform    = $platform"
 echo
 echo "  fetch       = $fetch"
 echo "  configure   = $configure"
@@ -120,41 +125,37 @@ echo "  test        = $test"
 echo
 echo "  jobs        = $jobs"
 echo "  fresh       = $fresh"
-echo "  append      = $logAppend"
+echo "  append      = $append"
 echo
 echo "  scriptFilter= $scriptFilter"
 
-if [ -z "$1" ]; then
-    echo
+# Parse the target
+if [ -n "${1:-}" ]; then
+    target="$1"
+    targetRoot="$root/$target"
+    echo "  target      = $target"
+    echo "  targetRoot  = $targetRoot"
+    shift 1
+else
     Syntax
     Error "The <target> parameter is missing"
     exit 1
-else
-    target=$1
-    echo "  target      = $target"
-    shift 1
 fi
 
-if [ -n "$1" ]; then
+# Parse the optional branch
+if [ -n "${1:-}" ]; then
     gitBranch="$1"
-    echo "  gitBranch   = $gitBranch"
     shift 1
 fi
 
-Fill "- " | Center " Automatic "
-targetRoot="$root/$target"
-echo "  platform    = $platform"
-echo "  targetRoot  = $targetRoot"
-echo
-
-# Get script count
-declare -a buildScripts
-buildScripts=($(
-    find "$targetRoot" -maxdepth 1 -type f -name "$platform*" -print0 \
+# Get script list
+mapfile -t buildScripts < <(
+find "$targetRoot" -maxdepth 1 -type f -name "$platform*" -print0 \
     | xargs -0 -I '{}' basename '{}' \
     | grep -v "build" \
     | grep -v "actions" \
-    | grep -e "$scriptFilter"))
+    | grep -e "$scriptFilter"
+)
 
 declare -i scriptCount=${#buildScripts[@]}
 echo "  Script count: $scriptCount"
@@ -175,41 +176,74 @@ if [ $list -eq 1 ]; then exit; fi
 mkdir -p "$targetRoot/logs-raw"
 mkdir -p "$targetRoot/logs-clean"
 
+#Save the vars to an array so we can restore them each loop run.
+declare -a savedVars=(
+    "verbose='$verbose'"
+    "jobs='$jobs'"
+    "platform='$platform'"
+    "root='$root'"
+    "target='$target'"
+    "targetRoot='$targetRoot'"
+    "gitBranch='$gitBranch'"
+    "fetch='$fetch'"
+    "configure='$configure'"
+    "build='$build'"
+    "test='$test'"
+    "fresh='$fresh'"
+    "append='$append'"
+)
+
 # Process Scripts
 for script in "${buildScripts[@]}"; do
-    # Setup the options each time to clobber any unintended changes.
-    declare -a vars
-    vars+=("root='$root'")
-    vars+=("targetRoot='$targetRoot'")
-    vars+=("gitBranch='$gitBranch'")
-    vars+=("fetch='$fetch'")
-    vars+=("configure='$configure'")
-    vars+=("build='$build'")
-    vars+=("test='$test'")
-    vars+=("jobs='$jobs'")
-    vars+=("fresh='$fresh'")
-    vars+=("append='$append'")
-    vars+=("verbose='$verbose'")
-    vars+=("script='$script'")
+    #reset variables
+    for var in "${savedVars[@]}"; do eval "$var"; done
 
-    H4 "starting $script"
+    H3 "Using '$script'"
     config="${script%.*}"
 
     traceLog="$targetRoot/logs-raw/${config}.txt"
     cleanLog="$targetRoot/logs-clean/${config}.txt"
-    echo "    traceLog    = $traceLog"
-    echo "    cleanLog    = $cleanLog"
 
-    # set default environment and commands.
+    # Reset default environment and commands.
     envRun="$SHELL -c"
     envActions="$platform-actions.sh"
     envClean="CleanLog-Default"
+
     # source env overrides from script.
-    source "$targetRoot/$script" "get_env"
+    H4 "Source variations"
+    . "$targetRoot/$script" "get_env"
+
+    declare -a useVars=(
+        "verbose='$verbose'"
+        "jobs='$jobs'"
+        "platform='$platform'"
+        "root='$root'"
+        "target='$target'"
+        "targetRoot='$targetRoot'"
+        "gitUrl='$gitUrl'"
+        "gitBranch='$gitBranch'"
+        "fetch='$fetch'"
+        "configure='$configure'"
+        "build='$build'"
+        "test='$test'"
+        "fresh='$fresh'"
+        "append='$append'"
+        "script='$script'"
+        "config='$config'"
+    )
 
     # Run the action script
+    if [ $verbose ]; then
+        H5 "Command: $envRun"
+        H5 "With:"
+        printf '\t%s\n' "${useVars[@]}"
+        H5 "Action: $targetRoot/$envActions"
+        H5 "traceLog: $traceLog"
+        H5 "cleanLog: $cleanLog"
+    fi
+
     H3 "Start Action"
-    $envRun "${vars[*]} . $targetRoot/$envActions" 2>&1 | tee "$traceLog"
+    $envRun "${useVars[*]} . $targetRoot/$envActions" 2>&1 | tee "$traceLog"
 
     # Cleanup Logs
     $envClean "$traceLog" > "$cleanLog"

@@ -22,7 +22,7 @@ function Prepare {
     $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
     $env:Path = "$androidSDK;" + $env:Path
     
-    Format-Eval sdkmanager --update $doVerbose
+    Format-Eval "sdkmanager --update $doVerbose *> $null"
     
     H3 "CMake Configure"
     $doFresh = ($fresh -eq $true) ? "--fresh" : $null

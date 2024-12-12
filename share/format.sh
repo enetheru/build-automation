@@ -16,7 +16,7 @@ NC='\033[0m' # No Color
 function use-line {
     local line
     read -r line
-    $1 $line
+    $1 "$line"
 }
 
 function Figlet {
@@ -51,8 +51,8 @@ function Fill {
 function Center {
     local string line
     string="${1:-Center}"
-    if [ -z "$2" ];
-    then read -r line
+    if [ -z "${2:-}" ]; then
+        read -r line
     else line="$2"
     fi
 
@@ -97,6 +97,10 @@ function H3 {
 
 function H4 {
   printf "  => %s\n" "$1"
+}
+
+function H5 {
+  printf "  -- %s\n" "$1"
 }
 
 function Format-Command {

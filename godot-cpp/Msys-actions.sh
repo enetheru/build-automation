@@ -21,17 +21,19 @@ source "$root/share/build-actions.sh"
 # override build actions
 source "$targetRoot/$script"
 
-H2 " Build $target using $platform "
+H2 " Build ${target:-FailTarget} using ${platform:-FailPlatform} "
 echo "
   script      = $script
   Build Root  = $buildRoot
-  fetch       = $fetch
-  configure   = $configure
-  build       = $build
-  test        = $test
 
-  fresh build = $fresh
-  log append  = $append"
+  fetch       = ${fetch:-}
+  configure   = ${configure:-}
+  build       = ${build:-}
+  test        = ${test:-}
+  jobs        = ${jobs:-}
+
+  fresh build = ${fresh:-}
+  log append  = ${append:-}"
 
 #gitUrl=http://github.com/enetheru/godot-cpp.git
 gitUrl=${gitUrl:-"http://github.com/enetheru/godot-cpp.git"}

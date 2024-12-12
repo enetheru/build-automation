@@ -46,19 +46,23 @@ function Fetch {
 }
 
 function Prepare {
-    echo
+    H3 "No Prepare Action Specified"
+    echo "-"
 }
 
 function Build {
-    echo
+    H3 "No Build Action Specified"
+    echo "-"
 }
 
 function Test {
-    echo
+    H3 "No Test Action Specified"
+    echo "-"
 }
 
 function Clean {
-    echo
+    H3 "No Clean Action Specified"
+    echo "-"
 }
 
 function CleanLog-Default {
