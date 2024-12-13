@@ -21,7 +21,7 @@ function PrintStats {
     for key in "${!stats[@]}"; do
         echo "stats[\"$key\"]=\"${stats[$key]}\""
     done
-    H2 "EOF - ${config:-}"
+    Fill "_   " | Right " EOF "
 }
 
 trap "PrintStats; exit 1" 0
@@ -106,7 +106,7 @@ function BuildSCons {
     fi
 
     for target in "${targets[@]}"; do
-        H2 "$target"; H1 "Scons Build"
+        Figlet "SCons Build" "small"; H3 "$target"
         start=$SECONDS
 
         Format-Eval "scons ${buildVars[*]} target=$target"
@@ -116,8 +116,9 @@ function BuildSCons {
 
         statArray+=( "scons.$target $((SECONDS - start)) ${size}B")
 
-        H3 "Summary"
+        H3 "BuildScons Completed"
         printf "%s\n%s" "${statArray[0]}" "${statArray[-1]}" | column -t
+        Fill "-"
     done
 }
 
@@ -145,7 +146,7 @@ function BuildCMake {
     fi
 
     for target in "${targets[@]}"; do
-        H2 "$target"; H1 "CMake Build"
+        Figlet "CMake Build" "small"; H3 "$target"
         start=$SECONDS
 
         Format-Eval "cmake --build . ${cmakeVars[*]} -t godot-cpp.test.$target"
@@ -155,8 +156,9 @@ function BuildCMake {
 
         statArray+=( "cmake.$target $((SECONDS - start)) ${size}B")
 
-        H3 "Summary"
+        H3 "BuildCMake Completed"
         printf "%s\n%s" "${statArray[0]}" "${statArray[-1]}" | column -t
+        H2 "^^^" "_ "
     done
 }
 

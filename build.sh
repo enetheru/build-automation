@@ -270,15 +270,14 @@ for script in "${buildScripts[@]}"; do
         eval "$row"
     done
 
-    # Print out the stats in table.
-    H3 "$config - Statistics"
-
     summary+=(
         "$(for col in ${summary[0]}; do
             printf "%s " "${stats[${col}]}"
         done)"
     )
 
+    # Print out the stats in table.
+    H3 "$config - Statistics"
     printf "%s\n%s" "${summary[0]}" "${summary[-1]}" | column -t
 
     # Cleanup Logs
@@ -287,5 +286,7 @@ done
 
 H2 "All Finished"
 H4 "Original Command: ${argv[*]}"
-H3 "Summary"
-printf "%s\n" "${summary[@]}" | column -t -R 6
+if [ "${#buildScripts[@]}" -gt 1 ]; then
+    H3 "Summary"
+    printf "%s\n" "${summary[@]}" | column -t -R 6
+fi

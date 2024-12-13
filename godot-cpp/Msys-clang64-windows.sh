@@ -21,12 +21,19 @@ if [ "${1:-}" = "get_env" ]; then
         "-no-start"
         "-where $targetRoot"
     )
+    # shellcheck disable=SC2034
     envRun="/msys2_shell.cmd ${runArgs[*]} -c"
+
+    # shellcheck disable=SC2034
     gitBranch="msys2-clang64"
     return
 fi
 
-
+if [ ! -d "${buildRoot:-}" ]; then
+    # shellcheck disable=SC2016
+    Error 'Missing $buildRoot'
+    return 1
+fi
 buildDir="$buildRoot/cmake-build"
 
 function Prepare {
@@ -37,7 +44,7 @@ function Prepare {
 
     H3 "CMake Configure"
     doFresh=''
-    if [ "$fresh" -eq 1 ]; then doFresh="--fresh"; fi
+    if [ "${fresh:-0}" -eq 1 ]; then doFresh="--fresh"; fi
 
     # Create Build Directory
     if [ ! -d "$buildDir" ]; then
@@ -59,20 +66,28 @@ function Prepare {
 }
 
 function Build {
+    Figlet "Build"
     statArray=( "target duration size" )
 
+    # shellcheck disable=SC2034
     sconsVars=(
         "use_mingw=yes"
         "use_llvm=yes"
     )
 
+    # Erase previous artifacts
+    cd "$buildRoot" || return 1
     EraseFiles "libgdexample" "dll"
 
+    # Build test targets using SCons
     cd "$buildRoot/test" || return 1
     BuildSCons
 
+    # Erase previous artifacts
+    cd "$buildRoot" || return 1
     EraseFiles "libgdexample" "dll"
 
+    # Build test targets using CMake
     cd "$buildRoot/cmake-build" || return 1
     BuildCMake
 

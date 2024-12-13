@@ -28,6 +28,7 @@ function Fetch {
     echo "  Git URL       = $gitUrl"
     echo "  Git Branch    = $gitBranch"
 
+    H3 "Update Repository"
     # Clone to bare repo or update
     if [ ! -d "$targetRoot/git" ]; then
         Format-Eval "git clone --bare \"$gitUrl\" \"$targetRoot/git\""
@@ -37,6 +38,7 @@ function Fetch {
         Format-Eval "git --git-dir=\"$targetRoot/git\" worktree list"
     fi
 
+    H3 "Update WorkTree"
     # Checkout worktree if not already
     if [ ! -d "$buildRoot" ]; then
         Format-Eval "git --git-dir=\"$targetRoot/git\" worktree add -d \"$buildRoot\""

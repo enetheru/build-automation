@@ -20,15 +20,24 @@ function use-line {
 }
 
 function Figlet {
-  local customFiglet=/c/git/cmatsuoka/figlet/figlet
-  # other figlet fonts I like are 'standard','Ogre', 'Stronger Than All' and 'ANSI Regular'
-  if [ "$(command -v figlet)" ]; then
-    figlet "$1"
-  elif [ -f "$customFiglet" ];then
-    "$customFiglet" -f standard "$1"
-  else
-      echo "==== $1 ===="
-  fi
+    local customFiglet=/c/git/cmatsuoka/figlet/figlet
+
+    local message="${1:-Figlet}" font="${2:-standard}" align="${3:-}"
+
+    # other figlet fonts I like are 'big','standard','small','Ogre',
+    # 'Stronger Than All' and 'ANSI Regular'
+    local options=(
+        "$align"
+        "-f $font"
+        "-w $columns"
+        "$message")
+    if [ "$(command -v figlet)" ]; then
+        eval "figlet ${options[*]}"
+    elif [ -f "$customFiglet" ];then
+        eval "$customFiglet ${options[*]}"
+    else
+        echo "==== $1 ===="
+    fi
 }
 
 # Fill Command
@@ -65,8 +74,8 @@ function Center {
 }
 
 function Right {
-    local string line
-    string=${1:-"Right"}
+    set -- "${1:-Right}" "${2:-}"
+    local string="$1" line
     if [ -z "$2" ];
     then read -r line
     else line="$2"
