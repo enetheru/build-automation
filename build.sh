@@ -194,7 +194,7 @@ declare -a savedVars=(
 )
 
 declare -a summary=(
-        "target config fetch prepare build test status duration"
+        "config fetch prepare build test status duration"
 )
 
 # Process Scripts
@@ -218,7 +218,6 @@ for script in "${buildScripts[@]}"; do
     source "$targetRoot/$script" "get_env"
 
     declare -A stats=(
-        ["target"]="$target"
         ["config"]="$config"
         ["fetch"]=""
         ["prepare"]=""
@@ -289,4 +288,4 @@ done
 H2 "All Finished"
 H4 "Original Command: ${argv[*]}"
 H3 "Summary"
-printf "%s\n" "${summary[@]}" | column -t
+printf "%s\n" "${summary[@]}" | column -t -R 6

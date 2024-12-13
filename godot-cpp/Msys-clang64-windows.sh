@@ -16,7 +16,7 @@ fi
 # tell the build command how to run ourselves.
 if [ "${1:-}" = "get_env" ]; then
     runArgs=(
-        "-ucrt64"
+        "-clang64"
         "-defterm"
         "-no-start"
         "-where $targetRoot"
@@ -47,6 +47,7 @@ function Prepare {
 
     # CMake Configure
     cmakeVars=(
+        '-G"Ninja"'
         "-DCMAKE_BUILD_TYPE=Release"
         "-DGODOT_ENABLE_TESTING=YES"
     )
@@ -57,7 +58,10 @@ function Prepare {
 function Build {
     statArray=( "target duration size" )
 
-    sconsVars=( "use_mingw=yes" )
+    sconsVars=(
+        "use_mingw=yes"
+        "use_llvm=yes"
+    )
 
     cd "$buildRoot/test" || return 1
     BuildSCons

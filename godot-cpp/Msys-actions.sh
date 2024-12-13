@@ -24,9 +24,16 @@ function PrintStats {
 
 trap "PrintStats; exit 1" 0
 
-# Check needed vars
+# Default Vars
 if [ -z "${root:-}" ]; then exit 1; fi
 if [ -z "${script:-}" ]; then exit 1; fi
+
+if [ "${platform:-}" = "Darwin" ]; then
+    jobs=${jobs:-$(( $(sysctl -n hw.ncpu) -1 ))}
+else
+    jobs=${jobs:-$(( $(nproc) -1 ))}
+fi
+verbose="${verbose:-1}"
 
 source "$root/share/format.sh"
 
@@ -68,6 +75,79 @@ echo "
 
 # Host Platform Values and Functions
 source "$root/share/build-actions.sh"
+
+## Build with SCons
+# Function takes two arguments, array of targets, and array of options.
+# if both unset, then default build options are used.
+function BuildSCons {
+
+    # requires SConstruct file existing in the current directory.
+    if [ ! -f SConstruct ]; then
+        Error "Missing '$(pwd)/SConstruct'"
+        return 1
+    fi
+
+    unset doJobs
+    if [ "${jobs}" -gt 0 ]; then doJobs="-j $jobs"; fi
+
+    unset doVerbose
+    if [ "${verbose:-1}" -eq 1 ]; then doVerbose="verbose=yes"; fi
+
+    if [ -z "${targets:-}" ]; then
+        targets=("template_release" "template_debug" "editor")
+    fi
+
+    declare -a buildVars=( "${doJobs:-}" "${doVerbose:-}" )
+    if [ -n "${sconsVars:-}" ]; then
+        buildVars+=("${sconsVars[@]}")
+    fi
+
+    for target in "${targets[@]}"; do
+        H2 "$target"; H1 "Scons Build"
+        start=$SECONDS
+
+        Format-Eval "scons ${buildVars[*]} target=$target"
+
+        statArray+=( "scons.$target $((SECONDS - start)) n/a")
+        H3 "Summary"
+        printf "%s\n%s" "${statArray[0]}" "${statArray[-1]}" | column -t
+    done
+}
+
+function BuildCMake {
+    # requires CMakeCache.txt file existing in the current directory.
+    if [ ! -f "CMakeCache.txt" ]; then
+        Error "Missing $(pwd)/CMakeCache.txt, Requires configuration."
+        return 1
+    fi
+
+    # Build Targets using CMake
+    unset doVerbose
+    if [ "${verbose:-1}" -eq 1 ]; then doVerbose="--verbose"; fi
+
+    unset doJobs
+    if [ "${jobs}" -gt 0 ]; then doJobs="-j $jobs"; fi
+
+    if [ -z "${targets:-}" ]; then
+        targets=("template_release" "template_debug" "editor")
+    fi
+
+    declare -a buildVars=( "${doJobs:-}" "${doVerbose:-}" )
+    if [ -n "${cmakeVars:-}" ]; then
+        buildVars+=("${cmakeVars[@]}")
+    fi
+
+    for target in "${targets[@]}"; do
+        H2 "$target"; H1 "CMake Build"
+        start=$SECONDS
+
+        Format-Eval "cmake --build . ${cmakeVars[*]} -t godot-cpp.test.$target"
+
+        statArray+=( "cmake.$target $((SECONDS - start)) n/a")
+        H3 "Summary"
+        printf "%s\n%s" "${statArray[0]}" "${statArray[-1]}" | column -t
+    done
+}
 
 # Some # Project overrides and functions are identical.
 PrepareCommon(){
