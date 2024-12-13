@@ -28,20 +28,23 @@ function Fetch {
     echo "  Git URL       = $gitUrl"
     echo "  Git Branch    = $gitBranch"
 
-    # Clone to bare repo if not already
+    # Clone to bare repo or update
     if [ ! -d "$targetRoot/git" ]; then
         Format-Eval "git clone --bare \"$gitUrl\" \"$targetRoot/git\""
+    else
+        Format-Eval "git --git-dir=\"$targetRoot/git\" fetch --force origin *:*"
+        Format-Eval "git --git-dir=\"$targetRoot/git\" worktree prune"
+        Format-Eval "git --git-dir=\"$targetRoot/git\" worktree list"
     fi
 
     # Checkout worktree if not already
     if [ ! -d "$buildRoot" ]; then
-        Format-Eval "git --git-dir \"$targetRoot/git\" worktree add -d \"$buildRoot\""
+        Format-Eval "git --git-dir=\"$targetRoot/git\" worktree add -d \"$buildRoot\""
     fi
 
     # Update worktree
     cd "$buildRoot" || return 1
-    Format-Eval "git reset --hard"
-    Format-Eval "git checkout -d $gitBranch"
+    Format-Eval "git checkout --force --detach $gitBranch"
     Format-Eval "git status"
 }
 

@@ -22,8 +22,7 @@ if [ "${1:-}" = "get_env" ]; then
         "-where $targetRoot"
     )
     envRun="/msys2_shell.cmd ${runArgs[*]} -c"
-    gitBranch="name_clash"
-
+    gitBranch="msys2-clang64"
     return
 fi
 

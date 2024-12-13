@@ -72,7 +72,7 @@ gitBranch=""
 die() { echo "$*" >&2; exit 2; }  # complain to STDERR and exit with error
 needs_arg() { if [ -z "$OPTARG" ]; then Syntax; die "No arg for --$OPT option"; fi; }
 
-while getopts :hfcbt-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
+while getopts :hfpbt-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
     # support long options: https://stackoverflow.com/a/28466267/519360
     if [ "$OPT" = "-" ]; then   # long option: reformulate OPT and OPTARG
         OPT="${OPTARG%%=*}"       # extract long option name
@@ -244,6 +244,8 @@ for script in "${buildScripts[@]}"; do
         "append='$append'"
         "script='$script'"
         "config='$config'"
+        "traceLog='$traceLog'"
+        "cleanLog='$cleanLog'"
     )
 
     # Show action startup details
@@ -252,8 +254,6 @@ for script in "${buildScripts[@]}"; do
         H5 "With:"
         printf '\t%s\n' "${useVars[@]}"
         H5 "Action: $targetRoot/$envActions"
-        H5 "traceLog: $traceLog"
-        H5 "cleanLog: $cleanLog"
     fi
 
     set +e

@@ -112,6 +112,7 @@ function Format-Eval {
   printf "  󰝰:%s\n" "$(pwd)"
   printf "  󰞷 %s\n" "$1"
   eval "$1"
+  return $?
 }
 
 function Warning {

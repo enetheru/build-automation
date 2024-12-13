@@ -17,9 +17,11 @@ declare -A stats=(
 )
 
 function PrintStats {
+    echo "Output Stats:"
     for key in "${!stats[@]}"; do
         echo "stats[\"$key\"]=\"${stats[$key]}\""
     done
+    H2 "EOF - ${config:-}"
 }
 
 trap "PrintStats; exit 1" 0
@@ -161,18 +163,16 @@ function BuildCMake {
 function EraseFiles {
     cd "$buildRoot" || exit 1
 
-    H3 "Erase Files"
-
-    declare -a artifacts
-
     # Make a list of files to remove based on the below criteria
     fragments="${1:-"NothingToErase"}"
     extensions="${2:-"NoFileExtensionsSpecified"}"
     mapfile -t artifacts < <(find . -type f -regextype egrep -regex ".*($fragments).*($extensions)$")
+    artifacts=("${artifacts:-NoFiles}") #if no lines are returned, then set a single element to 0
 
-    if [ ${#artifacts} -gt 0 ]; then
+    if [ "${artifacts[0]}" != "NoFiles" ]; then
+        H3 "Erase Files"
         Warning "Deleting ${#artifacts[@]} Artifacts"
-        printf "%s\n" "${artifacts[@]}" | tee >(cat >&5) | xargs rm
+        printf "  %s\n" "${artifacts[@]}" | tee >(cat >&5) | xargs rm
     fi
 }
 
@@ -229,17 +229,17 @@ source "$targetRoot/$script"
 H3 "$config - Processing"
 
 if [ "$fetch" -eq 1 ]; then
-    if ! Fetch;     then Error "Fetch Failure"  ; exit 1; fi
+    Fetch
     stats["fetch"]="OK"
 fi
 
 if [ "$prepare" -eq 1 ]; then
-    if ! Prepare;   then Error "Prepare Failure"; exit 1; fi
+    Prepare
     stats["prepare"]="OK"
 fi
 
 if [ "$build" -eq 1 ]; then
-    if ! Build;     then Error "Build Failure"  ; exit 1; fi
+    Build
     stats["build"]="OK"
 fi
 
@@ -249,4 +249,4 @@ if [ "$test" -eq 1 ]; then
     stats["test"]="OK"
 fi
 
-H2 "$config - completed"
+H3 "$config - completed"
