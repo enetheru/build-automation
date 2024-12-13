@@ -5,8 +5,8 @@ set -u          # error and quit on unbound variable
 set -o pipefail # halt when a pipe failure occurs
 #set -x          # execute and print
 
-# Setup a secondary mechanism for piping to stdout so that we can split output
-# of commands to files and show them at the same time.
+# Setup a secondary file descriptor for piping to stdout so that we can split stdout
+# to console, and continue to pipe it to commands
 exec 5>&1
 
 declare -A stats=(
@@ -53,8 +53,9 @@ gitBranch=${gitBranch:-"master"}
 godot="/c/build/godot/msvc.master/bin/godot.windows.editor.x86_64.exe"
 godot_tr="/c/build/godot/msvc.master/bin/godot.windows.template_release.x86_64.exe"
 
-H2 " Build ${target:-FailTarget} using ${platform:-FailPlatform} "
+H2 "Build ${target:-FailTarget} using ${platform:-FailPlatform}-$MSYSTEM"
 echo "
+  MSYSTEM     = $MSYSTEM
   script      = ${script:-}
   Build Root  = ${buildRoot:-}
 
@@ -82,7 +83,7 @@ source "$root/share/build-actions.sh"
 function BuildSCons {
 
     # requires SConstruct file existing in the current directory.
-    if [ ! -f SConstruct ]; then
+    if [ ! -f "SConstruct" ]; then
         Error "Missing '$(pwd)/SConstruct'"
         return 1
     fi
@@ -108,7 +109,11 @@ function BuildSCons {
 
         Format-Eval "scons ${buildVars[*]} target=$target"
 
-        statArray+=( "scons.$target $((SECONDS - start)) n/a")
+        artifact="$buildRoot/test/project/bin/libgdexample.windows.$target.x86_64.dll"
+        size="$(stat --printf "%s" "$artifact")"
+
+        statArray+=( "scons.$target $((SECONDS - start)) ${size}B")
+
         H3 "Summary"
         printf "%s\n%s" "${statArray[0]}" "${statArray[-1]}" | column -t
     done
@@ -143,43 +148,32 @@ function BuildCMake {
 
         Format-Eval "cmake --build . ${cmakeVars[*]} -t godot-cpp.test.$target"
 
-        statArray+=( "cmake.$target $((SECONDS - start)) n/a")
+        artifact="$buildRoot/test/project/bin/libgdexample.windows.$target.x86_64.dll"
+        size="$(stat --printf "%s" "$artifact")"
+
+        statArray+=( "cmake.$target $((SECONDS - start)) ${size}B")
+
         H3 "Summary"
         printf "%s\n%s" "${statArray[0]}" "${statArray[-1]}" | column -t
     done
 }
 
-# Some # Project overrides and functions are identical.
-PrepareCommon(){
-    local prev
-    prev="$(pwd)"
-
+function EraseFiles {
     cd "$buildRoot" || exit 1
-    # Clean up key artifacts to trigger rebuild
+
+    H3 "Erase Files"
+
     declare -a artifacts
-    fragments=".*(memory|libgodot-cpp|libgdexample).*"
-    extensions="(o|os|a|lib|so|dll|dylib)"
-    mapfile -t artifacts < <(
-        find . -type f -regex "$fragments\.$extensions" -print
-        )
+
+    # Make a list of files to remove based on the below criteria
+    fragments="${1:-"NothingToErase"}"
+    extensions="${2:-"NoFileExtensionsSpecified"}"
+    mapfile -t artifacts < <(find . -type f -regextype egrep -regex ".*($fragments).*($extensions)$")
 
     if [ ${#artifacts} -gt 0 ]; then
-        Warning "Deleting ${#artifacts} Artifacts"
+        Warning "Deleting ${#artifacts[@]} Artifacts"
         printf "%s\n" "${artifacts[@]}" | tee >(cat >&5) | xargs rm
     fi
-
-    # bash null glob failure
-    shopt -s nullglob
-    genDirs=(cmake-build-*/gen)
-    shopt -u nullglob
-    if [ ${#genDirs} -gt 0 ]; then
-        Warning "Deleting generated files"
-        printf "%s\n" "${genDirs[@]}" | tee >(cat >&5) | xargs rm -r
-    fi
-
-    #FIXME what if we are a scons build?
-
-    cd "$prev"
 }
 
 TestCommon(){

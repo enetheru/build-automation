@@ -34,6 +34,8 @@ function Prepare {
 
     H1 "Prepare"
 
+    EraseFiles "editor_plugin_registration" "o|obj"
+
     H3 "CMake Configure"
     doFresh=''
     if [ "$fresh" -eq 1 ]; then doFresh="--fresh"; fi
@@ -52,6 +54,8 @@ function Prepare {
     )
 
     Format-Eval "cmake $doFresh .. ${cmakeVars[*]}"
+
+    unset cmakeVars
 }
 
 function Build {
@@ -59,8 +63,12 @@ function Build {
 
     sconsVars=( "use_mingw=yes" )
 
+    EraseFiles "libgdexample" "dll"
+
     cd "$buildRoot/test" || return 1
     BuildSCons
+
+    EraseFiles "libgdexample" "dll"
 
     cd "$buildRoot/cmake-build" || return 1
     BuildCMake
