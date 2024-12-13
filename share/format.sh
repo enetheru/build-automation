@@ -58,18 +58,19 @@ function Fill {
 }
 
 function Center {
-    local string line
-    string="${1:-Center}"
+    local string="${1:-Center}" line
     if [ -z "${2:-}" ]; then
         read -r line
-    else line="$2"
+    else
+        line="$2"
     fi
 
-    local pos=$(( (${#line} - ${#string}) / 2 ))
-    if [ $pos -lt 0 ]; then
-      printf -- "%s\n" "$string"
+    declare -i pos=$(( (${#line} - ${#string}) / 2 ))
+    if [ $pos -le 0 ]; then
+        printf -- "%s\n" "$string"
     else
-      sed -E "s/^(.{$pos}).{${#string}}(.*$)/\1$string\2/" <<< "$line"
+#        echo "$string"
+        sed -E "s/^(.{$pos}).{${#string}}(.*$)/\1 ${string} \2/" <<< "${line}"
     fi
 }
 
@@ -92,7 +93,7 @@ function Right {
 
 
 function H1 {
-  Figlet "$1"
+  Figlet "$1" "big" "-c"
 }
 
 function H2 {

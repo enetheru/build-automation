@@ -38,7 +38,7 @@ buildDir="$buildRoot/cmake-build"
 
 function Prepare {
 
-    H1 "Prepare"
+    Figlet "Prepare"
 
     EraseFiles "editor_plugin_registration" "o|obj"
 
@@ -63,6 +63,7 @@ function Prepare {
     Format-Eval "cmake $doFresh .. ${cmakeVars[*]}"
 
     unset cmakeVars
+    Fill "-"
 }
 
 function Build {

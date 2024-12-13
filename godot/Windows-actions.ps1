@@ -40,7 +40,7 @@ $buildLeaf = ($config -split "-", 2)[-1]
 $buildRoot = "$targetRoot\build-$buildleaf"
 
 [System.Uri]$gitUrl = "http://github.com/godotengine/godot.git"
-[string]$gitBranch = "4.3"
+[string]$gitBranch = "master"
 
 H2 "Build '$target' on '$platform' using '$config'"
 Write-Output @"

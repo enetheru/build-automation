@@ -17,22 +17,26 @@ function Fetch {
     Write-Output "  Git URL       = $gitUrl"
     Write-Output "  Git Branch    = $gitBranch"
     
+    H3 "Update Repository"
+    
     # Clone if not already
     if( -Not (Test-Path -Path "$targetRoot\git" -PathType Container) ) {
         Format-Eval git clone --bare "$gitUrl" "$targetroot\git"
+    } else {
+        Format-Eval git --git-dir=$targetRoot\git fetch --force origin *:*
+        Format-Eval git --git-dir=$targetRoot\git worktree prune
+        Format-Eval git --git-dir=$targetRoot\git worktree list
     }
-    # FIXME Update the clone
-#    Format-Eval git --git-dir "$targetRoot\git" fetch -u --force --all
     
+    H3 "Update WorkTree"
     # Create worktree is missing
     if( -Not (Test-Path -Path "$buildRoot" -PathType Container) ) {
-        Format-Eval git --git-dir "$targetRoot/git" worktree add -d "$buildRoot"
+        Format-Eval git --git-dir="$targetRoot/git" worktree add -d "$buildRoot"
     }
     
     # Update worktree
     Set-Location "$buildRoot"
-    Format-Eval git reset --hard
-    Format-Eval git checkout -d $gitBranch
+    Format-Eval git checkout --force -d $gitBranch
     Format-Eval git status
 }
 

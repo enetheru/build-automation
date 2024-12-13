@@ -29,36 +29,45 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
+# THis enables unicode characters to show up in the console
 $OutputEncoding = New-Object System.Text.UTF8Encoding
 [console]::InputEncoding = $OutputEncoding
 [console]::OutputEncoding = $OutputEncoding
 
-$verbose = ($VerbosePreference -eq "Continue") ? $true : $false
-
 # Because Clion starts this script in a pipeline, it errors if the script exits too fast.
 # Trapping the exit condition and sleeping for 1 prevents the error message.
-trap {
-    Start-Sleep -Seconds 1
-}
-
-$root = $PSScriptRoot
-
-. ./share/format.ps1
+trap { Start-Sleep -Seconds 1 }
 
 function Syntax {
     Write-Output 'Syntax: ./build.sh -[fpbt] [-scriptFilter <regex>] <target>'
 }
 
-H1 "AutoBuild"
-H2 "Options"
+# Default and Detected Settings
+if(     $IsLinux    ) { $platform = "Linux" }
+elseif( $IsMacOS    ) { $platform = "MacOS" }
+elseif( $IsWindows  ) { $platform = "Windows" }
+else { $platform = "Unknown" }
+
+$root = $PSScriptRoot
+
+# Verbose Preference is a standard option.
+$verbose = ($VerbosePreference -eq "Continue") ? $true : $false
 
 if( -Not ($fetch -Or $prepare -Or $build -Or $test) ) {
     $fetch = $true; $prepare = $true; $build = $true; $test = $true
 }
 
+$targetRoot = "$root\$target"
+
+. ./share/format.ps1
+
+H1 "AutoBuild"
+H2 "Options"
+
 Write-Output @"
-  command     = '$($(Get-PSCallStack)[0].InvocationInfo.Line)'
+  platform    = $platform
   root        = $root
+  command     = '$($(Get-PSCallStack)[0].InvocationInfo.Line)'
 
   fetch       = $fetch
   prepare     = $prepare
@@ -69,39 +78,16 @@ Write-Output @"
 
   fresh build = $fresh
   log append  = $append
+
+  target      = $target
+  targetRoot  = $targetRoot
+  branch      = $gitBranch
 "@
 
 if( $target -eq "" ) {
     Syntax
     Write-Error "Missing <target>"
 }
-
-Write-Output @"
-
-  target      = $target
-  branch      = $gitBranch
-"@
-
-
-if( $IsLinux ) {
-    $platform = "Linux"
-}
-elseif( $IsMacOS ) {
-    $platform = "MacOS"
-}
-elseif( $IsWindows ) {
-    $platform = "Windows"
-} else {
-    $platform = "Unknown"
-}
-
-$targetRoot = "$root\$target"
-
-Write-Output @"
-
-  platform    = $platform
-  targetRoot  = $targetRoot
-"@
 
 # Get script count
 $buildScripts = @( Get-Item $targetRoot/$platform*.ps1 `
@@ -111,6 +97,7 @@ $buildScripts = @( Get-Item $targetRoot/$platform*.ps1 `
     | ForEach-Object { $_.Name } )
 
 $scriptCount = $buildScripts.count
+
 Write-Output @"
 
   scriptFilter = $scriptFilter
@@ -127,9 +114,11 @@ if( $scriptCount -eq 0 ) {
 Write-Output "  Scripts:"
 $buildScripts | ForEach-Object { Write-Output "    $_" }
 
-if( $list ) {
-    exit
-}
+if( $list ) { exit }
+
+# Make sure the log directories exist.
+New-Item -Force -ItemType Directory -Path "$targetRoot/logs-raw" | Out-Null
+New-Item -Force -ItemType Directory -Path "$targetRoot/logs-clean" | Out-Null
 
 function CleanLog {
     H3 "Cleaning $args"
@@ -158,23 +147,35 @@ function CleanLog {
     }
 }
 
-# Make sure the log directories exist.
-New-Item -Force -ItemType Directory -Path "$targetRoot/logs-raw" | Out-Null
-New-Item -Force -ItemType Directory -Path "$targetRoot/logs-clean" | Out-Null
+[array]$savedVars = @(
+   "`$verbose   ='$verbose'",
+   "`$jobs      ='$jobs'",
+   "`$platform  ='$platform'",
+   "`$root      ='$root'",
+   "`$targetRoot='$targetRoot'",
+   "`$target    ='$target'",
+   "`$gitBranch ='$gitBranch'",
+   "`$fetch     ='$fetch'",
+   "`$prepare   ='$prepare'",
+   "`$build     ='$build'",
+   "`$test      ='$test'",
+   "`$fresh     ='$fresh'",
+   "`$append    ='$append'"
+)
 
 [array]$summary = @()
 
 # Process Scripts
 foreach( $script in $buildScripts ) {
+    #reset variables
+#    foreach( $var in $savedVars){ &"$var" }
 
-    H3 "Starting $script"
+    H3 "Using $script"
     $config = Split-Path -Path $script -LeafBase
-    $Host.UI.RawUI.WindowTitle = "$target | $config"
+    $Host.UI.RawUI.WindowTitle = "$config"
 
     $traceLog = "$targetRoot\logs-raw\$config.txt"
     $cleanLog = "$targetRoot\logs-clean\$config.txt"
-    Write-Output "    traceLog   = $traceLog"
-    Write-Output "    cleanLog   = $cleanLog"
 
     # set default environment and commands.
     $envRun = "pwsh"
@@ -182,23 +183,49 @@ foreach( $script in $buildScripts ) {
     $envClean = "CleanLog"
 
     # source command overrides
+    H4 "Source variations from: '$targetRoot/$script'"
     . "$targetRoot/$script" "get_env"
     
     $statistics = [PSCustomObject]@{
         target      = "$target"
         config      = "$config"
-        status      = "dnf"
-        duration    = "dnf"
         fetch       = ""
         prepare     = ""
         build       = ""
         test        = ""
+        status      = "dnf"
+        duration    = "dnf"
+    }
+    
+    $useVars = @(
+        "`$root         = '$root'",
+        "`$targetRoot   = '$targetRoot'",
+        "`$platform     = '$platform'",
+        "`$target       = '$target'",
+        "`$gitBranch    = '$gitBranch'",
+        "`$fetch        = '$fetch'",
+        "`$prepare      = '$prepare'",
+        "`$build        = '$build'",
+        "`$jobs         = '$jobs'",
+        "`$test         = '$test'",
+        "`$fresh        = '$fresh'",
+        "`$append       = '$append'",
+        "`$verbose      = '$verbose'",
+        "`$script       = '$script'",
+        "`$traceLog     = '$traceLog'",
+        "`$cleanLog     = '$cleanLog'"
+    )
+    
+    if( $verbose -eq 1) {
+        H5 "Command: $envRun"
+        H5 "With:`n`t$($useVars -Join '`n`t')"
+        H5 "Action: $targetRoot/$envActions"
     }
     
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
 
     try {
-        &$envRun "-Command" @"
+    &$envRun "-Command" @"
 `$root='$root'
 `$targetRoot='$targetRoot'
 `$platform='$platform'
@@ -230,13 +257,17 @@ $targetRoot/$envActions
         }
     }
     
+    H3 "$config - Statistics"
     $summary += $statistics
     
-    H3 Process Logs
+    H3 "Process Logs"
     &$envClean "$traceLog" > $cleanLog
 }
 
-H3 "Finished"
+Figlet -c "Finished"
 H4 "Original Command: $($(Get-PSCallStack)[0].InvocationInfo.Line)"
-H4 "Summary"
-$summary | Format-Table -Property target,config,fetch,prepare,build,test,status,duration
+
+if( $buildScripts.Length -gt 1 ) {
+    H4 "Summary"
+    $summary | Format-Table -Property target,config,fetch,prepare,build,test,status,duration
+}

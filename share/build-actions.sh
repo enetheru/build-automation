@@ -21,7 +21,7 @@ function RenameFunction {
 function Fetch {
     # The expectation is that we are in $targetRoot
     # and when we finish we should be back in $targetRoot
-    H1 "Git Fetch"
+    Figlet "Git Fetch"
 
     echo "  Target Root   = $targetRoot"
     echo "  Build Root    = $buildRoot"
@@ -48,6 +48,7 @@ function Fetch {
     cd "$buildRoot" || return 1
     Format-Eval "git checkout --force --detach $gitBranch"
     Format-Eval "git status"
+    Fill "-"
 }
 
 function Prepare {

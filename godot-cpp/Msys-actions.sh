@@ -106,7 +106,7 @@ function BuildSCons {
     fi
 
     for target in "${targets[@]}"; do
-        Figlet "SCons Build" "small"; H3 "$target"
+        Figlet "SCons Build" "small"; H3 "target: $target"
         start=$SECONDS
 
         Format-Eval "scons ${buildVars[*]} target=$target"
@@ -146,7 +146,7 @@ function BuildCMake {
     fi
 
     for target in "${targets[@]}"; do
-        Figlet "CMake Build" "small"; H3 "$target"
+        Figlet "CMake Build" "small"; H3 "target: $target"
         start=$SECONDS
 
         Format-Eval "cmake --build . ${cmakeVars[*]} -t godot-cpp.test.$target"
@@ -158,7 +158,7 @@ function BuildCMake {
 
         H3 "BuildCMake Completed"
         printf "%s\n%s" "${statArray[0]}" "${statArray[-1]}" | column -t
-        H2 "^^^" "_ "
+        Fill "-"
     done
 }
 
@@ -181,7 +181,7 @@ function EraseFiles {
 TestCommon(){
     local result
 
-    H1 "Test"
+    Figlet "Test"
 
     printf "\n" >> "$targetRoot/summary.log"
     H4 "$config" >> "$targetRoot/summary.log"

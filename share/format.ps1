@@ -21,13 +21,15 @@ if( -Not ($MyInvocation.InvocationName -eq '.') ) {
 if( $Host -and $Host.UI -and $Host.UI.RawUI ) {
     $rawUI = $Host.UI.RawUI
     #    $bufSize = $rawUI.BufferSize
-    $columns = $rawUI.BufferSize.Width
+    [int]$columns = $rawUI.BufferSize.Width
     #    $rows = $rawUI.BufferSize.height
     #    $typeName = $bufSize.GetType( ).FullName
     #    $newSize = New-Object $typeName (120, $rows)
     #    $rawUI.BufferSize = $newSize
+} else {
+    [int]$columns = 120
 }
-$columns = 120
+
 
 # We really want sed for formatting and log cleaning.
 $sedCommand = $(Get-Command "sed")
@@ -39,19 +41,31 @@ if( -Not $sedCommand ) {
 
 # If we dont have figlet then just replace it with something else
 function Figlet {
+    [CmdletBinding( PositionalBinding = $false )]
     param(
-        [Parameter( ValueFromRemainingArguments = $true )]$args
+        [int]$width = $columns,
+        [switch]$l,
+        [switch]$c,
+        [switch]$r,
+        [string]$font="standard",
+        [Parameter( ValueFromRemainingArguments = $true )]$message="Figlet is Cool"
     )
+    $alignment="-l"
+    foreach( $key in $PsBoundParameters.Keys ){
+        switch( $key ) {
+            "l" { $alignment="-l" }
+            "c" { $alignment="-c" }
+            "r" { $alignment="-r" }
+        }
+    }
+    
     $customFiglet = "c:/git/cmatsuoka/figlet/figlet.exe"
 
     # other figlet fonts I like are 'standard','Ogre', 'Stronger Than All' and 'ANSI Regular'
-    if( Get-Command "figlet.exe" -ErrorAction SilentlyContinue ) {
-        figlet.exe -f standard "$args"
-    }
-    elseif( Get-Command $customFiglet -ErrorAction SilentlyContinue ) {
-        &"$customFiglet -f standard $args"
+    if( Get-Command $customFiglet -ErrorAction SilentlyContinue ) {
+        &$customFiglet $alignment -w "$width" -f "$font" "$message"
     } else {
-        Write-Output "==== $args ===="
+        Write-Output "==== $message ===="
     }
 }
 
