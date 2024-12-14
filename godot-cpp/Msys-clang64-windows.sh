@@ -37,7 +37,6 @@ fi
 buildDir="$buildRoot/cmake-build"
 
 function Prepare {
-
     Figlet "Prepare"
 
     EraseFiles "editor_plugin_registration" "o|obj"

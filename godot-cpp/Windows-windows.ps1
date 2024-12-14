@@ -13,100 +13,38 @@ if( $args -eq "get_env" ) {
     return
 }
 
-$script:buildDir = "$buildRoot/cmake-build"
-
 function Prepare {
-    H1 "Prepare"
+    Figlet "Prepare"
     
-    H3 "CMake Configure"
-    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
+    Set-Location "$buildRoot"
     
-    # Create Build Directory
-    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
-        H4 "Creating $buildDir"
-        New-Item -Path "$buildDir" -ItemType Directory -Force | Out-Null
-    }
-    Set-Location "$buildDir"
+    # Erase key files to trigger a re-build so we can capture the build commands.
+    # FIXME investigate compile_commands.json for the above purpose
+    EraseFiles "editor_plugin_registration" "o|obj"
     
-    # CMake Configure
-    [array]$cmakeVars = @(
-        "-DGODOT_ENABLE_TESTING=YES"
-    )
+    PrepareScons
     
-    Format-Eval cmake $doFresh .. $($cmakeVars -Join ' ')
+    PrepareCMake -v @("-DGODOT_ENABLE_TESTING=YES")
 }
 
 function Build {
     [array]$statArray = @()
     
-    $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
+    # Erase previous artifacts
+    Set-Location "$buildRoot"
+    EraseFiles -f "libgdexample" -e "dll"
     
-    # FIXME get arch somehow.
-    $arch = "x86" + ([Environment]::Is64BitOperatingSystem) ? "_64" : ""
+    ## SCons Build
+    Set-Location "$buildRoot\test"
+    BuildSCons
     
-    $targets = @(
-        "template_debug",
-        "template_release",
-        "editor"
-    )
+    # Erase previous artifacts
+    Set-Location "$buildRoot"
+    EraseFiles -f "libgdexample" -e "dll"
     
-    # Build Targets using SCons
-    $doVerbose  = ($verbose -eq $true) ? "verbose=yes" : $null
-    
-    [array]$sconsVars = @(
-        "$doJobs",
-        "$doVerbose"
-    )
-    
-    Set-Location "$buildRoot/test"
-    foreach( $target in $targets ){
-        H2 "$target"; H1 "Scons Build"
-        $timer = [System.Diagnostics.Stopwatch]::StartNew()
-
-        Format-Eval "scons $($sconsVars -Join ' ') target=$target"
-        
-        $timer.Stop()
-#        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$target.$arch.so"
-        
-        $newStat += [PSCustomObject] @{
-            target      = "scons.$target"
-            duration    = $timer.Elapsed
-#            size        = DisplayInBytes $artifact.Length
-        }
-        $newStat | Format-Table
-        $statArray += $newStat
-    }
-    
-    # Build Targets using CMake
-    $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
-    $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
-    
-    [array]$cmakeVars = @(
-        "$doVerbose",
-        "$doJobs",
-        "--config Release"
-    )
-    $vsExtraOptions = "-- /nologo /v:m /clp:'ShowCommandLine;ForceNoAlign'"
-    
-    Set-Location "$buildDir"
-    foreach( $target in $targets ){
-        H2 "$target"; H1 "CMake Build"
-        $timer = [System.Diagnostics.Stopwatch]::StartNew()
-        
-        Format-Eval cmake --build . -t godot-cpp.test.$target `
-            $($cmakeVars -Join ' ') $vsExtraOptions
-        
-        $timer.Stop()
-#        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$arch.$target.$arch.so"
-        
-        $newStat += [PSCustomObject] @{
-            target      = "cmake.$target"
-            duration    = $timer.Elapsed
-#            size        = DisplayInBytes $artifact.Length
-        }
-        $newStat | Format-Table
-        $statArray += $newStat
-    }
+    ## CMake Build
+    Set-Location "$buildRoot\cmake-build"
+    BuildCMake -v @("--config Release")
 
     # Report Results
     $statArray | Format-Table

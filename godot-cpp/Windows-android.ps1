@@ -13,42 +13,62 @@ if( $args -eq "get_env" ) {
     return
 }
 
-$script:buildDir = "$buildRoot/cmake-build"
-
 function Prepare {
-    H1 "Prepare"
+    Figlet "Prepare"
     
-    H3 "Update Android SDK"
-    $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
-    $env:Path = "$androidSDK;" + $env:Path
+    UpdateAndroid
     
-    Format-Eval "sdkmanager --update $doVerbose *> $null"
+    Set-Location "$buildRoot"
     
-    H3 "CMake Configure"
-    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
+    # Erase key files to trigger a re-build so we can capture the build commands.
+    # FIXME investigate compile_commands.json for the above purpose
+    EraseFiles "editor_plugin_registration" "o|obj"
     
-    # Create Build Directory
-    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
-        H4 "Creating $buildDir"
-        New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
-    }
-    Set-Location $buildDir
+    PrepareScons -v @("platform=android")
     
-    # CMake Configure
     [array]$cmakeVars = @(
+        "-GNinja",
         "-DCMAKE_BUILD_TYPE=Release",
         "-DGODOT_ENABLE_TESTING=YES",
         "-DANDROID_PLATFORM=android-34",
         "-DANDROID_ABI=x86_64",
-        "-GNinja",
         "--toolchain `"C:\androidsdk\ndk\23.2.8568313\build\cmake\android.toolchain.cmake`""
     )
     
-    Format-Eval "cmake $doFresh .. $($cmakeVars -Join ' ')"
+    PrepareCMake -v $cmakeVars
 }
 
 function Build {
     [array]$statArray = @()
+    
+    # Erase previous artifacts
+    Set-Location "$buildRoot"
+#    EraseFiles -f "libgdexample" -e "dll" # FIXME update for android
+    
+    $llvmPath = 'C:\Program Files\LLVM\bin\'
+    H3 "Prepend `$env:path with $llvmPath"
+    $savePath = $env:Path
+    $env:Path = "$llvmPath;" + $env:Path
+    
+    Set-Location "$buildRoot\test"
+    BuildSCons -v @("use_llvm=yes")
+    
+    #Restore Path
+    $env:Path = $savePath
+    
+    # Erase previous artifacts
+    Set-Location "$buildRoot"
+    #    EraseFiles -f "libgdexample" -e "dll" # FIXME update for android
+    
+    ## CMake Build
+    Set-Location "$buildDir\cmake-build"
+    BuildCMake
+    
+    # Report Results
+    $statArray | Format-Table
+    
+    
+    
     
     $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
     

@@ -189,10 +189,10 @@ foreach( $script in $buildScripts ) {
     $statistics = [PSCustomObject]@{
         target      = "$target"
         config      = "$config"
-        fetch       = ""
-        prepare     = ""
-        build       = ""
-        test        = ""
+        fetch       = "-"
+        prepare     = "-"
+        build       = "-"
+        test        = "-"
         status      = "dnf"
         duration    = "dnf"
     }

@@ -11,7 +11,7 @@ if( -Not ($MyInvocation.InvocationName -eq '.') ) {
 function Fetch {
     # The expectation is that we are in $targetRoot
     # and when we finish we should be back in $targetRoot
-    H1 "Git Fetch"
+    Figlet "Git Fetch"
     Write-Output "  Target Root   = $targetRoot"
     Write-Output "  Build Root    = $buildRoot"
     Write-Output "  Git URL       = $gitUrl"

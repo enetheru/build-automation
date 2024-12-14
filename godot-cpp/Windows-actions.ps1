@@ -13,41 +13,42 @@ $stats = [PSCustomObject]@{
     test    = ($test -eq $true) ? "Fail" : "-"
 }
 
-function PrintStats {
-    @"
-(`$statistics).fetch    = "$(($stats).fetch)"
-(`$statistics).prepare  = "$(($stats).prepare)"
-(`$statistics).build    = "$(($stats).build)"
-(`$statistics).test     = "$(($stats).test)"
-"@
+function Finalise {
+    Write-Host "Output Stats:"
+    
+    foreach( $stat in $stats.psobject.properties ){
+        if( $stat.Value -like "-" ){ continue }
+        Write-Host ('($statistics).{0} = "{1}"' -f $stat.Name, $stat.Value)
+    }
+    
+    Fill "_   " | Right " EOF "
 }
 
 # Because Clion starts this script in a pipeline, it errors if the script exits too fast.
 # Trapping the exit condition and sleeping for 1 prevents the error message.
 trap {
     Write-Host $_
-    PrintStats
+    Finalise
     Start-Sleep -Seconds 1
 }
 
 . "$root/share/format.ps1"
 
+# Setup our variables
+
 [string]$thisScript = $(Get-PSCallStack)[0].scriptName
+
+$targetRoot = $thisScript  | split-path -parent
 
 $config = Split-Path -Path $script -LeafBase
 
+$buildRoot = "$targetRoot\$config"
+
 # [System.Uri]$gitUrl = "http://github.com/godotengine/godot-cpp.git"
 [System.Uri]$gitUrl = "C:\Godot\src\godot-cpp"
-# [string]$gitBranch = "ipo-lto"
-
 
 [string]$godot = "C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
 [string]$godot_tr = "C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
-
-# Get the target root from this script location
-$targetRoot = $thisScript  | split-path -parent
-$buildRoot = "$targetRoot\$config"
-
 
 H2 "Build '$target' on '$platform' using '$config'"
 Write-Output @"
@@ -75,6 +76,7 @@ Write-Output @"
   root        = $root
   targetRoot  = $targetRoot
   buildRoot   = $buildRoot
+  }
 "@
 
 Set-Location "$targetRoot"
@@ -82,60 +84,194 @@ Set-Location "$targetRoot"
 # Host Platform Values and Functions
 . "$root\share\build-actions.ps1"
 
-# Project overrides and functions
-function PrepareCommon {
+# Update Android
+function UpdateAndroid {
+    H3 "Update Android SDK"
+    
+    $cmdlineTools="C:\androidsdk\cmdline-tools\latest\bin"
+    $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
+    $env:Path = "$cmdlineTools;" + $env:Path
+    
+    Format-Eval "sdkmanager --update $doVerbose *> $null"
+}
 
-    # Clean up key artifacts to trigger rebuild
-    & {
-        # ignore the error result from ripgrep not finding any files 
-        $PSNativeCommandUseErrorActionPreference = $false
-        [array]$artifacts = @($(rg -u --files "$buildRoot" `
-            | rg "(memory|example).*?o(bj)?$"))
+# Prepare with SCons
+# In the case of godot-cpp we can generate the bindings without building the library
+# It will auto generate the bindings, or we can force it if fresh is enabled.
+function PrepareScons {
+    # requires SConstruct file existing in the current directory.
+    if( -Not (Test-Path "SConstruct" -PathType Leaf) ) {
+        Write-Error "PrepareScons: Missing '$(Get-Location)\SConstruct'"
+        Return 1
+    }
     
-        $artifacts += @($(rg -u --files "$buildRoot" `
-            | rg "\.(a|lib|so|dll|dylib|wasm32|wasm)$"))
+    Figlet -f "small" "SCons Prepare"
     
-        if( $artifacts.Length -gt 0 ) {
-            H3 "Removing key Artifacts"
-            $artifacts | Sort-Object | Get-Unique | ForEach-Object {
-                Write-Host "Removing $_"
-                Remove-Item $_
-            }
+    # SCons - Remove generated source files if exists.
+    $doFresh = ($fresh -eq $true) ? "generate_bindings=yes" : $null
+    
+    # Is effected by three variables
+    # target arch cpu width, either 32 or 64, FIXME default unknown, i guess host architecture
+    # generate_template_get_node, default is 'yes'.
+    # precision, single/double, default is 'single'.
+    Format-Eval scons "$doFresh build_library=no"
+}
+
+## Build with SCons
+# Function takes two arguments, array of targets, and array of options.
+# if both unset, then default build options are used.
+function BuildSCons {
+    param(
+        [Alias( "v" )] [array] $vars = @(),
+        [Alias( "t" )] [array] $targets = @(
+            "template_debug",
+            "template_release",
+            "editor"
+        )
+    )
+    
+    # requires SConstruct file existing in the current directory.
+    # SCons - Remove generated source files if exists.
+    if( -Not (Test-Path "SConstruct" -PathType Leaf) ) {
+        Write-Error "BuildSCons: Missing '$(Get-Location)\SConstruct'"
+        Return 1
+    }
+    
+    $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
+    $doVerbose  = ($verbose -eq $true) ? "verbose=yes" : $null
+    
+    $buildVars = @( "$doJobs", "$doVerbose") + $vars
+    
+    [array]$statArray = @()
+    foreach( $target in $targets ){
+        Figlet -f "small" "SCons Build"; H3 "target: $target"
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        
+        Format-Eval "scons $($buildVars -Join ' ') target=$target"
+        
+        $timer.Stop()
+        
+        $artifact = Get-ChildItem "$buildRoot/test/project/bin/libgdexample.windows.$target.x86_64.dll"
+        
+        $newStat = [PSCustomObject] @{
+            target      = "scons.$target"
+            duration    = $timer.Elapsed
+            size        = DisplayInBytes $artifact.Length
+        }
+        $statArray += $newStat
+        
+        H3 "BuildScons Completed"
+        $newStat | Format-Table
+        
+        Fill "-"
+    }
+}
+
+# Prepare with CMake
+# FIXME, force re-generating the bindings
+function PrepareCMake {
+    param (
+        [Alias( "v" )] [array] $vars = @(),
+        [Alias( "b" )] [string] $buildDir = "cmake-build"
+    )
+    
+    # requires CMakeLists.txt file existing in the current directory.
+    if( -Not (Test-Path "CMakeLists.txt" -PathType Leaf) ) {
+        Write-Error "PrepareCMake: Missing '$(Get-Location)\CMakeLists.txt'"
+        Return 1
+    }
+    
+    Figlet -f "small" "CMake Prepare"
+    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
+    
+    # Create Build Directory
+    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
+        H4 "Creating $buildDir"
+        New-Item -Path "$buildDir" -ItemType Directory -Force | Out-Null
+    }
+    Set-Location "$buildDir"
+    
+    Format-Eval cmake $doFresh .. $($vars -Join ' ')
+}
+
+function BuildCMake {
+    param(
+        [Alias( "v" )] [array] $vars = @(),
+        [Alias( "e" )] [array] $extra = @(
+            "/nologo",
+            "/v:m",
+            "/clp:'ShowCommandLine;ForceNoAlign'"
+        ),
+        [Alias( "t" )] [array] $targets = @(
+            "template_debug",
+            "template_release",
+            "editor"
+        )
+    )
+    
+    # requires SConstruct file existing in the current directory.
+    # SCons - Remove generated source files if exists.
+    if( -Not (Test-Path " CMakeCache.txt" -PathType Leaf) ) {
+        Write-Error "Missing '$(Get-Location)\ CMakeCache.txt'"
+        Return 1
+    }
+    
+    $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
+    $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
+    
+    $buildOpts = "$doJobs $doVerbose $($vars -Join ' ')"
+    $extraOpts = "$($extra -Join ' ')"
+    
+    [array]$statArray = @()
+    foreach( $target in $targets ){
+        Figlet -f "small" "CMake Build"; H3 "target: $target"
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        
+        Format-Eval "cmake --build . $buildOpts -t godot-cpp.test.$target -- $extraOpts"
+        
+        $timer.Stop()
+        
+        $artifact = Get-ChildItem "$buildRoot/test/project/bin/libgdexample.windows.$target.x86_64.dll"
+        
+        $newStat = [PSCustomObject] @{
+            target      = "scons.$target"
+            duration    = $timer.Elapsed
+            size        = DisplayInBytes $artifact.Length
+        }
+        $statArray += $newStat
+        
+        H3 "BuildScons Completed"
+        $newStat | Format-Table
+        
+        Fill "-"
+    }
+}
+
+function EraseFiles {
+    param(
+        [Alias( "f" )] [string] $fragments = "NothingToErase",
+        [Alias( "e" )] [string] $ext = ""
+    )
+    
+    [array]$artifacts = @(Get-ChildItem -Recurse `
+        | Where-Object { $_.Name -match "($fragments).*\.($ext)$" })
+    
+    if( $artifacts.Length -gt 0 ) {
+        H3 "Erase Files"
+        Write-Warning "Deleting $($artifacts.Length) Artifacts"
+        $artifacts | ForEach-Object {
+            Write-Host "  Removing '$_'"
+            Remove-Item "$_"
         }
     }
+}
 
-    # SCons - Remove generated source files if exists.
+# SCons - Remove generated source files if exists.
+function EraseGen {
+    
     if( Test-Path "$buildRoot\gen" -PathType Container ) {
         H4 "Removing Generated Files"
         Remove-Item -LiteralPath "$buildRoot\gen" -Force -Recurse
-    }
-}
-
-# Clean up Binaries to trigger rebuild
-function EraseKeyObjects {
-    [array]$binaries = @(Get-ChildItem -Recurse `
-        | Where-Object { $_.Name -match "(memory|example).*?o(bj)?$" })
-    
-    if( $binaries.Length -gt 0 ) {
-        H3 "Removing Objects"
-        $binaries | ForEach-Object {
-            Write-Host "Removing $_"
-            Remove-Item $_
-        }
-    }
-}
-
-# Clean up Binaries to trigger rebuild
-function EraseBinaries {
-    [array]$binaries = @(Get-ChildItem -Recurse `
-        | Where-Object { $_.Name -match "\.(so|dll|dylib|wasm32|wasm)$" })
-    
-    if( $binaries.Length -gt 0 ) {
-        H3 "Removing Binaries"
-        $binaries | ForEach-Object {
-            Write-Host "Removing $_"
-            Remove-Item $_
-        }
     }
 }
 
@@ -194,5 +330,5 @@ if( $test -eq $true ) {
 
 H2 "$config - Completed"
 
-PrintStats
+Finalise
 Start-Sleep 1

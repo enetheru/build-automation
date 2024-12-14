@@ -39,9 +39,9 @@ verbose="${verbose:-1}"
 
 source "$root/share/format.sh"
 
-# Get the target root from this script location
+# Setup our variables
 targetRoot=${targetRoot:-$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )}
-cd "$targetRoot" || return 1
+
 
 # determine the config from the script name.
 config="${config:-${script%.*}}"
@@ -75,6 +75,8 @@ echo "
 
   godot       = $godot
   godot_tr    = $godot_tr"
+
+cd "$targetRoot" || return 1
 
 # Host Platform Values and Functions
 source "$root/share/build-actions.sh"

@@ -143,9 +143,9 @@ function Right {
 
 function H1 {
     param(
-        [Parameter( ValueFromRemainingArguments = $true )]$args
+        [Parameter( ValueFromRemainingArguments = $true )]$message
     )
-    Figlet "$args"
+    Figlet -c -f "big" $message
 }
 
 function H2 {

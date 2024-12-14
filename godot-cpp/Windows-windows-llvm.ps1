@@ -13,32 +13,26 @@ if( $args -eq "get_env" ) {
     return
 }
 
-$script:buildDir = "$buildRoot/cmake-build"
-
-$gitBranch = "build_profile"
-
 function Prepare {
-    H1 "Prepare"
+    Figlet "Prepare"
     
+    Set-Location "$buildRoot"
     
+    # Erase key files to trigger a re-build so we can capture the build commands.
+    # FIXME investigate compile_commands.json for the above purpose
     EraseFiles "editor_plugin_registration" "o|obj"
     
-    H3 "CMake Configure"
-    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
-
-    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
-        H4 "Creating $buildDir"
-        New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
-    }
-
-    Set-Location $buildDir
-    H1 "CMake Configure"
-
-    [array]$cmakeVars = $null
-    $cmakeVars += "-DGODOT_ENABLE_TESTING=YES"
-    $cmakeVars += "-DGODOT_BUILD_PROFILE='..\test\build_profile.json'"
+    PrepareScons
     
-    Format-Eval "cmake $doFresh .. $($cmakeVars -Join ' ')"
+    $toolChain = "$root\toolchains\w64-llvm.cmake"
+    
+    [array]$cmakeVars = @(
+        "-GNinja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DGODOT_ENABLE_TESTING=YES",
+        "--toolchain $toolchain"
+    )
+    PrepareCMake -v $cmakeVars
 }
 
 function Build {
@@ -48,18 +42,25 @@ function Build {
     Set-Location "$buildRoot"
     EraseFiles -f "libgdexample" -e "dll"
     
-    ## SCons Build
+    $llvmPath = 'C:\Program Files\LLVM\bin\'
+    H3 "Prepend `$env:path with $llvmPath"
+    $savePath = $env:Path
+    $env:Path = "$llvmPath;" + $env:Path
+    
     Set-Location "$buildRoot\test"
-    BuildSCons -v @("build_profile=build_profile.json")
+    BuildSCons -v @("use_llvm=yes")
+    
+    #Restore Path
+    $env:Path = $savePath
     
     # Erase previous artifacts
     Set-Location "$buildRoot"
     EraseFiles -f "libgdexample" -e "dll"
     
     ## CMake Build
-    Set-Location "$buildDir"
-    BuildCMake -v @("--config Release")
-    
+    Set-Location "$buildDir\cmake-build"
+    BuildCMake
+
     # Report Results
     $statArray | Format-Table
 }
