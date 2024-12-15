@@ -37,6 +37,7 @@ function Prepare {
 
 function Build {
     [array]$statArray = @()
+    [ref]$statArrayRef = ([ref]$statArray)
     
     # Erase previous artifacts
     Set-Location "$buildRoot"
@@ -48,7 +49,11 @@ function Build {
     $env:Path = "$mingwPath;" + $env:Path
     
     Set-Location "$buildRoot\test"
-    BuildSCons -v @("use_mingw=yes")
+    [array]$targets = @(
+        "template_debug",
+        "template_release",
+        "editor")
+    BuildSCons -v @("use_mingw=yes") -t $targets
     
     #Restore Path
     $env:Path = $savePath
@@ -59,7 +64,11 @@ function Build {
     
     ## CMake Build
     Set-Location "$buildDir\cmake-build"
-    BuildCMake
+    [array]$targets = @(
+        "godot-cpp.test.template_debug",
+        "godot-cpp.test.template_release",
+        "godot-cpp.test.editor")
+    BuildCMake -t $targets
 
     # Report Results
     $statArray | Format-Table

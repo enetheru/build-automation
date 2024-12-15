@@ -13,106 +13,66 @@ if( $args -eq "get_env" ) {
     return
 }
 
-$script:buildDir = "$buildRoot/cmake-build"
 $script:emsdk = "C:\emsdk"
 
 function Prepare {
-    H1 "Prepare"
+    Figlet "Prepare"
     
-    H4 "Update EmSDK"
-    Set-Location $emsdk
-    Format-Eval git pull
-    Format-Eval $emsdk\emsdk.ps1 install latest
-    
-    # CMake Configure
-    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
-    
-    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
-        H4 "Creating $buildDir"
-        New-Item -Path "$buildDir" -ItemType Directory -Force | Out-Null
-    }
-    Set-Location "$buildDir"
+    UpdateEmscripten
     
     H3 "Activate EmSDK"
-    Format-Eval ./emsdk.ps1 activate latest
+    Format-Eval $emsdk\emsdk.ps1 activate latest
     
-    H1 "CMake Configure"
+    Set-Location "$buildRoot"
+    
+    # Erase key files to trigger a re-build so we can capture the build commands.
+    # FIXME investigate compile_commands.json for the above purpose
+    EraseFiles "editor_plugin_registration" "o|obj"
+    
+    PrepareScons -v @("platform=web")
+    
+    $toolchain = "$emsdk\upstream\emscripten\cmake\Modules\Platform\Emscripten.cmake"
+    # FIXME, investigate the rest of the emcmake pyhton script for any other options.
+    
     [array]$cmakeVars = @(
+        "-GNinja",
         "-DCMAKE_BUILD_TYPE=Release",
         "-DGODOT_ENABLE_TESTING=YES",
-        "-GNinja"
+        "--toolchain $toolchain"
     )
-    
-    Format-Eval emcmake.bat cmake $doFresh .. $($cmakeVars -Join ' ')
+    PrepareCMake -v $cmakeVars
 }
 
 function Build {
     [array]$statArray = @()
+    [ref]$statArrayRef = ([ref]$statArray)
+    
+    # TODO Erase previous artifacts
+#    Set-Location "$buildRoot"
+#    EraseFiles -f "libgdexample" -e "dll"
+    
+    #SCons Build
+    Set-Location "$buildRoot\test"
     
     [array]$targets = @(
         "template_debug",
         "template_release",
         "editor"
     )
+    BuildSCons -v @("platform=web") -t $targets
     
-    # SCons build
-    $doVerbose  = ($verbose -eq $true) ? "verbose=yes" : $null
-    $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
+    # TODO Erase previous artifacts
+    #    Set-Location "$buildRoot"
+    #    EraseFiles -f "libgdexample" -e "dll"
     
-    [array]$sconsVars = @(
-        "$doVerbose",
-        "$doJobs",
-        "platform=web"
-    )
+    ## CMake Build
+    Set-Location "$buildRoot\cmake-build"
     
-    Set-Location "$buildRoot/test"
-    
-    foreach( $target in $targets ){
-        H2 "$target"; H1 "Scons Build"
-        $timer = [System.Diagnostics.Stopwatch]::StartNew()
-
-        Format-Eval "scons target=$target $($sconsVars -Join ' ')"
-        
-        $timer.Stop()
-#        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$target.$arch.so"
-        
-        $newStat += [PSCustomObject] @{
-            target      = "scons.$target"
-            duration    = $timer.Elapsed
-#            size        = DisplayInBytes $artifact.Length
-        }
-        $newStat | Format-Table
-        $statArray += $newStat
-    }
-    
-    # Build Targets using CMake
-    $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
-    $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
-    
-    [array]$sconsVars = @(
-        "$doVerbose",
-        "$doJobs"
-    )
-    
-    Set-Location $buildDir
-    foreach( $target in $targets ){
-        H2 "$target"; H1 "CMake Build"
-        $timer = [System.Diagnostics.Stopwatch]::StartNew()
-        
-        Format-Eval emcmake.bat cmake --build . `
-            -t godot-cpp.test.$target $($cmakeVars -Join ' ')
-        
-        $timer.Stop()
-#        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$arch.$target.$arch.so"
-        
-        $newStat += [PSCustomObject] @{
-            target      = "cmake.$target"
-            duration    = $timer.Elapsed
-#            size        = DisplayInBytes $artifact.Length
-        }
-        $newStat | Format-Table
-        $statArray += $newStat
-    }
+    [array]$targets = @(
+        "godot-cpp.test.template_debug",
+        "godot-cpp.test.template_release",
+        "godot-cpp.test.editor")
+    BuildCMake -t $targets
 
     # Report Results
     $statArray | Format-Table

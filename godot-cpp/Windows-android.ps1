@@ -40,96 +40,37 @@ function Prepare {
 
 function Build {
     [array]$statArray = @()
+    [ref]$statArrayRef = ([ref]$statArray)
     
     # Erase previous artifacts
     Set-Location "$buildRoot"
 #    EraseFiles -f "libgdexample" -e "dll" # FIXME update for android
     
-    $llvmPath = 'C:\Program Files\LLVM\bin\'
-    H3 "Prepend `$env:path with $llvmPath"
-    $savePath = $env:Path
-    $env:Path = "$llvmPath;" + $env:Path
-    
+    # SCons Build
     Set-Location "$buildRoot\test"
-    BuildSCons -v @("use_llvm=yes")
     
-    #Restore Path
-    $env:Path = $savePath
+    [array]$targets = @(
+        "template_debug",
+        "template_release",
+        "editor")
+    [array]$sconsVars = @(
+        "platform=android"
+        "arch=x86_64"
+    )
+    BuildSCons -v $sconsVars -t $targets
     
     # Erase previous artifacts
     Set-Location "$buildRoot"
     #    EraseFiles -f "libgdexample" -e "dll" # FIXME update for android
     
     ## CMake Build
-    Set-Location "$buildDir\cmake-build"
-    BuildCMake
+    Set-Location "$buildRoot\cmake-build"
+    [array]$targets = @(
+        "godot-cpp.test.template_debug",
+        "godot-cpp.test.template_release",
+        "godot-cpp.test.editor")
+    BuildCMake -t $targets
     
-    # Report Results
-    $statArray | Format-Table
-    
-    
-    
-    
-    $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
-    
-    # FIXME get arch somehow.
-    $arch = "x86" + ([Environment]::Is64BitOperatingSystem) ? "_64" : ""
-    
-    $targets = @(
-        "template_debug",
-        "template_release",
-        "editor"
-    )
-    
-    # Build Targets using SCons
-    $doVerbose  = ($verbose -eq $true) ? "verbose=yes" : $null
-    
-    [array]$sconsVars = @(
-        "platform=android"
-        "arch=x86_64"
-    )
-    
-    Set-Location "$buildRoot/test"
-    foreach( $target in $targets ){
-        H2 "$target"; H1 "Scons Build"
-        $timer = [System.Diagnostics.Stopwatch]::StartNew()
-
-        Format-Eval "scons $doJobs $doVerbose target=$target $($sconsVars -Join ' ')"
-        
-        $timer.Stop()
-        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$target.$arch.so"
-        
-        $newStat += [PSCustomObject] @{
-            target      = "scons.$target"
-            duration    = $timer.Elapsed
-            size        = DisplayInBytes $artifact.Length
-        }
-        $newStat | Format-Table
-        $statArray += $newStat
-    }
-    
-    # Build Targets using CMake
-    $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
-    
-    Set-Location "$buildDir"
-    foreach( $target in $targets ){
-        H2 "$target"; H1 "CMake Build"
-        $timer = [System.Diagnostics.Stopwatch]::StartNew()
-        
-        Format-Eval "cmake --build . $doJobs $doVerbose -t godot-cpp.test.$target"
-        
-        $timer.Stop()
-        $artifact = Get-ChildItem "$buildRoot\test\project\bin\libgdexample.android.$arch.$target.$arch.so"
-        
-        $newStat += [PSCustomObject] @{
-            target      = "cmake.$target"
-            duration    = $timer.Elapsed
-            size        = DisplayInBytes $artifact.Length
-        }
-        $newStat | Format-Table
-        $statArray += $newStat
-    }
-
     # Report Results
     $statArray | Format-Table
 }

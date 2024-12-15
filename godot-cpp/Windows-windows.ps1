@@ -29,6 +29,7 @@ function Prepare {
 
 function Build {
     [array]$statArray = @()
+    [ref]$statArrayRef = ([ref]$statArray)
     
     # Erase previous artifacts
     Set-Location "$buildRoot"
@@ -36,7 +37,11 @@ function Build {
     
     ## SCons Build
     Set-Location "$buildRoot\test"
-    BuildSCons
+    [array]$targets = @(
+        "template_debug",
+        "template_release",
+        "editor")
+    BuildSCons -t $targets
     
     # Erase previous artifacts
     Set-Location "$buildRoot"
@@ -45,13 +50,16 @@ function Build {
     ## CMake Build
     Set-Location "$buildRoot\cmake-build"
     
-    $msbuildOpts = @(
+    [array]$msbuildOpts = @(
         "/nologo",
         "/v:m",
         "/clp:'ShowCommandLine;ForceNoAlign'"
     )
-    
-    BuildCMake -v @("--config Release") -e $msbuildOpts
+    [array]$targets = @(
+        "godot-cpp.test.template_debug",
+        "godot-cpp.test.template_release",
+        "godot-cpp.test.editor")
+    BuildCMake -v @("--config Release") -t $targets -e $msbuildOpts
 
     # Report Results
     $statArray | Format-Table

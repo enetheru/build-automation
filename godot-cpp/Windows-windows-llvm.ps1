@@ -26,6 +26,8 @@ function Prepare {
     
     $toolChain = "$root\toolchains\w64-llvm.cmake"
     
+    # FIXME, force re-generating the bindings
+    
     [array]$cmakeVars = @(
         "-GNinja",
         "-DCMAKE_BUILD_TYPE=Release",
@@ -37,18 +39,25 @@ function Prepare {
 
 function Build {
     [array]$statArray = @()
-    
-    # Erase previous artifacts
-    Set-Location "$buildRoot"
-    EraseFiles -f "libgdexample" -e "dll"
+    [ref]$statArrayRef = ([ref]$statArray)
     
     $llvmPath = 'C:\Program Files\LLVM\bin\'
     H3 "Prepend `$env:path with $llvmPath"
     $savePath = $env:Path
     $env:Path = "$llvmPath;" + $env:Path
     
+    # Erase previous artifacts
+    Set-Location "$buildRoot"
+    EraseFiles -f "libgdexample" -e "dll"
+    
+    # SCons Build
     Set-Location "$buildRoot\test"
-    BuildSCons -v @("use_llvm=yes") -s ([ref]$statArray)
+    
+    [array]$targets = @(
+        "template_debug",
+        "template_release",
+        "editor")
+    BuildSCons -v @("use_llvm=yes") -t $targets
     
     #Restore Path
     $env:Path = $savePath
@@ -59,7 +68,11 @@ function Build {
     
     ## CMake Build
     Set-Location "$buildRoot\cmake-build"
-    BuildCMake -s ([ref]$statArray)
+    [array]$targets = @(
+        "godot-cpp.test.template_debug",
+        "godot-cpp.test.template_release",
+        "godot-cpp.test.editor")
+    BuildCMake -t $targets
 
     # Report Results
     $statArray | Format-Table

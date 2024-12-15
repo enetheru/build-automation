@@ -88,6 +88,9 @@ Set-Location "$targetRoot"
 # In the case of godot-cpp we can generate the bindings without building the library
 # It will auto generate the bindings, or we can force it if fresh is enabled.
 function PrepareScons {
+    param(
+        [Alias( "v" )] [array] $vars = @()
+    )
     # requires SConstruct file existing in the current directory.
     if( -Not (Test-Path "SConstruct" -PathType Leaf) ) {
         Write-Error "PrepareScons: Missing '$(Get-Location)\SConstruct'"
@@ -98,157 +101,14 @@ function PrepareScons {
     
     # SCons - Remove generated source files if exists.
     $doFresh = ($fresh -eq $true) ? "generate_bindings=yes" : $null
+    $doVerbose  = ($verbose -eq $true) ? "verbose=yes" : $null
+    $buildVars = @( "$doVerbose", "$doFresh") + $vars
     
     # Is effected by three variables
-    # target arch cpu width, either 32 or 64, FIXME default unknown, i guess host architecture
+    # target arch cpu width, either 32 or 64, FIXME default unknown, I guess host architecture?
     # generate_template_get_node, default is 'yes'.
     # precision, single/double, default is 'single'.
-    Format-Eval scons "$doFresh build_library=no"
-}
-
-## Build with SCons
-# Function takes two arguments, array of targets, and array of options.
-# if both unset, then default build options are used.
-function BuildSCons {
-    param(
-        [Alias( "v" )] [array] $vars = @(),
-        [Alias( "t" )] [array] $targets = @(
-            "template_debug",
-            "template_release",
-            "editor"
-        ),
-        [Alias( "s" )] [ref] $statArray = ([ref]@())
-    )
-    
-    # requires SConstruct file existing in the current directory.
-    # SCons - Remove generated source files if exists.
-    if( -Not (Test-Path "SConstruct" -PathType Leaf) ) {
-        Write-Error "BuildSCons: Missing '$(Get-Location)\SConstruct'"
-        Return 1
-    }
-    
-    $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
-    $doVerbose  = ($verbose -eq $true) ? "verbose=yes" : $null
-    
-    $buildVars = @( "$doJobs", "$doVerbose") + $vars
-    
-    foreach( $target in $targets ){
-        Figlet -f "small" "SCons Build"; H3 "target: $target"
-        $timer = [System.Diagnostics.Stopwatch]::StartNew()
-        
-        Format-Eval "scons $($buildVars -Join ' ') target=$target"
-        
-        $timer.Stop()
-        
-        $artifact = Get-ChildItem "$buildRoot/test/project/bin/libgdexample.windows.$target.x86_64.dll"
-        
-        $newStat = [PSCustomObject] @{
-            target      = "scons.$target"
-            duration    = $timer.Elapsed
-            size        = DisplayInBytes $artifact.Length
-        }
-        $statArray.Value += $newStat
-        
-        H3 "BuildScons Completed"
-        $newStat | Format-Table
-        
-        Fill "-"
-    }
-}
-
-# Prepare with CMake
-# FIXME, force re-generating the bindings
-function PrepareCMake {
-    param (
-        [Alias( "v" )] [array] $vars = @(),
-        [Alias( "b" )] [string] $buildDir = "cmake-build"
-    )
-    
-    # requires CMakeLists.txt file existing in the current directory.
-    if( -Not (Test-Path "CMakeLists.txt" -PathType Leaf) ) {
-        Write-Error "PrepareCMake: Missing '$(Get-Location)\CMakeLists.txt'"
-        Return 1
-    }
-    
-    Figlet -f "small" "CMake Prepare"
-    $doFresh = ($fresh -eq $true) ? "--fresh" : $null
-    
-    # Create Build Directory
-    if( -Not (Test-Path -Path "$buildDir" -PathType Container) ) {
-        H4 "Creating $buildDir"
-        New-Item -Path "$buildDir" -ItemType Directory -Force | Out-Null
-    }
-    Set-Location "$buildDir"
-    
-    Format-Eval cmake $doFresh .. $($vars -Join ' ')
-}
-
-function BuildCMake {
-    param(
-        [Alias( "v" )] [array] $vars = @(),
-        [Alias( "e" )] [array] $extra = @(),
-        [Alias( "t" )] [array] $targets = @(
-            "template_debug",
-            "template_release",
-            "editor"
-        ),
-        [Alias( "s" )] [ref] $statArray = ([ref]@())
-    )
-    
-    # requires SConstruct file existing in the current directory.
-    # SCons - Remove generated source files if exists.
-    if( -Not (Test-Path "CMakeCache.txt" -PathType Leaf) ) {
-        Write-Error "Missing '$(Get-Location)\ CMakeCache.txt'"
-        Return 1
-    }
-    
-    $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
-    $doJobs     = ($jobs -gt 0) ? "-j $jobs" : $null
-    
-    $buildOpts = "$doJobs $doVerbose $($vars -Join ' ')"
-    $extraOpts = "$($extra -Join ' ')"
-    
-    foreach( $target in $targets ){
-        Figlet -f "small" "CMake Build"; H3 "target: $target"
-        $timer = [System.Diagnostics.Stopwatch]::StartNew()
-        
-        Format-Eval cmake --build . $buildOpts -t "godot-cpp.test.$target" -- $extraOpts
-        
-        $timer.Stop()
-        
-        $artifact = Get-ChildItem "$buildRoot/test/project/bin/libgdexample.windows.$target.x86_64.dll"
-        
-        $newStat = [PSCustomObject] @{
-            target      = "scons.$target"
-            duration    = $timer.Elapsed
-            size        = DisplayInBytes $artifact.Length
-        }
-        $statArray.Value += $newStat
-        
-        H3 "BuildScons Completed"
-        $newStat | Format-Table
-        
-        Fill "-"
-    }
-}
-
-function EraseFiles {
-    param(
-        [Alias( "f" )] [string] $fragments = "NothingToErase",
-        [Alias( "e" )] [string] $ext = ""
-    )
-    
-    [array]$artifacts = @(Get-ChildItem -Recurse `
-        | Where-Object { $_.Name -match "($fragments).*\.($ext)$" })
-    
-    if( $artifacts.Length -gt 0 ) {
-        H3 "Erase Files"
-        Write-Warning "Deleting $($artifacts.Length) Artifacts"
-        $artifacts | ForEach-Object {
-            Write-Host "  Removing '$_'"
-            Remove-Item "$_"
-        }
-    }
+    Format-Eval "scons $($buildVars -Join ' ') build_library=no"
 }
 
 # SCons - Remove generated source files if exists.
