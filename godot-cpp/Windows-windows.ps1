@@ -44,7 +44,14 @@ function Build {
     
     ## CMake Build
     Set-Location "$buildRoot\cmake-build"
-    BuildCMake -v @("--config Release")
+    
+    $msbuildOpts = @(
+        "/nologo",
+        "/v:m",
+        "/clp:'ShowCommandLine;ForceNoAlign'"
+    )
+    
+    BuildCMake -v @("--config Release") -e $msbuildOpts
 
     # Report Results
     $statArray | Format-Table

@@ -8,6 +8,27 @@ if( -Not ($MyInvocation.InvocationName -eq '.') ) {
     exit 1
 }
 
+# Update Android
+function UpdateAndroid {
+    H3 "Update Android SDK"
+    
+    $cmdlineTools="C:\androidsdk\cmdline-tools\latest\bin"
+    $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
+    $env:Path = "$cmdlineTools;" + $env:Path
+    
+    Format-Eval "sdkmanager --update $doVerbose *> $null"
+}
+
+function UpdateEmscripten {
+    H3 "Update Android SDK"
+    
+    $emsdk = "C:\emsdk"
+    
+    Set-Location $emsdk
+    Format-Eval git pull
+    Format-Eval $emsdk\emsdk.ps1 install latest
+}
+
 function Fetch {
     # The expectation is that we are in $targetRoot
     # and when we finish we should be back in $targetRoot

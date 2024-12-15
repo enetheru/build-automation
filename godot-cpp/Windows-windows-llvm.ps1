@@ -48,7 +48,7 @@ function Build {
     $env:Path = "$llvmPath;" + $env:Path
     
     Set-Location "$buildRoot\test"
-    BuildSCons -v @("use_llvm=yes")
+    BuildSCons -v @("use_llvm=yes") -s ([ref]$statArray)
     
     #Restore Path
     $env:Path = $savePath
@@ -58,8 +58,8 @@ function Build {
     EraseFiles -f "libgdexample" -e "dll"
     
     ## CMake Build
-    Set-Location "$buildDir\cmake-build"
-    BuildCMake
+    Set-Location "$buildRoot\cmake-build"
+    BuildCMake -s ([ref]$statArray)
 
     # Report Results
     $statArray | Format-Table

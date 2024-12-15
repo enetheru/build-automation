@@ -84,17 +84,6 @@ Set-Location "$targetRoot"
 # Host Platform Values and Functions
 . "$root\share\build-actions.ps1"
 
-# Update Android
-function UpdateAndroid {
-    H3 "Update Android SDK"
-    
-    $cmdlineTools="C:\androidsdk\cmdline-tools\latest\bin"
-    $doVerbose  = ($verbose -eq $true) ? "--verbose" : $null
-    $env:Path = "$cmdlineTools;" + $env:Path
-    
-    Format-Eval "sdkmanager --update $doVerbose *> $null"
-}
-
 # Prepare with SCons
 # In the case of godot-cpp we can generate the bindings without building the library
 # It will auto generate the bindings, or we can force it if fresh is enabled.
@@ -127,7 +116,8 @@ function BuildSCons {
             "template_debug",
             "template_release",
             "editor"
-        )
+        ),
+        [Alias( "s" )] [ref] $statArray = ([ref]@())
     )
     
     # requires SConstruct file existing in the current directory.
@@ -142,7 +132,6 @@ function BuildSCons {
     
     $buildVars = @( "$doJobs", "$doVerbose") + $vars
     
-    [array]$statArray = @()
     foreach( $target in $targets ){
         Figlet -f "small" "SCons Build"; H3 "target: $target"
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
@@ -158,7 +147,7 @@ function BuildSCons {
             duration    = $timer.Elapsed
             size        = DisplayInBytes $artifact.Length
         }
-        $statArray += $newStat
+        $statArray.Value += $newStat
         
         H3 "BuildScons Completed"
         $newStat | Format-Table
@@ -197,21 +186,18 @@ function PrepareCMake {
 function BuildCMake {
     param(
         [Alias( "v" )] [array] $vars = @(),
-        [Alias( "e" )] [array] $extra = @(
-            "/nologo",
-            "/v:m",
-            "/clp:'ShowCommandLine;ForceNoAlign'"
-        ),
+        [Alias( "e" )] [array] $extra = @(),
         [Alias( "t" )] [array] $targets = @(
             "template_debug",
             "template_release",
             "editor"
-        )
+        ),
+        [Alias( "s" )] [ref] $statArray = ([ref]@())
     )
     
     # requires SConstruct file existing in the current directory.
     # SCons - Remove generated source files if exists.
-    if( -Not (Test-Path " CMakeCache.txt" -PathType Leaf) ) {
+    if( -Not (Test-Path "CMakeCache.txt" -PathType Leaf) ) {
         Write-Error "Missing '$(Get-Location)\ CMakeCache.txt'"
         Return 1
     }
@@ -222,12 +208,11 @@ function BuildCMake {
     $buildOpts = "$doJobs $doVerbose $($vars -Join ' ')"
     $extraOpts = "$($extra -Join ' ')"
     
-    [array]$statArray = @()
     foreach( $target in $targets ){
         Figlet -f "small" "CMake Build"; H3 "target: $target"
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         
-        Format-Eval "cmake --build . $buildOpts -t godot-cpp.test.$target -- $extraOpts"
+        Format-Eval cmake --build . $buildOpts -t "godot-cpp.test.$target" -- $extraOpts
         
         $timer.Stop()
         
@@ -238,7 +223,7 @@ function BuildCMake {
             duration    = $timer.Elapsed
             size        = DisplayInBytes $artifact.Length
         }
-        $statArray += $newStat
+        $statArray.Value += $newStat
         
         H3 "BuildScons Completed"
         $newStat | Format-Table

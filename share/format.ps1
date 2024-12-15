@@ -160,7 +160,7 @@ function H3 {
     param(
         [Parameter( ValueFromRemainingArguments = $true )]$args
     )
-    Write-Output "`n == $args ==`n"
+    Write-Output "`n == $args =="
 }
 
 function H4 {
