@@ -26,6 +26,7 @@ if( $config -eq $true ) {
         "DYNAMICBASE", "NXCOMPAT", "SUBSYSTEM:CONSOLE", "TLBID:1",
         "errorReport:queue", "ERRORREPORT:QUEUE", "EHsc",
         "diagnostics:column", "INCREMENTAL", "NOLOGO", "nologo")
+        # FIXME replace sed usage with powrshell equivalent
         & {
             $PSNativeCommandUseErrorActionPreference = $false
             rg -M2048 $matchPattern "$args" `

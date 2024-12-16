@@ -10,11 +10,11 @@ param(
     
     [Alias( "j" )] [int] $jobs = ([Environment]::ProcessorCount -1),
 
-    [switch] $list,                 # show the list of scripts and exit
-    [switch] $fresh,                # re-fresh the configuration
-    [switch] $clean,                # clean the build directory
-    [switch] $append,               # Append to the logs rather than clobber
-    [string] $scriptFilter = ".*",  # Filter which scripts are used.
+    [switch] $list,           # show the list of scripts and exit
+    [switch] $fresh,          # re-fresh the configuration
+    [switch] $clean,          # clean the build directory
+    [switch] $append,         # Append to the logs rather than clobber
+    [string] $filter = ".*",  # Filter which scripts are used.
 
     [Parameter( Position = 0 )] [string] $target,       # Which target to use
     [Parameter( Position = 1 )] [string] $gitBranch = "",    # Which git branch to use
@@ -43,7 +43,7 @@ trap { Start-Sleep -Seconds 1 }
 
 ##########################    Function Definitions    #########################
 function Syntax {
-    Write-Output 'Syntax: ./build.sh -[fpbt] [-scriptFilter <regex>] <target>'
+    Write-Output 'Syntax: ./build.sh -[fpbt] [-filter <regex>] <target>'
 }
 
 # Dummy function intended to be overridden by target actions
@@ -103,18 +103,17 @@ Write-Output @"
   gitUrl      = $gitUrl
 "@
 
-# Get script count
+# Get Target Scripts
 $buildScripts = @( Get-Item $targetRoot/$platform*.ps1 `
-    | Where-Object Name -Match "$scriptFilter" `
-    | Where-Object Name -NotMatch 'build' `
-    | Where-Object Name -NotMatch 'actions' `
+    | Where-Object BaseName -NotMatch 'actions' `
+    | Where-Object BaseName -CMatch "$filter" `
     | ForEach-Object { $_.Name } )
 
 $scriptCount = $buildScripts.count
 
 Write-Output @"
 
-  scriptFilter = $scriptFilter
+  filter = $filter
   Script count: $scriptCount
 "@
 
@@ -155,6 +154,13 @@ if( $list ) { exit }
 )
 
 ############################    Begin Processing    ###########################
+#                                                                             #
+#           ██████  ██████   ██████   ██████ ███████ ███████ ███████          #
+#           ██   ██ ██   ██ ██    ██ ██      ██      ██      ██               #
+#           ██████  ██████  ██    ██ ██      █████   ███████ ███████          #
+#           ██      ██   ██ ██    ██ ██      ██           ██      ██          #
+#           ██      ██   ██  ██████   ██████ ███████ ███████ ███████          #
+
 # Make sure the log directories exist.
 New-Item -Force -ItemType Directory -Path "$targetRoot/logs-raw" | Out-Null
 New-Item -Force -ItemType Directory -Path "$targetRoot/logs-clean" | Out-Null

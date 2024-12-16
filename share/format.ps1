@@ -30,15 +30,6 @@ if( $Host -and $Host.UI -and $Host.UI.RawUI ) {
     [int]$columns = 120
 }
 
-
-# We really want sed for formatting and log cleaning.
-$sedCommand = $(Get-Command "sed")
-if( -Not $sedCommand ) {
-    Write-Error "'sed' command is missing."
-    exit 1
-}
-
-
 # If we dont have figlet then just replace it with something else
 function Figlet {
     [CmdletBinding( PositionalBinding = $false )]
@@ -63,7 +54,15 @@ function Figlet {
 
     # other figlet fonts I like are 'standard','Ogre', 'Stronger Than All' and 'ANSI Regular'
     if( Get-Command $customFiglet -ErrorAction SilentlyContinue ) {
-        &$customFiglet $alignment -w "$width" -f "$font" "$message"
+        # When I output text with figlet it inserts a completely useles character as the space.
+        $q1 = [char] 0x2001  # [MQSP]
+        
+        &$customFiglet $alignment -w "$width" -f "$font" "$message" `
+            | Where-Object { $_ -NotMatch "^\s*$" } `
+            | ForEach-Object {
+                if( $_.length -eq 0 ) { return }
+                $_ -replace $q1, ' '
+        }
     } else {
         Write-Output "==== $message ===="
     }
@@ -101,7 +100,7 @@ function Fill {
     if( $line.Length -ge $width ) {
         $line = $line.Substring( 0, $width )
     }
-    Write-Output $line
+    Write-Output "$line"
 }
 
 function Center {
@@ -117,7 +116,30 @@ function Center {
         if( $pos -lt 0 ) {
             Write-Output $string
         } else {
-            $line | sed -e "s/^\(.\{$pos\}\).\{$length\}\(.*$\)/\1$string\2/"
+            $searchExp = "^(?<front>.{$pos}).{$length}(?<rear>.*$)"
+            $replaceExp = "`${front}${string}`${rear}"
+            $line -creplace $searchExp,$replaceExp
+        }
+    }
+}
+
+function Left {
+    [CmdletBinding( )]
+    param(
+        [Parameter( Position = 0 )][string]$string = 'Left ',
+        [Parameter( Position = 1, ValueFromPipeline )][string]$line = "$(Fill)"
+    )
+    
+    process {
+        $pos = 0
+        $length = $string.Length
+        
+        if( $pos -lt 0 ) {
+            Write-Output $string
+        } else {
+            $searchExp = "^(?<front>.{$pos}).{$length}(?<rear>.*$)"
+            $replaceExp = "`${front}${string}`${rear}"
+            $line -creplace $searchExp,$replaceExp
         }
     }
 }
@@ -125,7 +147,7 @@ function Center {
 function Right {
     [CmdletBinding( )]
     param(
-        [Parameter( Position = 0 )][string]$string = 'Right ',
+        [Parameter( Position = 0 )][string]$string = ' Right',
         [Parameter( Position = 1, ValueFromPipeline )][string]$line = "$(Fill)"
     )
 
@@ -136,7 +158,9 @@ function Right {
         if( $pos -lt 0 ) {
             Write-Output $string
         } else {
-            $line | sed -e "s/^\(.\{$pos\}\).\{$length\}\(.*$\)/\1$string\2/"
+            $searchExp = "^(?<front>.{$pos}).{$length}(?<rear>.*$)"
+            $replaceExp = "`${front}${string}`${rear}"
+            $line -creplace $searchExp,$replaceExp
         }
     }
 }
