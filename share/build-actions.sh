@@ -23,21 +23,6 @@ function Fetch {
     # and when we finish we should be back in $targetRoot
     Figlet "Git Fetch"
 
-    echo "  Target Root   = $targetRoot"
-    echo "  Build Root    = $buildRoot"
-    echo "  Git URL       = $gitUrl"
-    echo "  Git Branch    = $gitBranch"
-
-    H3 "Update Repository"
-    # Clone to bare repo or update
-    if [ ! -d "$targetRoot/git" ]; then
-        Format-Eval "git clone --bare \"$gitUrl\" \"$targetRoot/git\""
-    else
-        Format-Eval "git --git-dir=\"$targetRoot/git\" fetch --force origin *:*"
-        Format-Eval "git --git-dir=\"$targetRoot/git\" worktree prune"
-        Format-Eval "git --git-dir=\"$targetRoot/git\" worktree list"
-    fi
-
     H3 "Update WorkTree"
     # Checkout worktree if not already
     if [ ! -d "$buildRoot" ]; then
@@ -92,4 +77,49 @@ function CleanLog-macos {
             P;D" \
         | sed "s/^cmake/\ncmake/" \
         | sed 'N; /^\n$/d;P;D'
+}
+
+#### Associative arrays ####
+# Because macos is using a really old version of bash I cant use associative
+# arrays in my base build script.
+
+function AssocUpdate {
+    # $1 = name of associative array variable
+    # $2 = key
+    # $3 = value
+    # Syntax: AssocUpdate "container" "key" "value"
+    # Will add keys if they don't exist already
+    #
+    #ingest the name of the array and copy the values.
+    declare -a rows=($(eval "echo \"\${$1[@]}\""))
+    key=${2:-}
+    value=${3:-}
+
+    size=$((${#rows[@]}-1))
+    echo "size=$size"
+    new=1
+    index=0
+    if [ $size -ge 0 ]; then
+        for i in $(eval "echo {0..$size}"); do
+            row="${rows[$i]}"
+            echo "[$i]={ key=${row%:*}, value=${row#*:} }"
+            if [ "$key" == "${row%:*}" ]; then
+                new=0
+                index=$i
+                break
+            fi
+        done
+    fi
+
+    # Add new key
+    if [ -n "$2" -a $new -eq 1 ]; then
+        echo "$1+=(\"$2:$3\")"
+        eval "$1+=(\"$2:$3\")"
+    fi
+
+    # Update key
+    if [ -n "$2" -a $new -eq 0 ]; then
+        echo "$1[$index]=\"$2:$3\""
+        eval "$1[$index]=\"$2:$3\""
+    fi
 }

@@ -1,10 +1,18 @@
 #!/bin/bash
 
+
+#########################    Setup Bash Preferences   #########################
 set -e          # error and quit when( $? != 0 )
 set -u          # error and quit on unbound variable
 set -o pipefail # halt when a pipe failure occurs
 #set -x          # execute and print
 
+root=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
+
+#### Source Text Formatting Functions
+source "$root/share/format.sh"
+
+##########################    Function Definitions    #########################
 Syntax()
 {
    echo "Syntax: ./build.sh [-hfcbt] [--list] [--fresh] [--append] [--filter=<regex>] <target> [gitBranch]"
@@ -36,6 +44,7 @@ Help()
 }
 if echo "${@}" | grep -qEe "--help|-h"; then Help; fi
 
+########################    Process Parameter Flags    ########################
 # Option parsing pulled from this Stack Overflow Answer from Adam Katz
 # https://stackoverflow.com/a/28466267
 die() { echo "$*" >&2; exit 2; }  # complain to STDERR and exit with error
@@ -71,7 +80,6 @@ shift $((OPTIND-1)) # remove parsed options and args from $@ list
 # Default and Detected Settings
 platform=$(basename "$(uname -o)")
 
-root=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
 
 verbose=${verbose:-1}
 list=${list:-0}
@@ -109,6 +117,10 @@ if [ -n "${1:-}" ]; then
     target="$1"
     targetRoot="$root/$target"
     shift 1
+else
+    Syntax
+    Error "The <target> parameter is missing"
+    exit 1
 fi
 
 # Parse the optional branch
@@ -117,9 +129,11 @@ if [ -n "${1:-}" ]; then
     shift 1
 fi
 
-# Source the formatting script
-source "$root/share/format.sh"
 
+#### Source Configuration and Function Overrides from Target Actions
+source "$targetRoot/$platform-actions.sh" "get_config"
+
+#############################    Print Summary    #############################
 H1 "AutoBuild"
 H2 "Options"
 
@@ -140,17 +154,12 @@ echo "
 
   target      = $target
   targetRoot  = $targetRoot
-  branch      = $gitBranch
+
+  gitUrl      = $gitUrl
+  gitBranch   = $gitBranch
 "
 
-if [ -z "$target" ]; then
-    Syntax
-    Error "The <target> parameter is missing"
-    exit 1
-fi
-
-# Get script list
-
+# Get Target Scripts
 # On Macos bash is version 3.2, which means mapfile isn't available and the
 # below won't work. 
 # mapfile -t buildScripts < <( ... )
@@ -187,20 +196,13 @@ printf "    %s\n" "${buildScripts[@]}"
 
 if [ "$list" -eq 1 ]; then exit; fi
 
-# Make sure the log directories exist.
-mkdir -p "$targetRoot/logs-raw"
-mkdir -p "$targetRoot/logs-clean"
 
+
+############################    Save Variables    #############################
 #Save the vars to an array so we can restore them each loop run.
 declare -a savedVars=(
     "verbose='$verbose'"
     "jobs='$jobs'"
-
-    "platform='$platform'"
-    "root='$root'"
-    "targetRoot='$targetRoot'"
-    "target='$target'"
-    "gitBranch='$gitBranch'"
 
     "fetch='$fetch'"
     "prepare='$prepare'"
@@ -209,7 +211,39 @@ declare -a savedVars=(
 
     "fresh='$fresh'"
     "append='$append'"
+
+    "platform='$platform'"
+    "target='$target'"
+
+    "root='$root'"
+    "targetRoot='$targetRoot'"
+
+    "gitUrl='$gitUrl'"
+    "gitBranch='$gitBranch'"
 )
+
+############################    Begin Processing    ###########################
+#                                                                             #
+#           ██████  ██████   ██████   ██████ ███████ ███████ ███████          #
+#           ██   ██ ██   ██ ██    ██ ██      ██      ██      ██               #
+#           ██████  ██████  ██    ██ ██      █████   ███████ ███████          #
+#           ██      ██   ██ ██    ██ ██      ██           ██      ██          #
+#           ██      ██   ██  ██████   ██████ ███████ ███████ ███████          #
+
+# Make sure the log directories exist.
+mkdir -p "$targetRoot/logs-raw"
+mkdir -p "$targetRoot/logs-clean"
+
+
+# Clone to bare repo or update
+H3 "Git Update/Clone Bare Repository"
+if [ ! -d "$targetRoot/git" ]; then
+    Format-Eval "git clone --bare \"$gitUrl\" \"$targetRoot/git\""
+else
+    Format-Eval "git --git-dir=\"$targetRoot/git\" fetch --force origin *:*"
+    Format-Eval "git --git-dir=\"$targetRoot/git\" worktree prune"
+    Format-Eval "git --git-dir=\"$targetRoot/git\" worktree list"
+fi
 
 declare -a summary=(
         "config fetch prepare build test status duration"
@@ -217,10 +251,11 @@ declare -a summary=(
 
 # Process Scripts
 for script in "${buildScripts[@]}"; do
+    H3 "Processing '$script'"
+
     #reset variables
     for var in "${savedVars[@]}"; do eval "$var"; done
 
-    H3 "Using '$script'"
     config="${script%.*}"
 
     traceLog="$targetRoot/logs-raw/${config}.txt"
@@ -235,14 +270,16 @@ for script in "${buildScripts[@]}"; do
     H4 "Source variations from: '$targetRoot/$script'"
     source "$targetRoot/$script" "get_env"
 
-    declare -A stats=(
-        ["config"]="$config"
-        ["fetch"]=""
-        ["prepare"]=""
-        ["build"]=""
-        ["test"]=""
-        ["status"]="dnf"
-        ["duration"]="dnf"
+    # Bash 3.2 does not have associative arrays, so I am going to have
+    # to work around that.
+    declare -a stats=(
+        "config:$config"
+        "fetch:"
+        "prepare:"
+        "build:"
+        "test:"
+        "status:dnf"
+        "duration:dnf"
     )
 
     declare -a useVars=(
@@ -276,16 +313,20 @@ for script in "${buildScripts[@]}"; do
 
     set +e
     declare -i start=$SECONDS
+
     $envRun "${useVars[*]} $targetRoot/$envActions" 2>&1 | tee "$traceLog"
-    if [ $? ]; then stats["status"]="Completed"; fi
-    stats["duration"]=$((SECONDS - start))
+
+    if [ $? ]; then stats+="status:Completed"; fi
+    stats+="duration:$((SECONDS - start))"
     set -e
 
     # read the last part of the raw log to collect stats
-    mapfile -t data < <(tail -n 20 "$traceLog" | sed -n "/stats\[\"/p")
-    for row in "${data[@]}"; do
-        eval "$row"
-    done
+    # Another location where we cannot use 'mapfile -t'
+    # mapfile -t data < <(tail -n 20 "$traceLog" | sed -n "/stats\[\"/p")
+    # for row in "${data[@]}"; do eval "$row"; done
+    while IFS= read -r line; do
+        eval "$line"
+    done < <( tail -n 20 "$traceLog" | sed -n "/stats\+=\"/p" )
 
     summary+=(
         "$(for col in ${summary[0]}; do
@@ -298,13 +339,15 @@ for script in "${buildScripts[@]}"; do
     printf "%s\n%s" "${summary[0]}" "${summary[-1]}" | column -t
 
     # Cleanup Logs
-#    $envClean "$traceLog" > "$cleanLog"
+    H3 "Process Logs"
+    CleanLog "$traceLog" > "$cleanLog"
 done
 
 Figlet "Finished" "standard" "-c"
 response=$(printf "%q" " \( ﾟヮﾟ)/ ")
 Fill "-" | Center "$response"
 H4 "Original Command: ${argv[*]}"
+
 if [ "${#buildScripts[@]}" -gt 1 ]; then
     H3 "Summary"
     printf "%s\n" "${summary[@]}" | column -t -R 6

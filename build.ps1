@@ -39,8 +39,10 @@ $OutputEncoding = New-Object System.Text.UTF8Encoding
 # Trapping the exit condition and sleeping for 1 prevents the error message.
 trap { Start-Sleep -Seconds 1 }
 
+$root = $PSScriptRoot
+
 #### Source Text Formatting Functions
-. ./share/format.ps1
+. "$root\share\format.ps1"
 
 ##########################    Function Definitions    #########################
 function Syntax {
@@ -59,7 +61,6 @@ elseif( $IsMacOS    ) { $platform = "MacOS" }
 elseif( $IsWindows  ) { $platform = "Windows" }
 else { $platform = "Unknown" }
 
-$root = $PSScriptRoot
 
 # Verbose Preference is a standard option.
 # I dont use the Write-Verbose yet, but perhaps that might change.
@@ -146,10 +147,11 @@ if( $list ) { exit }
 
     "`$fresh     =`$$fresh",
     "`$append    =`$$append",
+
     "`$platform  ='$platform'",
+    "`$target    ='$target'",
 
     "`$root      ='$root'",
-    "`$target    ='$target'",
     "`$targetRoot='$targetRoot'",
 
     "`$gitUrl    ='$gitUrl'",
@@ -183,7 +185,7 @@ if( -Not (Test-Path -Path "$targetRoot\git" -PathType Container) ) {
 
 # Process Scripts
 foreach( $script in $buildScripts ) {
-    H3 "Processing $script"
+    H3 "Processing '$script'"
     
     # Reset Variables
     H4 "Restore Build Settings"

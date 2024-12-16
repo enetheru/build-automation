@@ -1,5 +1,18 @@
 #!/bin/zsh
 
+
+# Configuration variables and functions to pass the main script
+# Note, the main script is bash, so this needs to conform to bash standards.
+if [ "$1" = "get_config" ]; then
+    gitUrl=${gitUrl:-"http://github.com/enetheru/godot-cpp.git"}
+    gitBranch=${gitBranch:-"master"}
+
+    function CleanLog {
+        H3 "TODO CleanLog for godot-cpp/Darwin-actions.sh"
+    }
+    return
+fi
+
 # Setup a secondary mechanism for piping to stdout so that we can split output
 # of commands to files and show them at the same time.
 exec 5>&1
