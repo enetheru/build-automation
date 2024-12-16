@@ -9,6 +9,7 @@ param(
     [Alias( "t" )] [switch] $test,
     
     [Alias( "j" )] [int] $jobs = ([Environment]::ProcessorCount -1),
+    [Alias( "q" )] [int] $quiet,
 
     [switch] $list,           # show the list of scripts and exit
     [switch] $fresh,          # re-fresh the configuration
@@ -61,7 +62,9 @@ else { $platform = "Unknown" }
 $root = $PSScriptRoot
 
 # Verbose Preference is a standard option.
-$verbose = ($VerbosePreference -eq "Continue") ? $true : $false
+# I dont use the Write-Verbose yet, but perhaps that might change.
+#($VerbosePreference -eq "Continue") ? $true : $false
+$verbose = ($quiet) ? $false : $true
 
 if( -Not ($fetch -Or $prepare -Or $build -Or $test) ) {
     $fetch = $true; $prepare = $true; $build = $true; $test = $true
@@ -180,18 +183,20 @@ if( -Not (Test-Path -Path "$targetRoot\git" -PathType Container) ) {
 
 # Process Scripts
 foreach( $script in $buildScripts ) {
+    H3 "Processing $script"
+    
     # Reset Variables
+    H4 "Restore Build Settings"
     foreach( $var in $savedVars ){
         Invoke-Expression "$var"
     }
-
-    H3 "Using $script"
-    $config = Split-Path -Path $script -LeafBase
+    
+    [string]$config = Split-Path -Path $script -LeafBase
     $Host.UI.RawUI.WindowTitle = "$config"
 
     $traceLog = "$targetRoot\logs-raw\$config.txt"
     $cleanLog = "$targetRoot\logs-clean\$config.txt"
-
+    
     # set default environment and commands.
     $envRun = "pwsh"
     $envActions = "$platform-actions.ps1"
@@ -199,7 +204,7 @@ foreach( $script in $buildScripts ) {
 
     # source command overrides
     H4 "Source variations from: '$targetRoot/$script'"
-    . "$targetRoot/$script" "get_env"
+    . "$targetRoot/$script" -c
     
     $statistics = [PSCustomObject]@{
         target      = "$target"
@@ -231,22 +236,23 @@ foreach( $script in $buildScripts ) {
         "`$cleanLog     = '$cleanLog'"
     )
     
-    if( $verbose -eq 1) {
-        H5 "Command: $envRun"
-        H5 "With:`n`t$($useVars -Join '`n`t')"
-        H5 "Action: $targetRoot/$envActions"
+    if( $verbose ) {
+        H4 "Command: $envRun"
+        H4 "With:"
+        $useVars | ForEach-Object { Write-Output "`t$_" }
+        H4 "Action: $targetRoot/$envActions"
     }
     
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
 
     try {
     &$envRun "-Command" @"
-$( $useVars -Join '`n')
+$( $useVars -Join "`n")
 $targetRoot/$envActions
 "@ 2>&1 | Tee-Object "$traceLog"
         ($statistics).status = "Completed"
     } catch {
-        Write-Output "Error during $config"
+        Write-Output "Error while processing $script"
     }
     
     $timer.Stop()

@@ -2,11 +2,11 @@
 #Requires -Version 7.4
 
 # Configuration variables to pass to main build script.
-param ( [Alias( "c" )] [switch] $config )
-if( $config -eq $true ) {
+param ( [switch] $c )
+if( $c ) {
     # [System.Uri]$gitUrl = "http://github.com/godotengine/godot-cpp.git"
     [System.Uri]$gitUrl = "C:\Godot\src\godot-cpp"
-    if( $gitBranch -eq "" ){ $gitBranch = "master" }
+    if( $gitBranch -eq "" ){ $gitBranch = "name_clash" }
     
     # This function is called when the build is completed to whittle down the
     # build log to something usable.
@@ -60,7 +60,8 @@ trap {
     Start-Sleep -Seconds 1
 }
 
-. "$root/share/format.ps1"
+. "$root\share\format.ps1"
+. "$root\share\build-actions.ps1"
 
 # Setup our variables
 
@@ -88,9 +89,6 @@ Write-Output @"
 "@
 
 Set-Location "$targetRoot"
-
-# Host Platform Values and Functions
-. "$root\share\build-actions.ps1"
 
 # Prepare with SCons
 # In the case of godot-cpp we can generate the bindings without building the library
