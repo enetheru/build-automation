@@ -105,6 +105,60 @@ function Clean {
     Write-Output "-"
 }
 
+function DefaultRun {
+    if( $fetch ) {
+        $Host.UI.RawUI.WindowTitle = "Fetch"
+        $stats | Add-Member -MemberType NoteProperty -Name 'fetch' -Value 'Fail'
+        
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        Fetch
+        $timer.Stop();
+        
+        $stats.fetch = "OK"
+        $stats | Add-Member -MemberType NoteProperty -Name 'fetchDuration' -Value $timer.Elapsed
+        H3 "$config - Fetch Duration: $($timer.Elapsed)"
+    }
+    
+    if( $prepare ) {
+        $Host.UI.RawUI.WindowTitle = "Prepare"
+        $stats | Add-Member -MemberType NoteProperty -Name 'prepare' -Value 'Fail'
+        
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        Prepare
+        $timer.Stop();
+        
+        $stats.prepare = "OK"
+        $stats | Add-Member -MemberType NoteProperty -Name 'prepareDuration' -Value $timer.Elapsed
+        H3 "$config - Prepare Duration: $($timer.Elapsed)"
+    }
+    
+    if( $build ) {
+        $Host.UI.RawUI.WindowTitle = "Build"
+        $stats | Add-Member -MemberType NoteProperty -Name 'build' -Value 'Fail'
+        
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        Build
+        $timer.Stop();
+        
+        $stats.build = "OK"
+        $stats | Add-Member -MemberType NoteProperty -Name 'buildDuration' -Value $timer.Elapsed
+        H3 "$config - Build Duration: $($timer.Elapsed)"
+    }
+    
+    if( $test ) {
+        $stats | Add-Member -MemberType NoteProperty -Name 'test' -Value 'Fail'
+        $Host.UI.RawUI.WindowTitle = "Test"
+        
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        Test
+        $timer.Stop();
+        
+        $stats.test = "OK"
+        $stats | Add-Member -MemberType NoteProperty -Name 'testDuration' -Value $timer.Elapsed
+        H3 "$config - Test Duration: $($timer.Elapsed)"
+    }
+}
+
 ## Build with SCons
 # Function takes two arguments, array of targets, and array of options.
 # if both unset, then default build options are used.

@@ -45,12 +45,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
-$stats = [PSCustomObject]@{
-    fetch   = ($fetch -eq $true) ? "Fail" : "-"
-    prepare = ($prepare -eq $true) ? "Fail" : "-"
-    build   = ($build -eq $true) ? "Fail" : "-"
-    test    = ($test -eq $true) ? "Fail" : "-"
-}
+$stats = [PSCustomObject]@{}
+#    fetch   = ($fetch -eq $true) ? "Fail" : "-"
+#    prepare = ($prepare -eq $true) ? "Fail" : "-"
+#    build   = ($build -eq $true) ? "Fail" : "-"
+#    test    = ($test -eq $true) ? "Fail" : "-"
+#}
 
 # Because Clion starts this script in a pipeline, it errors if the script exits too fast.
 # Trapping the exit condition and sleeping for 1 prevents the error message.
@@ -63,7 +63,7 @@ trap {
 . "$root\share\format.ps1"
 . "$root\share\build-actions.ps1"
 
-# Setup our variables
+#### Setup our variables
 
 [string]$thisScript = $(Get-PSCallStack)[0].scriptName
 
@@ -72,9 +72,6 @@ $targetRoot = $thisScript  | split-path -parent
 $config = Split-Path -Path $script -LeafBase
 
 $buildRoot = "$targetRoot\$config"
-
-# [System.Uri]$gitUrl = "http://github.com/godotengine/godot-cpp.git"
-[System.Uri]$gitUrl = "C:\Godot\src\godot-cpp"
 
 [string]$godot = "C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
 [string]$godot_tr = "C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
@@ -87,8 +84,6 @@ Write-Output @"
   godot.editor           = $godot
   godot.template_release = $godot_tr
 "@
-
-Set-Location "$targetRoot"
 
 # Prepare with SCons
 # In the case of godot-cpp we can generate the bindings without building the library
@@ -150,36 +145,46 @@ function TestCommon {
     @($result.split( "`r`n" ) | Where-Object { $_ -Match "FINI|PASS|FAIL|Godot" }) >> "$targetRoot\summary.log"
 }
 
+Set-Location "$targetRoot"
+
 # Per config Overrides and functions
 . "$targetRoot\$script"
 
 H3 "$config - Processing"
 
 if( $fetch -eq $true ) {
+    $stats | Add-Member -MemberType NoteProperty -Name 'fetch' -Value 'Fail'
+    $Host.UI.RawUI.WindowTitle = "Fetch"
     Fetch
-    ($stats).fetch = "OK"
+    $stats.fetch = "OK"
 }
 
 if( $prepare -eq $true ) {
+    $stats | Add-Member -MemberType NoteProperty -Name 'prepare' -Value 'Fail'
+    $Host.UI.RawUI.WindowTitle = "Prepare"
     Prepare
-    ($stats).prepare = "OK"
+    $stats.prepare = "OK"
 }
 
 if( $build      -eq $true ) {
+    $stats | Add-Member -MemberType NoteProperty -Name 'build' -Value 'Fail'
+    $Host.UI.RawUI.WindowTitle = "Build"
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     Build
     $timer.Stop();
     H3 "$config - Build Duration: $($timer.Elapsed)"
-    ($stats).build = "OK"
+    $stats.build = "OK"
+    $stats | Add-Member -MemberType NoteProperty -Name 'buildDuration' -Value $timer.Elapsed
 }
 
 if( $test -eq $true ) {
-    $result = ("unknown")
+    $stats | Add-Member -MemberType NoteProperty -Name 'test' -Value 'Fail'
+    $Host.UI.RawUI.WindowTitle = "Test"
     Test
-    ($stats).test = "OK"
+    $stats.test = "OK"
 }
 
 H2 "$config - Completed"
 
-Finalise
+Finalise $stats
 Start-Sleep 1

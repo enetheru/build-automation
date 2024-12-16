@@ -1,20 +1,19 @@
 #!/usr/bin/env pwsh
 #Requires -Version 7.4
 
-param ( [Alias( "c" )] [switch] $config )
+# Configuration variables to pass to main build script.
+param ( [switch] $c )
+if( $c ) {
+    [System.Uri]$gitUrl = "http://github.com/godotengine/godot.git"
+    if( $gitBranch -eq "" ){ $gitBranch = "master" }
+    return
+}
 
 # Setup Powershell Preferences
 # https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_preference_variables?view=powershell-7.4#verbosepreference
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
-
-# Configuration variables to pass to main build script.
-if( $config -eq $true ) {
-    [System.Uri]$gitUrl = "http://github.com/godotengine/godot.git"
-    if( $gitBranch -eq "" ){ $gitBranch = "master" }
-    return
-}
 
 $stats = [PSCustomObject]@{
     fetch   = ($fetch -eq $true) ? "Fail" : "-"
@@ -31,9 +30,10 @@ trap {
     Start-Sleep -Seconds 1
 }
 
-. "$root/share/format.ps1"
+. "$root\share\format.ps1"
+. "$root\share\build-actions.ps1"
 
-# Setup our variables
+#### Setup our variables
 
 [string]$thisScript = $(Get-PSCallStack)[0].scriptName
 
@@ -47,11 +47,6 @@ $buildRoot = "$targetRoot\build-$buildleaf"
 
 #### Write Summary ####
 SummariseConfig
-
-Set-Location "$targetRoot"
-
-# Source generic actions
-. "$root\share\build-actions.ps1"
 
 # Some steps are identical.
 function DeleteBuildArtifacts {
@@ -69,25 +64,27 @@ function DeleteBuildArtifacts {
     }
 }
 
+Set-Location "$targetRoot"
+
 # source config-unique action overrides
 . "$targetRoot\$script"
 
-H3 "Processing - $config"
+H3 "$config - Processing"
 
 if( $fetch      -eq $true ) {
-    $Host.UI.RawUI.WindowTitle = "$target | $config | Fetch"
+    $Host.UI.RawUI.WindowTitle = "Fetch"
     Fetch
     ($stats).fetch = "OK"
 }
 
 if( $prepare  -eq $true ) {
-    $Host.UI.RawUI.WindowTitle = "$target | $config | Prepare"
+    $Host.UI.RawUI.WindowTitle = "Prepare"
     Prepare
     ($stats).prepare = "OK"
 }
 
 if( $build      -eq $true ) {
-    $Host.UI.RawUI.WindowTitle = "$target | $config | Build"
+    $Host.UI.RawUI.WindowTitle = "Build"
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     Build
     $timer.Stop();
@@ -96,11 +93,12 @@ if( $build      -eq $true ) {
 }
 
 if( $test       -eq $true ) {
-    $Host.UI.RawUI.WindowTitle = "$target | $config | Test"
+    $Host.UI.RawUI.WindowTitle = "Test"
     Test | Tee-Object -Variable result
     ($stats).test = ($result | Select-Object -Last 1)
 }
 
-PrintStats
+H2 "$config - Completed"
 
+Finalise $stats
 Start-Sleep 1

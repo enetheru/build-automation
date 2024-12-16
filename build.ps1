@@ -222,7 +222,6 @@ foreach( $script in $buildScripts ) {
         "`$targetRoot   = '$targetRoot'",
         "`$platform     = '$platform'",
         "`$target       = '$target'",
-        "`$gitBranch    = '$gitBranch'",
         "`$fetch        = '$fetch'",
         "`$prepare      = '$prepare'",
         "`$build        = '$build'",
@@ -233,7 +232,9 @@ foreach( $script in $buildScripts ) {
         "`$verbose      = '$verbose'",
         "`$script       = '$script'",
         "`$traceLog     = '$traceLog'",
-        "`$cleanLog     = '$cleanLog'"
+        "`$cleanLog     = '$cleanLog'",
+        "`$gitUrl       = '$gitUrl'",
+        "`$gitBranch    = '$gitBranch'"
     )
     
     if( $verbose ) {
