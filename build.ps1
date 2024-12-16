@@ -17,12 +17,12 @@ param(
     [string] $scriptFilter = ".*",  # Filter which scripts are used.
 
     [Parameter( Position = 0 )] [string] $target,       # Which target to use
-    [Parameter( Position = 1 )] [string] $gitBranch,    # Which git branch to use
+    [Parameter( Position = 1 )] [string] $gitBranch = "",    # Which git branch to use
 
     [Parameter( ValueFromRemainingArguments = $true )]$passThrough #All remaining arguments
 )
 
-# Setup Powershell Preferences
+######################    Setup PowerShell Preferences    #####################
 # https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_preference_variables?view=powershell-7.4
 Set-StrictMode -Version Latest
 
@@ -38,11 +38,21 @@ $OutputEncoding = New-Object System.Text.UTF8Encoding
 # Trapping the exit condition and sleeping for 1 prevents the error message.
 trap { Start-Sleep -Seconds 1 }
 
+#### Source Text Formatting Functions
+. ./share/format.ps1
+
+##########################    Function Definitions    #########################
 function Syntax {
     Write-Output 'Syntax: ./build.sh -[fpbt] [-scriptFilter <regex>] <target>'
 }
 
-# Default and Detected Settings
+# Dummy function intended to be overridden by target actions
+function CleanLog {
+    H3 "No Clean Action Specified"
+    Write-Output "-"
+}
+
+########################    Process Parameter Flags    ########################
 if(     $IsLinux    ) { $platform = "Linux" }
 elseif( $IsMacOS    ) { $platform = "MacOS" }
 elseif( $IsWindows  ) { $platform = "Windows" }
@@ -57,10 +67,17 @@ if( -Not ($fetch -Or $prepare -Or $build -Or $test) ) {
     $fetch = $true; $prepare = $true; $build = $true; $test = $true
 }
 
+if( $target -eq "" ) {
+    Syntax
+    Write-Error "Missing <target>"
+}
+
 $targetRoot = "$root\$target"
 
-. ./share/format.ps1
+#### Source Configuration and Function Overrides from Target Actions
+. "$targetRoot\${platform}-actions.ps1" -c
 
+#############################    Print Summary    #############################
 H1 "AutoBuild"
 H2 "Options"
 
@@ -81,13 +98,10 @@ Write-Output @"
 
   target      = $target
   targetRoot  = $targetRoot
-  branch      = $gitBranch
-"@
 
-if( $target -eq "" ) {
-    Syntax
-    Write-Error "Missing <target>"
-}
+  gitBranch   = $gitBranch
+  gitUrl      = $gitUrl
+"@
 
 # Get script count
 $buildScripts = @( Get-Item $targetRoot/$platform*.ps1 `
@@ -116,59 +130,54 @@ $buildScripts | ForEach-Object { Write-Output "    $_" }
 
 if( $list ) { exit }
 
+############################    Save Variables    #############################
+# Each saved var is a statement that can be evaluated to reset the variable
+# content.
+[array]$savedVars = @(
+    "`$verbose   =`$$verbose",
+    "`$jobs      =$jobs",
+
+    "`$fetch     =`$$fetch",
+    "`$prepare   =`$$prepare",
+    "`$build     =`$$build",
+    "`$test      =`$$test",
+
+    "`$fresh     =`$$fresh",
+    "`$append    =`$$append",
+    "`$platform  ='$platform'",
+
+    "`$root      ='$root'",
+    "`$target    ='$target'",
+    "`$targetRoot='$targetRoot'",
+
+    "`$gitUrl    ='$gitUrl'",
+    "`$gitBranch ='$gitBranch'"
+)
+
+############################    Begin Processing    ###########################
 # Make sure the log directories exist.
 New-Item -Force -ItemType Directory -Path "$targetRoot/logs-raw" | Out-Null
 New-Item -Force -ItemType Directory -Path "$targetRoot/logs-clean" | Out-Null
 
-function CleanLog {
-    H3 "Cleaning $args"
-    # Clean the logs
-    # it goes like this, for each line that matches the pattern.
-    # split each line along spaces.
-    # [repeated per type of construct] re-join lines that match a set of tags
-    # the remove the compiler defaults, since CMake adds so many.
-    
-    $matchPattern = '^lib|^link|memory|Lib\.exe|link\.exe|  󰞷'
-    [array]$compilerDefaults = (
-    "fp:precise",
-    "Gd", "GR", "GS",
-    "Zc:forScope", "Zc:wchar_t",
-    "DYNAMICBASE", "NXCOMPAT", "SUBSYSTEM:CONSOLE", "TLBID:1",
-    "errorReport:queue", "ERRORREPORT:QUEUE", "EHsc",
-    "diagnostics:column", "INCREMENTAL", "NOLOGO", "nologo")
-    & {
-        $PSNativeCommandUseErrorActionPreference = $false
-        rg -M2048 $matchPattern "$args" `
-            | sed -E 's/ +/\n/g' `
-            | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' `
-            | sed -E ':a;$!N;s/(Program|Microsoft|Visual|vcxproj|->)\n/\1 /;ta;P;D' `
-            | sed -E ':a;$!N;s/(\.\.\.|omitted|end|of|long)\n/\1 /;ta;P;D' `
-            | sed -E "/^\/($($compilerDefaults -Join '|'))$/d"
-    }
-}
+H3 "Git Update/Clone Bare Repository"
 
-[array]$savedVars = @(
-   "`$verbose   ='$verbose'",
-   "`$jobs      ='$jobs'",
-   "`$platform  ='$platform'",
-   "`$root      ='$root'",
-   "`$targetRoot='$targetRoot'",
-   "`$target    ='$target'",
-   "`$gitBranch ='$gitBranch'",
-   "`$fetch     ='$fetch'",
-   "`$prepare   ='$prepare'",
-   "`$build     ='$build'",
-   "`$test      ='$test'",
-   "`$fresh     ='$fresh'",
-   "`$append    ='$append'"
-)
+# Clone if not already
+if( -Not (Test-Path -Path "$targetRoot\git" -PathType Container) ) {
+    Format-Eval git clone --bare "$gitUrl" "$targetroot\git"
+} else {
+    Format-Eval git --git-dir=$targetRoot\git fetch --force origin *:*
+    Format-Eval git --git-dir=$targetRoot\git worktree prune
+    Format-Eval git --git-dir=$targetRoot\git worktree list
+}
 
 [array]$summary = @()
 
 # Process Scripts
 foreach( $script in $buildScripts ) {
-    #reset variables
-#    foreach( $var in $savedVars){ &"$var" }
+    # Reset Variables
+    foreach( $var in $savedVars ){
+        Invoke-Expression "$var"
+    }
 
     H3 "Using $script"
     $config = Split-Path -Path $script -LeafBase
@@ -226,20 +235,7 @@ foreach( $script in $buildScripts ) {
 
     try {
     &$envRun "-Command" @"
-`$root='$root'
-`$targetRoot='$targetRoot'
-`$platform='$platform'
-`$target='$target'
-`$gitBranch='$gitBranch'
-`$fetch='$fetch'
-`$prepare='$prepare'
-`$build='$build'
-`$jobs='$jobs'
-`$test='$test'
-`$fresh='$fresh'
-`$append='$append'
-`$verbose='$verbose'
-`$script='$script'
+$( $useVars -Join '`n')
 $targetRoot/$envActions
 "@ 2>&1 | Tee-Object "$traceLog"
         ($statistics).status = "Completed"

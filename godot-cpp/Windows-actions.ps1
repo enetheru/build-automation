@@ -1,6 +1,44 @@
 #!/usr/bin/env pwsh
 #Requires -Version 7.4
 
+# Configuration variables to pass to main build script.
+param ( [Alias( "c" )] [switch] $config )
+if( $config -eq $true ) {
+    # [System.Uri]$gitUrl = "http://github.com/godotengine/godot-cpp.git"
+    [System.Uri]$gitUrl = "C:\Godot\src\godot-cpp"
+    if( $gitBranch -eq "" ){ $gitBranch = "master" }
+    
+    # This function is called when the build is completed to whittle down the
+    # build log to something usable.
+    function CleanLog {
+        H3 "Cleaning $args"
+        # Clean the logs
+        # it goes like this, for each line that matches the pattern.
+        # split each line along spaces.
+        # [repeated per type of construct] re-join lines that match a set of tags
+        # the remove the compiler defaults, since CMake adds so many.
+        
+        $matchPattern = '^lib|^link|memory|Lib\.exe|link\.exe|  󰞷'
+        [array]$compilerDefaults = (
+        "fp:precise",
+        "Gd", "GR", "GS",
+        "Zc:forScope", "Zc:wchar_t",
+        "DYNAMICBASE", "NXCOMPAT", "SUBSYSTEM:CONSOLE", "TLBID:1",
+        "errorReport:queue", "ERRORREPORT:QUEUE", "EHsc",
+        "diagnostics:column", "INCREMENTAL", "NOLOGO", "nologo")
+        & {
+            $PSNativeCommandUseErrorActionPreference = $false
+            rg -M2048 $matchPattern "$args" `
+            | sed -E 's/ +/\n/g' `
+            | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' `
+            | sed -E ':a;$!N;s/(Program|Microsoft|Visual|vcxproj|->)\n/\1 /;ta;P;D' `
+            | sed -E ':a;$!N;s/(\.\.\.|omitted|end|of|long)\n/\1 /;ta;P;D' `
+            | sed -E "/^\/($($compilerDefaults -Join '|'))$/d"
+        }
+    }
+    return
+}
+
 # PowerShell execution options
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -13,22 +51,11 @@ $stats = [PSCustomObject]@{
     test    = ($test -eq $true) ? "Fail" : "-"
 }
 
-function Finalise {
-    Write-Host "Output Stats:"
-    
-    foreach( $stat in $stats.psobject.properties ){
-        if( $stat.Value -like "-" ){ continue }
-        Write-Host ('($statistics).{0} = "{1}"' -f $stat.Name, $stat.Value)
-    }
-    
-    Fill "_   " | Right " EOF "
-}
-
 # Because Clion starts this script in a pipeline, it errors if the script exits too fast.
 # Trapping the exit condition and sleeping for 1 prevents the error message.
 trap {
     Write-Host $_
-    Finalise
+    Finalise $stats
     Start-Sleep -Seconds 1
 }
 
@@ -50,33 +77,13 @@ $buildRoot = "$targetRoot\$config"
 [string]$godot = "C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
 [string]$godot_tr = "C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
 
-H2 "Build '$target' on '$platform' using '$config'"
+#### Write Summary ####
+SummariseConfig
+
+# Add custom things to Summary
 Write-Output @"
-  envActions  = $thisScript
-  buildScript = $script
-
-  fetch       = $fetch
-  prepare     = $prepare
-  build       = $build
-  test        = $test
-
-  fresh build = $fresh
-  log append  = $append
-
-  target      = $target
-  branch      = $gitBranch
-
   godot.editor           = $godot
   godot.template_release = $godot_tr
-
-  gitUrl      = $gitUrl
-  gitBranch   = $gitBranch
-
-  platform    = $platform
-  root        = $root
-  targetRoot  = $targetRoot
-  buildRoot   = $buildRoot
-  }
 "@
 
 Set-Location "$targetRoot"

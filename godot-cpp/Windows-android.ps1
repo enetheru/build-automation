@@ -30,7 +30,7 @@ function Prepare {
         "-GNinja",
         "-DCMAKE_BUILD_TYPE=Release",
         "-DGODOT_ENABLE_TESTING=YES",
-        "-DANDROID_PLATFORM=android-34",
+        "-DANDROID_PLATFORM=latest",
         "-DANDROID_ABI=x86_64",
         "--toolchain `"C:\androidsdk\ndk\23.2.8568313\build\cmake\android.toolchain.cmake`""
     )
