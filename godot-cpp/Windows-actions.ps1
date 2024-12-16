@@ -11,7 +11,8 @@ if( $c ) {
     # This function is called when the build is completed to whittle down the
     # build log to something usable.
     function CleanLog {
-        H3 "Cleaning $args"
+        H3 "TODO Cleaning $args"
+        return
         # Clean the logs
         # it goes like this, for each line that matches the pattern.
         # split each line along spaces.

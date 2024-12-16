@@ -71,32 +71,7 @@ Set-Location "$targetRoot"
 
 H3 "$config - Processing"
 
-if( $fetch      -eq $true ) {
-    $Host.UI.RawUI.WindowTitle = "Fetch"
-    Fetch
-    ($stats).fetch = "OK"
-}
-
-if( $prepare  -eq $true ) {
-    $Host.UI.RawUI.WindowTitle = "Prepare"
-    Prepare
-    ($stats).prepare = "OK"
-}
-
-if( $build      -eq $true ) {
-    $Host.UI.RawUI.WindowTitle = "Build"
-    $timer = [System.Diagnostics.Stopwatch]::StartNew()
-    Build
-    $timer.Stop();
-    H3 "Build Duration: $($timer.Elapsed)"
-    ($stats).build = "OK"
-}
-
-if( $test       -eq $true ) {
-    $Host.UI.RawUI.WindowTitle = "Test"
-    Test | Tee-Object -Variable result
-    ($stats).test = ($result | Select-Object -Last 1)
-}
+DefaultProcess
 
 H2 "$config - Completed"
 

@@ -73,10 +73,12 @@ function EraseFiles {
 }
 
 function Fetch {
-    H3 "Update WorkTree"
     # Create worktree is missing
     if( -Not (Test-Path -Path "$buildRoot" -PathType Container) ) {
+        H3 "Create WorkTree"
         Format-Eval git --git-dir="$targetRoot/git" worktree add -d "$buildRoot"
+    } else {
+        H3 "Update WorkTree"
     }
     
     # Update worktree
@@ -105,7 +107,7 @@ function Clean {
     Write-Output "-"
 }
 
-function DefaultRun {
+function DefaultProcess {
     if( $fetch ) {
         $Host.UI.RawUI.WindowTitle = "Fetch"
         $stats | Add-Member -MemberType NoteProperty -Name 'fetch' -Value 'Fail'
@@ -232,9 +234,9 @@ function PrepareCMake {
 
 function BuildCMake {
     param(
+        [Alias( "t" )] [array] $targets = @("all"),
         [Alias( "v" )] [array] $vars = @(),
-        [Alias( "e" )] [array] $extra = @(),
-        [Alias( "t" )] [array] $targets = @("all")
+        [Alias( "e" )] [array] $extra = @()
     )
     
     # requires SConstruct file existing in the current directory.
@@ -254,7 +256,7 @@ function BuildCMake {
         Figlet -f "small" "CMake Build"; H3 "target: $target"
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         
-        Format-Eval cmake --build . $buildOpts -t "$target" -- $extraOpts
+        Format-Eval cmake --build . $buildOpts -t "$target" "--" "$extraOpts"
         
         $timer.Stop()
         $ts = $timer.Elapsed
@@ -279,8 +281,8 @@ function Finalise {
     Write-Host "Output Stats:"
     
     foreach( $stat in $stats.psobject.properties ){
-        if( $stat.Value -like "-" ){ continue }
-        Write-Host ('($statistics).{0} = "{1}"' -f $stat.Name, $stat.Value)
+        Write-Host ('$statistics | Add-Member -Force -MemberType NoteProperty -Name "{0}" -Value "{1}"' `
+            -f $stat.Name, $stat.Value )
     }
     
     Fill "_   " | Right " EOF "

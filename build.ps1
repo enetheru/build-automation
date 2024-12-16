@@ -263,7 +263,7 @@ $targetRoot/$envActions
     
     # Try to fetch any stats from the bottom of the file.
     Get-Content "$traceLog" | Select-Object -Last 20 | ForEach-Object {
-        if( $_.StartsWith( '($statistics).' ) ) {
+        if( $_.StartsWith( '$statistics | Add-Member' ) ) {
             Invoke-Expression "$_"
         }
     }

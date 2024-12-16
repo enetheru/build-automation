@@ -4,12 +4,16 @@
 # Configuration variables to pass to main build script.
 param ( [switch] $c )
 if( $c -eq $true ) {
-    H4 "Using Default env Settings"
+    $mingwPath = 'C:\mingw64\bin'
+    H3 "Prepend `$env:path with $mingwPath"
+    $env:Path = "$mingwPath;" + $env:Path
     return
 }
 
 function Prepare {
     Figlet "Prepare"
+    
+
     
     Set-Location "$buildRoot"
     
@@ -38,20 +42,12 @@ function Build {
     Set-Location "$buildRoot"
     EraseFiles -f "libgdexample" -e "dll"
     
-    $mingwPath = 'C:\Program Files\LLVM\bin\'
-    H3 "Prepend `$env:path with $mingwPath"
-    $savePath = $env:Path
-    $env:Path = "$mingwPath;" + $env:Path
-    
     Set-Location "$buildRoot\test"
     [array]$targets = @(
         "template_debug",
         "template_release",
         "editor")
     BuildSCons -v @("use_mingw=yes") -t $targets
-    
-    #Restore Path
-    $env:Path = $savePath
     
     # Erase previous artifacts
     Set-Location "$buildRoot"

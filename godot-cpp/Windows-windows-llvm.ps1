@@ -4,7 +4,9 @@
 # Configuration variables to pass to main build script.
 param ( [switch] $c )
 if( $c -eq $true ) {
-    H4 "Using Default env Settings"
+    $llvmPath = 'C:\Program Files\LLVM\bin\'
+    H3 "Prepend `$env:path with $llvmPath"
+    $env:Path = "$llvmPath;" + $env:Path
     return
 }
 
@@ -36,11 +38,6 @@ function Build {
     [array]$statArray = @()
     [ref]$statArrayRef = ([ref]$statArray)
     
-    $llvmPath = 'C:\Program Files\LLVM\bin\'
-    H3 "Prepend `$env:path with $llvmPath"
-    $savePath = $env:Path
-    $env:Path = "$llvmPath;" + $env:Path
-    
     # Erase previous artifacts
     Set-Location "$buildRoot"
     EraseFiles -f "libgdexample" -e "dll"
@@ -53,9 +50,6 @@ function Build {
         "template_release",
         "editor")
     BuildSCons -v @("use_llvm=yes") -t $targets
-    
-    #Restore Path
-    $env:Path = $savePath
     
     # Erase previous artifacts
     Set-Location "$buildRoot"
