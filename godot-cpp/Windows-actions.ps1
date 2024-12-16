@@ -12,7 +12,11 @@ if( $c ) {
     # build log to something usable.
     function CleanLog {
         H3 "TODO Cleaning $args"
+        
+        # Try to fetch any stats from the bottom of the file.
+        Get-Content "$traceLog" | Where-Object { $_ -Match 'editor_plugin_registration' }
         return
+        
         # Clean the logs
         # it goes like this, for each line that matches the pattern.
         # split each line along spaces.

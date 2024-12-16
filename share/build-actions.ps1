@@ -183,7 +183,9 @@ function BuildSCons {
     $buildVars = @( "$doJobs", "$doVerbose") + $vars
     
     foreach( $target in $targets ){
-        Figlet -f "small" "SCons Build"; H3 "target: $target"
+        Figlet -f "small" "SCons Build"
+        H3 "Config: $config"
+        H3 "Target: $target"
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         
         Format-Eval "scons $($buildVars -Join ' ') target=$target"
@@ -253,7 +255,9 @@ function BuildCMake {
     $extraOpts = "$($extra -Join ' ')"
     
     foreach( $target in $targets ){
-        Figlet -f "small" "CMake Build"; H3 "target: $target"
+        Figlet -f "small" "CMake Build"
+        H3 "Config: $config"
+        H3 "Target: $target"
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         
         Format-Eval cmake --build . $buildOpts -t "$target" "--" "$extraOpts"

@@ -54,7 +54,7 @@ function Build {
     EraseFiles -f "libgdexample" -e "dll"
     
     ## CMake Build
-    Set-Location "$buildDir\cmake-build"
+    Set-Location "$buildRoot\cmake-build"
     [array]$targets = @(
         "godot-cpp.test.template_debug",
         "godot-cpp.test.template_release",
