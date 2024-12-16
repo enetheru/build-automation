@@ -7,7 +7,7 @@ set -o pipefail # halt when a pipe failure occurs
 
 Syntax()
 {
-   echo "Syntax: ./build.sh [-hfcbt] [--list] [--fresh] [--append] [--scriptFilter=<regex>] <target> [gitBranch]"
+   echo "Syntax: ./build.sh [-hfcbt] [--list] [--fresh] [--append] [--filter=<regex>] <target> [gitBranch]"
 }
 
 Help()
@@ -30,7 +30,7 @@ Help()
    echo "     --fresh       Re-Fresh the configuration before building"
    echo "     --append      Append to the log rather than clobber it"
    echo
-   echo "     --scriptFilter=<regex> Regex pattern matching script name"
+   echo "     --filter=<regex> Regex pattern matching script name"
    echo
    exit
 }
@@ -60,7 +60,7 @@ while getopts :hfpbt-: OPT; do  # allow -a, -b with arg, -c, and -- "with arg"
         t | test )      test=1 ;;
         fresh )         fresh=1 ;;
         append )        append=1 ;;
-        scriptFilter )  needs_arg; scriptFilter="$OPTARG" ;;
+        filter )  needs_arg; filter="$OPTARG" ;;
         # c | charlie )  charlie="${OPTARG:-$charlie_default}" ;;  # optional argument
         \? )           echo "Error: Bad short option" >&2; Syntax; exit 2 ;;  # bad short option (error reported via getopts)
         * )            die "Illegal option --$OPT" ;;            # bad long option
@@ -89,7 +89,7 @@ test=${test:-0}
 
 fresh=${fresh:-0}
 append=${append:-0}
-scriptFilter=${scriptFilter:-".*"}
+filter=${filter:-".*"}
 
 gitUrl=""
 gitBranch=""
@@ -108,7 +108,6 @@ fi
 if [ -n "${1:-}" ]; then
     target="$1"
     targetRoot="$root/$target"
-    missingTarget=1
     shift 1
 fi
 
@@ -144,24 +143,35 @@ echo "
   branch      = $gitBranch
 "
 
-if [ "$missingTarget" = "1" ]; then
+if [ -z "$target" ]; then
     Syntax
     Error "The <target> parameter is missing"
     exit 1
 fi
 
 # Get script list
-mapfile -t buildScripts < <(
+
+# On Macos bash is version 3.2, which means mapfile isn't available and the
+# below won't work. 
+# mapfile -t buildScripts < <( ... )
+#
+# So this stack overflow answer describes how to use read -r
+# https://stackoverflow.com/a/41475317
+declare -a buildScripts=()
+while IFS= read -r line; do
+    buildScripts+=("$line")
+done < <(
 find "$targetRoot" -maxdepth 1 -type f -name "$platform*" -print0 \
     | xargs -0 -I '{}' basename '{}' \
     | grep -v "build" \
     | grep -v "actions" \
-    | grep -e "$scriptFilter"
+    | grep -e "$filter"
 )
+# Get the script count
 declare -i scriptCount=${#buildScripts[@]}
 
 echo "
-  scriptFilter= $scriptFilter
+  filter= $filter
   scriptCount = $scriptCount
 "
 
