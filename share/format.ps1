@@ -30,6 +30,27 @@ if( $Host -and $Host.UI -and $Host.UI.RawUI ) {
     [int]$columns = 120
 }
 
+# Simplest to read from all the junk surrounding this question.
+# https://stackoverflow.com/a/51268514
+function DisplayInBytes()
+{
+    param(
+        [int]$num
+    )
+    $suffix = "oct", "Kib", "Mib", "Gib", "Tib", "Pib", "Eib", "Zib", "Yib"
+    $index = 0
+    while ($num -gt 1kb)
+    {
+        $num = $num / 1kb
+        $index++
+    }
+    
+    $sFmt="{0:N"
+    if ($index -eq 0) {$sFmt += "0"} else {$sFmt += "1"}
+    $sFmt += "} {1}"
+    $sFmt -f $num, $suffix[$index]
+}
+
 # If we dont have figlet then just replace it with something else
 function Figlet {
     [CmdletBinding( PositionalBinding = $false )]
@@ -67,28 +88,6 @@ function Figlet {
         Write-Output "==== $message ===="
     }
 }
-
-# Simplest to read from all the junk surrounding this question.
-# https://stackoverflow.com/a/51268514
-function DisplayInBytes()
-{
-    param(
-        [int]$num
-    )
-    $suffix = "oct", "Kib", "Mib", "Gib", "Tib", "Pib", "Eib", "Zib", "Yib"
-    $index = 0
-    while ($num -gt 1kb)
-    {
-        $num = $num / 1kb
-        $index++
-    }
-    
-    $sFmt="{0:N"
-    if ($index -eq 0) {$sFmt += "0"} else {$sFmt += "1"}
-    $sFmt += "} {1}"
-    $sFmt -f $num, $suffix[$index]
-}
-
 
 # Fill Command
 function Fill {
@@ -165,6 +164,16 @@ function Right {
     }
 }
 
+##################################- Headings -##################################
+#                                                                            #
+#       ██   ██ ███████  █████  ██████  ██ ███    ██  ██████  ███████        #
+#       ██   ██ ██      ██   ██ ██   ██ ██ ████   ██ ██       ██             #
+#       ███████ █████   ███████ ██   ██ ██ ██ ██  ██ ██   ███ ███████        #
+#       ██   ██ ██      ██   ██ ██   ██ ██ ██  ██ ██ ██    ██      ██        #
+#       ██   ██ ███████ ██   ██ ██████  ██ ██   ████  ██████  ███████        #
+#                                                                            #
+################################################################################
+
 function H1 {
     param(
         [Parameter( ValueFromRemainingArguments = $true )]$message
@@ -194,6 +203,16 @@ function H4 {
     Write-Output "  => $args"
 }
 
+##################################- Command -###################################
+#                                                                            #
+#       ██████  ██████  ███    ███ ███    ███  █████  ███    ██ ██████       #
+#      ██      ██    ██ ████  ████ ████  ████ ██   ██ ████   ██ ██   ██      #
+#      ██      ██    ██ ██ ████ ██ ██ ████ ██ ███████ ██ ██  ██ ██   ██      #
+#      ██      ██    ██ ██  ██  ██ ██  ██  ██ ██   ██ ██  ██ ██ ██   ██      #
+#       ██████  ██████  ██      ██ ██      ██ ██   ██ ██   ████ ██████       #
+#                                                                            #
+################################################################################
+
 function Format-Command {
     param(
         [Parameter( ValueFromRemainingArguments = $true )]$args
@@ -215,4 +234,24 @@ function Print-Last-Error {
     H4 "last exit?     = $LASTEXITCODE"
     H4 "auto var `$?   = $?"
     H4 "Error?         = $Error"
+}
+
+##################################- Aggregate -#################################
+#                                                                            #
+# █████   ██████   ██████  ██████  ███████  ██████   █████  ████████ ███████ #
+#██   ██ ██       ██       ██   ██ ██      ██       ██   ██    ██    ██      #
+#███████ ██   ███ ██   ███ ██████  █████   ██   ███ ███████    ██    █████   #
+#██   ██ ██    ██ ██    ██ ██   ██ ██      ██    ██ ██   ██    ██    ██      #
+#██   ██  ██████   ██████  ██   ██ ███████  ██████  ██   ██    ██    ███████ #
+#                                                                            #
+################################################################################
+
+function BigBox {
+    Fill '#' | Center "- $args -"
+    Right '#' | Left ' #'
+    figlet -l -f "ANSI Regular" "$args" | ForEach-Object {
+        Fill | Center $_ | Left ' #' | Right '#'
+    }
+    Right '#' | Left ' #'
+    Fill '#'
 }

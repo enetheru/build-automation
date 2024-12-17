@@ -10,6 +10,7 @@ set -o pipefail # halt when a pipe failure occurs
 root=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
 
 #### Source Text Formatting Functions
+source "$root/share/aarray.sh"
 source "$root/share/format.sh"
 
 ##########################    Function Definitions    #########################
@@ -235,15 +236,15 @@ mkdir -p "$targetRoot/logs-raw"
 mkdir -p "$targetRoot/logs-clean"
 
 
-# Clone to bare repo or update
-H3 "Git Update/Clone Bare Repository"
-if [ ! -d "$targetRoot/git" ]; then
-    Format-Eval "git clone --bare \"$gitUrl\" \"$targetRoot/git\""
-else
-    Format-Eval "git --git-dir=\"$targetRoot/git\" fetch --force origin *:*"
-    Format-Eval "git --git-dir=\"$targetRoot/git\" worktree prune"
-    Format-Eval "git --git-dir=\"$targetRoot/git\" worktree list"
-fi
+## Clone to bare repo or update
+#H3 "Git Update/Clone Bare Repository"
+#if [ ! -d "$targetRoot/git" ]; then
+#    Format-Eval "git clone --bare \"$gitUrl\" \"$targetRoot/git\""
+#else
+#    Format-Eval "git --git-dir=\"$targetRoot/git\" fetch --force origin *:*"
+#    Format-Eval "git --git-dir=\"$targetRoot/git\" worktree prune"
+#    Format-Eval "git --git-dir=\"$targetRoot/git\" worktree list"
+#fi
 
 declare -a summary=(
         "config fetch prepare build test status duration"
@@ -257,6 +258,7 @@ for script in "${buildScripts[@]}"; do
     for var in "${savedVars[@]}"; do eval "$var"; done
 
     config="${script%.*}"
+    buildRoot="$targetRoot/$config"
 
     traceLog="$targetRoot/logs-raw/${config}.txt"
     cleanLog="$targetRoot/logs-clean/${config}.txt"
@@ -270,35 +272,32 @@ for script in "${buildScripts[@]}"; do
     H4 "Source variations from: '$targetRoot/$script'"
     source "$targetRoot/$script" "get_env"
 
-    # Bash 3.2 does not have associative arrays, so I am going to have
-    # to work around that.
-    declare -a stats=(
-        "config:$config"
-        "fetch:"
-        "prepare:"
-        "build:"
-        "test:"
-        "status:dnf"
-        "duration:dnf"
-    )
-
     declare -a useVars=(
         "verbose='$verbose'"
         "jobs='$jobs'"
+
         "platform='$platform'"
         "root='$root'"
         "target='$target'"
+
         "targetRoot='$targetRoot'"
-        "gitUrl='$gitUrl'"
-        "gitBranch='$gitBranch'"
+
+        "script='$script'"
+        "config='$config'"
+
+        "buildRoot='$buildRoot'"
+
         "fetch='$fetch'"
         "prepare='$prepare'"
         "build='$build'"
         "test='$test'"
+
         "fresh='$fresh'"
         "append='$append'"
-        "script='$script'"
-        "config='$config'"
+
+        "gitUrl='$gitUrl'"
+        "gitBranch='$gitBranch'"
+
         "traceLog='$traceLog'"
         "cleanLog='$cleanLog'"
     )
@@ -311,13 +310,25 @@ for script in "${buildScripts[@]}"; do
         H5 "Action: $targetRoot/$envActions"
     fi
 
+    # Bash 3.2 does not have associative arrays, so I am going to have
+    # to work around that.
+    declare -a stats=(
+        "config:$config"
+        "fetch:-"
+        "prepare:-"
+        "build:-"
+        "test:-"
+        "status:dnf"
+        "duration:dnf"
+    )
+
     set +e
     declare -i start=$SECONDS
 
     $envRun "${useVars[*]} $targetRoot/$envActions" 2>&1 | tee "$traceLog"
 
-    if [ $? ]; then stats+="status:Completed"; fi
-    stats+="duration:$((SECONDS - start))"
+    if [ $? ]; then AArrayUpdate stats status Completed; fi
+    AArrayUpdate stats duration $((SECONDS - start))
     set -e
 
     # read the last part of the raw log to collect stats
@@ -325,12 +336,12 @@ for script in "${buildScripts[@]}"; do
     # mapfile -t data < <(tail -n 20 "$traceLog" | sed -n "/stats\[\"/p")
     # for row in "${data[@]}"; do eval "$row"; done
     while IFS= read -r line; do
-        eval "$line"
-    done < <( tail -n 20 "$traceLog" | sed -n "/stats\+=\"/p" )
+        $line
+    done < <( tail -n 20 "$traceLog" | sed -n "/AArrayUpdate/p" )
 
     summary+=(
         "$(for col in ${summary[0]}; do
-            printf "%s " "${stats[${col}]}"
+            printf "%s " "$(AArrayGet stats $col)"
         done)"
     )
 
@@ -343,10 +354,8 @@ for script in "${buildScripts[@]}"; do
     CleanLog "$traceLog" > "$cleanLog"
 done
 
-Figlet "Finished" "standard" "-c"
-response=$(printf "%q" " \( ﾟヮﾟ)/ ")
-Fill "-" | Center "$response"
-H4 "Original Command: ${argv[*]}"
+H1 "Finished"
+H3 "Original Command: ${argv[*]}"
 
 if [ "${#buildScripts[@]}" -gt 1 ]; then
     H3 "Summary"

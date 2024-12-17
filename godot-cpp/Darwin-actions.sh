@@ -1,6 +1,5 @@
 #!/bin/zsh
 
-
 # Configuration variables and functions to pass the main script
 # Note, the main script is bash, so this needs to conform to bash standards.
 if [ "$1" = "get_config" ]; then

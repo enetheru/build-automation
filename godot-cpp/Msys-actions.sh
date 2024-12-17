@@ -1,5 +1,42 @@
 #!/bin/bash
 
+# Configuration variables and functions to pass the main script
+# Note, the main script is bash, so this needs to conform to bash standards.
+if [ "$1" = "get_config" ]; then
+    gitUrl=${gitUrl:-"http://github.com/enetheru/godot-cpp.git"}
+    gitBranch=${gitBranch:-"master"}
+
+    function CleanLog {
+        H3 "TODO CleanLog for godot-cpp/Darwin-actions.sh"
+    }
+
+    function CleanLog-Default {
+        matchPattern='(register_types|memory|libgdexample|libgodot-cpp)'
+        rg -M2048 $matchPattern "$1" | sed -E 's/ +/\n/g' \
+            | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D'
+    }
+
+    function CleanLog-macos {
+        # Cleanup Logs
+        keep='  󰞷 cmake|^ranlib|memory.cpp|Cocoa|libgdexample'
+        scrub="\[[0-9]+\/[0-9]+\]|&&|:|󰞷"
+        joins="-o|-arch|-framework|-t|-j|-MT|-MF|-isysroot|-install_name|Omitted|long|matching"
+        rg -M2048 $keep "$1" \
+            | sed -E ":start
+                s/ +/\n/g;t start
+                s/$scrub//;t start" \
+            | sed -E ":start
+                \$!N
+                s/($joins)\n/\1 /;t start
+                P;D" \
+            | sed "s/^cmake/\ncmake/" \
+            | sed 'N; /^\n$/d;P;D'
+    }
+
+    return
+fi
+
+# bash defaults
 set -e          # error and quit when( $? != 0 )
 set -u          # error and quit on unbound variable
 set -o pipefail # halt when a pipe failure occurs
@@ -9,24 +46,15 @@ set -o pipefail # halt when a pipe failure occurs
 # to console, and continue to pipe it to commands
 exec 5>&1
 
-declare -A stats=(
-    ["fetch"]="$(if [ "${fetch:-0}" = "1" ]; then echo "Fail"; else echo "-"; fi)"
-    ["prepare"]="$(if [ "${prepare:-0}" = "1" ]; then echo "Fail"; else echo "-"; fi)"
-    ["build"]="$(if [ "${build:-0}" = "1" ]; then echo "Fail"; else echo "-"; fi)"
-    ["test"]="$(if [ "${test:-0}" = "1" ]; then echo "Fail"; else echo "-"; fi)"
-)
+source "$root/share/format.sh"
+source "$root/share/build-actions.sh"
 
-function PrintStats {
-    echo "Output Stats:"
-    for key in "${!stats[@]}"; do
-        echo "stats[\"$key\"]=\"${stats[$key]}\""
-    done
-    Fill "_   " | Right " EOF "
-}
+declare -a stats=("")
 
-trap "PrintStats; exit 1" 0
+trap 'Finalise \(${stats[*]}\); exit 1' 3
 
-# Default Vars
+#### Setup our variables
+
 if [ -z "${root:-}" ]; then exit 1; fi
 if [ -z "${script:-}" ]; then exit 1; fi
 
@@ -37,42 +65,21 @@ else
 fi
 verbose="${verbose:-1}"
 
-source "$root/share/format.sh"
-
-# Setup our variables
 targetRoot=${targetRoot:-$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )}
 
-
-# determine the config from the script name.
 config="${config:-${script%.*}}"
 
 buildRoot="$targetRoot/$config"
 
-#gitUrl=http://github.com/enetheru/godot-cpp.git
-gitUrl=${gitUrl:-"http://github.com/enetheru/godot-cpp.git"}
-gitBranch=${gitBranch:-"master"}
-
 godot="/c/build/godot/msvc.master/bin/godot.windows.editor.x86_64.exe"
 godot_tr="/c/build/godot/msvc.master/bin/godot.windows.template_release.x86_64.exe"
 
-H2 "Build ${target:-FailTarget} using ${platform:-FailPlatform}-$MSYSTEM"
+#### Write Summary ####
+
+SummariseConfig
+
+# Add custom things to Summary
 echo "
-  MSYSTEM     = $MSYSTEM
-  script      = ${script:-}
-  Build Root  = ${buildRoot:-}
-
-  fetch       = ${fetch:-}
-  prepare     = ${prepare:-}
-  build       = ${build:-}
-  test        = ${test:-}
-  jobs        = ${jobs:-}
-
-  fresh build = ${fresh:-}
-  log append  = ${append:-}
-
-  gitUrl      = $gitUrl
-  gitBranch   = $gitBranch
-
   godot       = $godot
   godot_tr    = $godot_tr"
 
@@ -81,103 +88,8 @@ cd "$targetRoot" || return 1
 # Host Platform Values and Functions
 source "$root/share/build-actions.sh"
 
-## Build with SCons
-# Function takes two arguments, array of targets, and array of options.
-# if both unset, then default build options are used.
-function BuildSCons {
-
-    # requires SConstruct file existing in the current directory.
-    if [ ! -f "SConstruct" ]; then
-        Error "Missing '$(pwd)/SConstruct'"
-        return 1
-    fi
-
-    unset doJobs
-    if [ "${jobs}" -gt 0 ]; then doJobs="-j $jobs"; fi
-
-    unset doVerbose
-    if [ "${verbose:-1}" -eq 1 ]; then doVerbose="verbose=yes"; fi
-
-    if [ -z "${targets:-}" ]; then
-        targets=("template_release" "template_debug" "editor")
-    fi
-
-    declare -a buildVars=( "${doJobs:-}" "${doVerbose:-}" )
-    if [ -n "${sconsVars:-}" ]; then
-        buildVars+=("${sconsVars[@]}")
-    fi
-
-    for target in "${targets[@]}"; do
-        Figlet "SCons Build" "small"; H3 "target: $target"
-        start=$SECONDS
-
-        Format-Eval "scons ${buildVars[*]} target=$target"
-
-        artifact="$buildRoot/test/project/bin/libgdexample.windows.$target.x86_64.dll"
-        size="$(stat --printf "%s" "$artifact")"
-
-        statArray+=( "scons.$target $((SECONDS - start)) ${size}B")
-
-        H3 "BuildScons Completed"
-        printf "%s\n%s" "${statArray[0]}" "${statArray[-1]}" | column -t
-        Fill "-"
-    done
-}
-
-function BuildCMake {
-    # requires CMakeCache.txt file existing in the current directory.
-    if [ ! -f "CMakeCache.txt" ]; then
-        Error "Missing $(pwd)/CMakeCache.txt, Requires configuration."
-        return 1
-    fi
-
-    # Build Targets using CMake
-    unset doVerbose
-    if [ "${verbose:-1}" -eq 1 ]; then doVerbose="--verbose"; fi
-
-    unset doJobs
-    if [ "${jobs}" -gt 0 ]; then doJobs="-j $jobs"; fi
-
-    if [ -z "${targets:-}" ]; then
-        targets=("template_release" "template_debug" "editor")
-    fi
-
-    declare -a buildVars=( "${doJobs:-}" "${doVerbose:-}" )
-    if [ -n "${cmakeVars:-}" ]; then
-        buildVars+=("${cmakeVars[@]}")
-    fi
-
-    for target in "${targets[@]}"; do
-        Figlet "CMake Build" "small"; H3 "target: $target"
-        start=$SECONDS
-
-        Format-Eval "cmake --build . ${cmakeVars[*]} -t godot-cpp.test.$target"
-
-        artifact="$buildRoot/test/project/bin/libgdexample.windows.$target.x86_64.dll"
-        size="$(stat --printf "%s" "$artifact")"
-
-        statArray+=( "cmake.$target $((SECONDS - start)) ${size}B")
-
-        H3 "BuildCMake Completed"
-        printf "%s\n%s" "${statArray[0]}" "${statArray[-1]}" | column -t
-        Fill "-"
-    done
-}
-
-function EraseFiles {
-    cd "$buildRoot" || exit 1
-
-    # Make a list of files to remove based on the below criteria
-    fragments="${1:-"NothingToErase"}"
-    extensions="${2:-"NoFileExtensionsSpecified"}"
-    mapfile -t artifacts < <(find . -type f -regextype egrep -regex ".*($fragments).*($extensions)$")
-    artifacts=("${artifacts:-NoFiles}") #if no lines are returned, then set a single element to 0
-
-    if [ "${artifacts[0]}" != "NoFiles" ]; then
-        H3 "Erase Files"
-        Warning "Deleting ${#artifacts[@]} Artifacts"
-        printf "  %s\n" "${artifacts[@]}" | tee >(cat >&5) | xargs rm
-    fi
+function PrepareScons {
+    echo TODO
 }
 
 TestCommon(){
@@ -232,25 +144,26 @@ source "$targetRoot/$script"
 
 H3 "$config - Processing"
 
-if [ "$fetch" -eq 1 ]; then
-    Fetch
-    stats["fetch"]="OK"
-fi
+#if [ "$fetch" -eq 1 ]; then
+#    Fetch
+#    stats["fetch"]="OK"
+#fi
 
 if [ "$prepare" -eq 1 ]; then
     Prepare
-    stats["prepare"]="OK"
+    AArrayUpdate stats "prepare" "OK"
 fi
 
-if [ "$build" -eq 1 ]; then
-    Build
-    stats["build"]="OK"
-fi
-
+#if [ "$build" -eq 1 ]; then
+#    Build
+#    stats["build"]="OK"
+#fi
+#
 if [ "$test" -eq 1 ]; then
 #    if ! Test 5>&1; then Error "Test Failure"   ; fi
     Test
-    stats["test"]="OK"
+    AArrayUpdate stats "test" "OK"
 fi
 
 H3 "$config - completed"
+Finalise "${stats[@]}"

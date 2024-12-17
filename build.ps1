@@ -170,16 +170,16 @@ if( $list ) { exit }
 New-Item -Force -ItemType Directory -Path "$targetRoot/logs-raw" | Out-Null
 New-Item -Force -ItemType Directory -Path "$targetRoot/logs-clean" | Out-Null
 
-#H3 "Git Update/Clone Bare Repository"
-#
-## Clone if not already
-#if( -Not (Test-Path -Path "$targetRoot\git" -PathType Container) ) {
-#    Format-Eval git clone --bare "$gitUrl" "$targetroot\git"
-#} else {
-#    Format-Eval git --git-dir=$targetRoot\git fetch --force origin *:*
-#    Format-Eval git --git-dir=$targetRoot\git worktree prune
-#    Format-Eval git --git-dir=$targetRoot\git worktree list
-#}
+H3 "Git Update/Clone Bare Repository"
+
+# Clone if not already
+if( -Not (Test-Path -Path "$targetRoot\git" -PathType Container) ) {
+    Format-Eval git clone --bare "$gitUrl" "$targetroot\git"
+} else {
+    Format-Eval git --git-dir=$targetRoot\git fetch --force origin *:*
+    Format-Eval git --git-dir=$targetRoot\git worktree prune
+    Format-Eval git --git-dir=$targetRoot\git worktree list
+}
 
 [array]$summary = @()
 
@@ -209,6 +209,42 @@ foreach( $script in $buildScripts ) {
     H4 "Source variations from: '$targetRoot/$script'"
     . "$targetRoot/$script" -c
     
+    $useVars = @(
+        "`$verbose      = '$verbose'",
+        "`$jobs         = '$jobs'",
+        
+        "`$platform     = '$platform'",
+        "`$root         = '$root'",
+        "`$target       = '$target'",
+        
+        "`$targetRoot   = '$targetRoot'",
+        "`$script       = '$script'",
+        "`$config       = '$config'",
+        
+        "`$buildRoot   = '$buildRoot'",
+        
+        "`$fetch        = '$fetch'",
+        "`$prepare      = '$prepare'",
+        "`$build        = '$build'",
+        "`$test         = '$test'",
+        
+        "`$fresh        = '$fresh'",
+        "`$append       = '$append'",
+        
+        "`$gitUrl       = '$gitUrl'",
+        "`$gitBranch    = '$gitBranch'",
+        
+        "`$traceLog     = '$traceLog'",
+        "`$cleanLog     = '$cleanLog'"
+    )
+    
+    if( $verbose ) {
+        H4 "Command: $envRun"
+        H4 "With:"
+        $useVars | ForEach-Object { Write-Output "`t$_" }
+        H4 "Action: $targetRoot/$envActions"
+    }
+    
     $statistics = [PSCustomObject]@{
         target      = "$target"
         config      = "$config"
@@ -220,55 +256,27 @@ foreach( $script in $buildScripts ) {
         duration    = "dnf"
     }
     
-    $useVars = @(
-        "`$root         = '$root'",
-        "`$targetRoot   = '$targetRoot'",
-        "`$buildRoot   = '$buildRoot'",
-        "`$platform     = '$platform'",
-        "`$target       = '$target'",
-        "`$fetch        = '$fetch'",
-        "`$prepare      = '$prepare'",
-        "`$build        = '$build'",
-        "`$jobs         = '$jobs'",
-        "`$test         = '$test'",
-        "`$fresh        = '$fresh'",
-        "`$append       = '$append'",
-        "`$verbose      = '$verbose'",
-        "`$script       = '$script'",
-        "`$traceLog     = '$traceLog'",
-        "`$cleanLog     = '$cleanLog'",
-        "`$gitUrl       = '$gitUrl'",
-        "`$gitBranch    = '$gitBranch'"
-    )
-    
-    if( $verbose ) {
-        H4 "Command: $envRun"
-        H4 "With:"
-        $useVars | ForEach-Object { Write-Output "`t$_" }
-        H4 "Action: $targetRoot/$envActions"
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
+
+    try {
+    &$envRun "-Command" @"
+$( $useVars -Join "`n")
+$targetRoot/$envActions
+"@ 2>&1 | Tee-Object "$traceLog"
+        ($statistics).status = "Completed"
+    } catch {
+        Write-Output "Error while processing $script"
     }
-    
-#    $timer = [System.Diagnostics.Stopwatch]::StartNew()
-#
-#    try {
-#    &$envRun "-Command" @"
-#$( $useVars -Join "`n")
-#$targetRoot/$envActions
-#"@ 2>&1 | Tee-Object "$traceLog"
-#        ($statistics).status = "Completed"
-#    } catch {
-#        Write-Output "Error while processing $script"
-#    }
-#
-#    $timer.Stop()
-#    ($statistics).duration = $timer.Elapsed
-#
-#    # Try to fetch any stats from the bottom of the file.
-#    Get-Content "$traceLog" | Select-Object -Last 20 | ForEach-Object {
-#        if( $_.StartsWith( '$statistics | Add-Member' ) ) {
-#            Invoke-Expression "$_"
-#        }
-#    }
+
+    $timer.Stop()
+    ($statistics).duration = $timer.Elapsed
+
+    # Try to fetch any stats from the bottom of the file.
+    Get-Content "$traceLog" | Select-Object -Last 20 | ForEach-Object {
+        if( $_.StartsWith( '$statistics | Add-Member' ) ) {
+            Invoke-Expression "$_"
+        }
+    }
     
     H3 "$config - Statistics"
     $summary += $statistics

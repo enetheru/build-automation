@@ -85,31 +85,21 @@ if( $c ) {
                 -creplace '^(Target)','## $1' `
                 -creplace "^([^-/]$spaceBefore)","`n`$1"
         }
-        return
-        # Clean the logs
-        # it goes like this, for each line that matches the pattern.
-        # split each line along spaces.
-        # [repeated per type of construct] re-join lines that match a set of tags
-        # the remove the compiler defaults, since CMake adds so many.
         
-        $matchPattern = '^lib|^link|memory|Lib\.exe|link\.exe|  󰞷'
-        [array]$compilerDefaults = (
+        return
+        # TODO Clear default flags, and irrelevant flags
+        # GNU
+        # LLVM
+        # MSVC
+        # MinGW
+        # Emscripten
+        # Android
         "fp:precise",
         "Gd", "GR", "GS",
         "Zc:forScope", "Zc:wchar_t",
         "DYNAMICBASE", "NXCOMPAT", "SUBSYSTEM:CONSOLE", "TLBID:1",
         "errorReport:queue", "ERRORREPORT:QUEUE", "EHsc",
-        "diagnostics:column", "INCREMENTAL", "NOLOGO", "nologo")
-        # FIXME replace sed usage with powrshell equivalent
-        & {
-            $PSNativeCommandUseErrorActionPreference = $false
-            rg -M2048 $matchPattern "$args" `
-            | sed -E 's/ +/\n/g' `
-            | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D' `
-            | sed -E ':a;$!N;s/(Program|Microsoft|Visual|vcxproj|->)\n/\1 /;ta;P;D' `
-            | sed -E ':a;$!N;s/(\.\.\.|omitted|end|of|long)\n/\1 /;ta;P;D' `
-            | sed -E "/^\/($($compilerDefaults -Join '|'))$/d"
-        }
+        "diagnostics:column", "INCREMENTAL", "NOLOGO", "nologo"
     }
     return
 }
@@ -118,6 +108,9 @@ if( $c ) {
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
+
+. "$root\share\format.ps1"
+. "$root\share\build-actions.ps1"
 
 $stats = [PSCustomObject]@{}
 
@@ -128,9 +121,6 @@ trap {
     Finalise $stats
     Start-Sleep -Seconds 1
 }
-
-. "$root\share\format.ps1"
-. "$root\share\build-actions.ps1"
 
 #### Setup our variables
 
