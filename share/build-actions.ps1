@@ -109,7 +109,7 @@ function Clean {
 
 function DefaultProcess {
     if( $fetch ) {
-        $Host.UI.RawUI.WindowTitle = "Fetch"
+        $Host.UI.RawUI.WindowTitle = "Fetch - $config"
         $stats | Add-Member -MemberType NoteProperty -Name 'fetch' -Value 'Fail'
         
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
@@ -122,7 +122,7 @@ function DefaultProcess {
     }
     
     if( $prepare ) {
-        $Host.UI.RawUI.WindowTitle = "Prepare"
+        $Host.UI.RawUI.WindowTitle = "Prepare - $config"
         $stats | Add-Member -MemberType NoteProperty -Name 'prepare' -Value 'Fail'
         
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
@@ -135,7 +135,7 @@ function DefaultProcess {
     }
     
     if( $build ) {
-        $Host.UI.RawUI.WindowTitle = "Build"
+        $Host.UI.RawUI.WindowTitle = "Build - $config"
         $stats | Add-Member -MemberType NoteProperty -Name 'build' -Value 'Fail'
         
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
@@ -149,7 +149,7 @@ function DefaultProcess {
     
     if( $test ) {
         $stats | Add-Member -MemberType NoteProperty -Name 'test' -Value 'Fail'
-        $Host.UI.RawUI.WindowTitle = "Test"
+        $Host.UI.RawUI.WindowTitle = "Test - $config"
         
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         Test

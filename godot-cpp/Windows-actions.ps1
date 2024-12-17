@@ -17,38 +17,56 @@ if( $c ) {
         $msvcPath   = 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\bin\HostX64\x64\'
         $mingwPath  = 'C:\mingw64\bin\'
         $llvmPath   = 'C:\PROGRA~1\LLVM\bin\'
-        $ndkPath = 'C:\androidsdk\ndk\23.2.8568313\toolchains\llvm\prebuilt\windows-x86_64\bin\'
+        $ndkPath    = 'C:\androidsdk\ndk\23.2.8568313\toolchains\llvm\prebuilt\windows-x86_64\bin\'
+        $emsdkPath  = 'C:\emsdk\upstream\emscripten\'
         
         $lineMatch = '== (Config|Target)|example\.o|libgdexample.*\.dll|libgodot-cpp.*\.a'
         $notMatch = 'cmake.exe|rm -f|vcxproj'
+        $notMatch += '|\[....\] Linking CXX (shared|static) library.*'
+        $notMatch += '|Removing.*'
         
         $erase = "==+-?"
-        $erase += "|$([Regex]::Escape($targetRoot))"
+        $erase += "|$([Regex]::Escape("$buildRoot\"))"
         $erase += "|$([Regex]::Escape($msvcPath))"
         $erase += "|$([Regex]::Escape($mingwPath))"
         $erase += "|$([Regex]::Escape($llvmPath))"
         $erase += "|$([Regex]::Escape($ndkPath))"
-        $erase += "|$([Regex]::Escape("[100%]")) Linking CXX shared library.*"
-        $erase += "|scons:.*is up to date\."
+        $erase += "|$([Regex]::Escape($emsdkPath))"
         
         $joins = '-o|(Target|Config):|Removing'
         
-        $prevLine = $null
+        $spaceBefore = ".*exe`$|ar`$|g\+\+`$"
+        
+        $prevLine = "NotMatch"
+        $prevOpt = $null
         Get-Content "$args" | ForEach-Object { # Split commands that are joined
             $_ -csplit '&&'
-        } | Where-Object {    # Match only specific lines
-            $_ -Match "$lineMatch" -notmatch "$notMatch"
-        } | ForEach-Object {  # quick cleanup, trim, and split
-            ($_ -creplace "$erase", "").Trim() -cSplit '\s+'
-        } | ForEach-Object {  # Re-Join Lines
-            if( $prevLine ) { "$prevLine $_"; $prevLine = $null }
-            elseif( $_ -cmatch "^$joins" ) { $prevLine = "$_" }
+        } `
+        | Where-Object {    # match and not match.
+             $true -and ($_ -Match "$lineMatch") -and ($_ -notmatch "$notMatch")
+            
+        } `
+        | Where-Object { # Skip lines that start with the same 80 chars
+            -Not ($_ -cmatch "${prevLine}.*")
+            $prevLine = [Regex]::Escape($_.Substring( 0,[int]::min( $_.Length, 80 ) ) );
+        } `
+        | ForEach-Object {  # erase, trim, split, then remove lines that start the same
+            $prev = "NotMatch"
+            ($_ -creplace "$erase", "").Trim() -cSplit '\s+' | ForEach-Object {
+                if( -Not ($_ -cmatch "${prev}.*") ){
+                    $prev = [Regex]::Escape($_.Substring(0,[int]::min( $_.Length, 10 ))); $_
+                }
+            }
+        } `
+        | ForEach-Object {  # Re-Join Lines
+            if( $prevOpt ) { "$prevOpt $_"; $prevOpt = $null }
+            elseif( $_ -cmatch "^$joins" ) { $prevOpt = "$_" }
             else { $_ }
-        } | ForEach-Object {  # Embellish to make easier to read
+        } `
+        | ForEach-Object {  # Embellish to make easier to read
             $_  -creplace '^(Config)',"`n## `$1" `
-                -creplace '^(Target)','## $1'
-        } | Where-Object { # Second Skip
-            $_ -notmatch '^Remov|^$'
+                -creplace '^(Target)','## $1' `
+                -creplace "^($spaceBefore)","`n`$1"
         }
         return
         # Clean the logs
@@ -186,37 +204,7 @@ Set-Location "$targetRoot"
 
 H3 "$config - Processing"
 
-if( $fetch -eq $true ) {
-    $stats | Add-Member -MemberType NoteProperty -Name 'fetch' -Value 'Fail'
-    $Host.UI.RawUI.WindowTitle = "Fetch"
-    Fetch
-    $stats.fetch = "OK"
-}
-
-if( $prepare -eq $true ) {
-    $stats | Add-Member -MemberType NoteProperty -Name 'prepare' -Value 'Fail'
-    $Host.UI.RawUI.WindowTitle = "Prepare"
-    Prepare
-    $stats.prepare = "OK"
-}
-
-if( $build      -eq $true ) {
-    $stats | Add-Member -MemberType NoteProperty -Name 'build' -Value 'Fail'
-    $Host.UI.RawUI.WindowTitle = "Build"
-    $timer = [System.Diagnostics.Stopwatch]::StartNew()
-    Build
-    $timer.Stop();
-    H3 "$config - Build Duration: $($timer.Elapsed)"
-    $stats.build = "OK"
-    $stats | Add-Member -MemberType NoteProperty -Name 'buildDuration' -Value $timer.Elapsed
-}
-
-if( $test -eq $true ) {
-    $stats | Add-Member -MemberType NoteProperty -Name 'test' -Value 'Fail'
-    $Host.UI.RawUI.WindowTitle = "Test"
-    Test
-    $stats.test = "OK"
-}
+DefaultProcess
 
 H2 "$config - Completed"
 

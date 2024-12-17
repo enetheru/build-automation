@@ -194,6 +194,8 @@ foreach( $script in $buildScripts ) {
     }
     
     [string]$config = Split-Path -Path $script -LeafBase
+    $buildRoot = "$targetRoot\$config"
+    
     $Host.UI.RawUI.WindowTitle = "$config"
 
     $traceLog = "$targetRoot\logs-raw\$config.txt"
@@ -221,6 +223,7 @@ foreach( $script in $buildScripts ) {
     $useVars = @(
         "`$root         = '$root'",
         "`$targetRoot   = '$targetRoot'",
+        "`$buildRoot   = '$buildRoot'",
         "`$platform     = '$platform'",
         "`$target       = '$target'",
         "`$fetch        = '$fetch'",
@@ -256,10 +259,10 @@ $targetRoot/$envActions
     } catch {
         Write-Output "Error while processing $script"
     }
-    
+
     $timer.Stop()
     ($statistics).duration = $timer.Elapsed
-    
+
     # Try to fetch any stats from the bottom of the file.
     Get-Content "$traceLog" | Select-Object -Last 20 | ForEach-Object {
         if( $_.StartsWith( '$statistics | Add-Member' ) ) {
