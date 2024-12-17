@@ -130,7 +130,6 @@ if [ -n "${1:-}" ]; then
     shift 1
 fi
 
-
 #### Source Configuration and Function Overrides from Target Actions
 source "$targetRoot/$platform-actions.sh" "get_config"
 
@@ -197,8 +196,6 @@ printf "    %s\n" "${buildScripts[@]}"
 
 if [ "$list" -eq 1 ]; then exit; fi
 
-
-
 ############################    Save Variables    #############################
 #Save the vars to an array so we can restore them each loop run.
 declare -a savedVars=(
@@ -236,15 +233,15 @@ mkdir -p "$targetRoot/logs-raw"
 mkdir -p "$targetRoot/logs-clean"
 
 
-## Clone to bare repo or update
-#H3 "Git Update/Clone Bare Repository"
-#if [ ! -d "$targetRoot/git" ]; then
-#    Format-Eval "git clone --bare \"$gitUrl\" \"$targetRoot/git\""
-#else
-#    Format-Eval "git --git-dir=\"$targetRoot/git\" fetch --force origin *:*"
-#    Format-Eval "git --git-dir=\"$targetRoot/git\" worktree prune"
-#    Format-Eval "git --git-dir=\"$targetRoot/git\" worktree list"
-#fi
+# Clone to bare repo or update
+H3 "Git Update/Clone Bare Repository"
+if [ ! -d "$targetRoot/git" ]; then
+    Format-Eval "git clone --bare \"$gitUrl\" \"$targetRoot/git\""
+else
+    Format-Eval "git --git-dir=\"$targetRoot/git\" fetch --force origin *:*"
+    Format-Eval "git --git-dir=\"$targetRoot/git\" worktree prune"
+    Format-Eval "git --git-dir=\"$targetRoot/git\" worktree list"
+fi
 
 declare -a summary=(
         "config fetch prepare build test status duration"

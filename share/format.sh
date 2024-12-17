@@ -11,7 +11,11 @@ fi
 columns=${columns:-$(tput cols)}
 RED='\033[0;31m'
 ORANGE='\033[0;93m'
-NC='\033[0m' # No Color
+NC='\033[0m' # No Colo
+
+function TerminalTitle {
+  echo -ne "\033]0;$1\007"
+}
 
 function use-line {
     local line

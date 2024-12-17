@@ -49,9 +49,9 @@ exec 5>&1
 source "$root/share/format.sh"
 source "$root/share/build-actions.sh"
 
-declare -a stats=("")
+declare -a stats=()
 
-trap 'Finalise \(${stats[*]}\); exit 1' 3
+trap 'echo "Script Failure";Finalise \(${stats[*]}\); exit 1' 1 2 3 6 14 15
 
 #### Setup our variables
 
@@ -92,7 +92,7 @@ function PrepareScons {
     echo TODO
 }
 
-TestCommon(){
+function TestCommon {
     local result
 
     Figlet "Test"
@@ -142,28 +142,25 @@ TestCommon(){
 # override build actions
 source "$targetRoot/$script"
 
+if [ "${fetch:-}" -eq 1 ]; then
+    AArrayUpdate stats fetch Fail
+fi
+
+if [ "${prepare:-}" -eq 1 ]; then
+    AArrayUpdate stats prepare Fail
+fi
+
+if [ "${build:-}" -eq 1 ]; then
+    AArrayUpdate stats build Fail
+fi
+
+if [ "${test:-}" -eq 1 ]; then
+    AArrayUpdate stats test Fail
+fi
+
 H3 "$config - Processing"
 
-#if [ "$fetch" -eq 1 ]; then
-#    Fetch
-#    stats["fetch"]="OK"
-#fi
-
-if [ "$prepare" -eq 1 ]; then
-    Prepare
-    AArrayUpdate stats "prepare" "OK"
-fi
-
-#if [ "$build" -eq 1 ]; then
-#    Build
-#    stats["build"]="OK"
-#fi
-#
-if [ "$test" -eq 1 ]; then
-#    if ! Test 5>&1; then Error "Test Failure"   ; fi
-    Test
-    AArrayUpdate stats "test" "OK"
-fi
+DefaultProcess
 
 H3 "$config - completed"
 Finalise "${stats[@]}"

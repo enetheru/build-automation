@@ -79,11 +79,11 @@ function UpdateAndroid {
 function UpdateEmscripten {
     H3 "Update Emscripten SDK"
 
-    $emsdk = "/c/emsdk"
+    emsdk="/c/emsdk"
 
     cd $emsdk || exit 1
-    Format-Eval git pull
-    Format-Eval $emsdk\emsdk install latest
+    Format-Eval "git pull"
+    Format-Eval "$emsdk/emsdk install latest"
 }
 
 function EraseFiles {
@@ -117,6 +117,7 @@ function EraseFiles {
 ################################################################################
 
 function Fetch {
+    set +e
     # The expectation is that we are in $targetRoot
     # and when we finish we should be back in $targetRoot
     Figlet "Git Fetch"
@@ -124,14 +125,15 @@ function Fetch {
     H3 "Update WorkTree"
     # Checkout worktree if not already
     if [ ! -d "$buildRoot" ]; then
-        Format-Eval "git --git-dir=\"$targetRoot/git\" worktree add -d \"$buildRoot\""
+        Format-Eval "git --git-dir=\"$targetRoot/git\" worktree add -d \"$buildRoot\"" || return 1
     fi
 
     # Update worktree
     cd "$buildRoot" || return 1
-    Format-Eval "git checkout --force --detach $gitBranch"
-    Format-Eval "git status"
+    Format-Eval "git checkout --force --detach $gitBranch" || return 1
+    Format-Eval "git status" || return 1
     Fill "-"
+    set -e
 }
 
 ##################################- Prepare -###################################
@@ -260,6 +262,60 @@ function BuildCMake {
 function Test {
     H3 "No Test Action Specified"
     echo "-"
+}
+
+function DefaultProcess {
+    if [ "$fetch" -eq 1 ]; then
+        TerminalTitle "Fetch - $config"
+        AArrayUpdate stats fetch Fail
+
+        declare -i start=$SECONDS
+        Fetch
+        declare -i duration=$((SECONDS - start))
+
+        AArrayUpdate stats fetch OK
+        AArrayUpdate stats fetchDuration $duration
+        echo "  -- Duration: $duration"
+    fi
+
+    if [ "$prepare" -eq 1 ]; then
+        TerminalTitle "Prepare - $config"
+        AArrayUpdate stats prepare Fail
+
+        declare -i start=$SECONDS
+        Prepare
+        declare -i duration=$((SECONDS - start))
+
+        AArrayUpdate stats prepare OK
+        AArrayUpdate stats prepareDuration $duration
+        echo "  -- Duration: $duration"
+    fi
+
+    if [ "$build" -eq 1 ]; then
+        TerminalTitle "Build - $config"
+        AArrayUpdate stats build Fail
+
+        declare -i start=$SECONDS
+        Build
+        declare -i duration=$((SECONDS - start))
+
+        AArrayUpdate stats build OK
+        AArrayUpdate stats buildDuration $duration
+        echo "  -- Duration: $duration"
+    fi
+
+    if [ "$test" -eq 1 ]; then
+        TerminalTitle "Test - $config"
+        AArrayUpdate stats test Fail
+
+        declare -i start=$SECONDS
+        Test
+        declare -i duration=$((SECONDS - start))
+
+        AArrayUpdate stats test OK
+        AArrayUpdate stats testDuration $duration
+        echo "  -- Duration: $duration"
+    fi
 }
 
 ##################################- Process -###################################
