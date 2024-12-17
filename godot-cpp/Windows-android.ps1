@@ -18,7 +18,7 @@ function Prepare {
     # Erase key files to trigger a re-build so we can capture the build commands.
     # FIXME investigate compile_commands.json for the above purpose
     EraseFiles "editor_plugin_registration" "o|d|obj"
-#    EraseFiles "libgodot-cpp" "a"
+    EraseFiles "libgodot-cpp.android" "a"
     
     PrepareScons -v @("platform=android")
     

@@ -14,7 +14,7 @@ function Prepare {
     Set-Location "$buildRoot"
     
     EraseFiles "editor_plugin_registration" "o|d|obj"
-#    EraseFiles "libgodot-cpp" "a"
+    EraseFiles "libgdexample.windows" "lib"
     
     $cmakeVars = @(
         "-DGODOT_ENABLE_TESTING=YES"

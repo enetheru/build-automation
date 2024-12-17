@@ -18,29 +18,45 @@ if( $c ) {
         $mingwPath  = 'C:\mingw64\bin\'
         $llvmPath   = 'C:\PROGRA~1\LLVM\bin\'
         $ndkPath    = 'C:\androidsdk\ndk\23.2.8568313\toolchains\llvm\prebuilt\windows-x86_64\bin\'
+        $ndkPath2   = 'C:\androidsdk/ndk/23.2.8568313/toolchains/llvm/prebuilt/windows-x86_64/bin/'
         $emsdkPath  = 'C:\emsdk\upstream\emscripten\'
+        $cmakePath  = 'C:\Program Files\CMake\bin\'
         
-        $lineMatch = '== (Config|Target)|example\.o|libgdexample.*\.dll|libgodot-cpp.*\.a'
-        $notMatch = 'cmake.exe|rm -f|vcxproj'
-        $notMatch += '|\[....\] Linking CXX (shared|static) library.*'
-        $notMatch += '|Removing.*'
+        $lineMatch = '^  󰞷 (cmake|scons)' # Commands to keep
+        $lineMatch += '|== (Config|Target)' # Info to keep
+        $lineMatch += '|editor_plugin_registration.cpp'
+        $lineMatch += '|libgdexample.*\.dll'
+        $lineMatch += '|libgodot-cpp.*\.(a|lib)'
         
-        $erase = "==+-?"
+        $notMatch = 'nomatch' #'rm -f|vcxproj'
+        $notMatch += '|^\[....\].*'
+        $notMatch += '|^  Removing.*'
+        
+        $erase = "==+-?|󰞷 "
         $erase += "|$([Regex]::Escape("$buildRoot\"))"
         $erase += "|$([Regex]::Escape($msvcPath))"
         $erase += "|$([Regex]::Escape($mingwPath))"
         $erase += "|$([Regex]::Escape($llvmPath))"
         $erase += "|$([Regex]::Escape($ndkPath))"
+        $erase += "|$([Regex]::Escape($ndkPath2))"
         $erase += "|$([Regex]::Escape($emsdkPath))"
+        $erase += "|$([Regex]::Escape($cmakePath))"
         
-        $joins = '-o|(Target|Config):|Removing'
+        $joins = '(Target|Config):|Removing'
+        $joins += '-E|-j|--build|-t|--target|--config'   # CMake/SCons
+        $joins += '|-o|-MT|-MF'         # gcc Options
+        $joins += '|/D'                 # MSVC Options
         
-        $spaceBefore = ".*exe`$|ar`$|g\+\+`$"
+        $spaceBefore  = ".*exe`$"
+        $spaceBefore += "|ar`$|g\+\+`$"              # gcc
+        $spaceBefore += "|^em[+]+|^emar|^emranlib"  # Emscripten
+        $spaceBefore += "|^cl|^lib|^link"           # MSVC
+        $spaceBefore += "|^clang[+]+|^llvm-ar"      # clang
         
         $prevLine = "NotMatch"
         $prevOpt = $null
         Get-Content "$args" | ForEach-Object { # Split commands that are joined
-            $_ -csplit '&&'
+            $_ -csplit ' && | -- '
         } `
         | Where-Object {    # match and not match.
              $true -and ($_ -Match "$lineMatch") -and ($_ -notmatch "$notMatch")
@@ -64,9 +80,10 @@ if( $c ) {
             else { $_ }
         } `
         | ForEach-Object {  # Embellish to make easier to read
-            $_  -creplace '^(Config)',"`n## `$1" `
+            $_  -creplace '"cmake.exe"','cmake.exe'`
+                -creplace '^(Config)',"`n## `$1" `
                 -creplace '^(Target)','## $1' `
-                -creplace "^($spaceBefore)","`n`$1"
+                -creplace "^([^-/]$spaceBefore)","`n`$1"
         }
         return
         # Clean the logs
