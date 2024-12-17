@@ -29,6 +29,7 @@ function Build {
     # Erase previous artifacts
     Set-Location "$buildRoot"
     EraseFiles -f "libgdexample" -e "dll"
+    EraseFiles "libgodot-cpp" "lib"
     
     ## SCons Build
     Set-Location "$buildRoot\test"

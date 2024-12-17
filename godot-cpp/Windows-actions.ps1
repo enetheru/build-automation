@@ -9,14 +9,48 @@ if( $c ) {
     if( $gitBranch -eq "" ){ $gitBranch = "name_clash" }
     
     # This function is called when the build is completed to whittle down the
-    # build log to something usable.
+    # build log to something usable. It can be overridden in the build script.
     function CleanLog {
-        H3 "TODO Cleaning $args"
+        H3 "This is a generic CleanLog function."
+#        https://learn.microsoft.com/en-us/dotnet/standard/base-types/regular-expression-language-quick-reference
         
-        # Try to fetch any stats from the bottom of the file.
-        Get-Content "$traceLog" | Where-Object { $_ -Match 'editor_plugin_registration' }
+        $msvcPath   = 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\bin\HostX64\x64\'
+        $mingwPath  = 'C:\mingw64\bin\'
+        $llvmPath   = 'C:\PROGRA~1\LLVM\bin\'
+        $ndkPath = 'C:\androidsdk\ndk\23.2.8568313\toolchains\llvm\prebuilt\windows-x86_64\bin\'
+        
+        $lineMatch = '== (Config|Target)|example\.o|libgdexample.*\.dll|libgodot-cpp.*\.a'
+        $notMatch = 'cmake.exe|rm -f|vcxproj'
+        
+        $erase = "==+-?"
+        $erase += "|$([Regex]::Escape($targetRoot))"
+        $erase += "|$([Regex]::Escape($msvcPath))"
+        $erase += "|$([Regex]::Escape($mingwPath))"
+        $erase += "|$([Regex]::Escape($llvmPath))"
+        $erase += "|$([Regex]::Escape($ndkPath))"
+        $erase += "|$([Regex]::Escape("[100%]")) Linking CXX shared library.*"
+        $erase += "|scons:.*is up to date\."
+        
+        $joins = '-o|(Target|Config):|Removing'
+        
+        $prevLine = $null
+        Get-Content "$args" | ForEach-Object { # Split commands that are joined
+            $_ -csplit '&&'
+        } | Where-Object {    # Match only specific lines
+            $_ -Match "$lineMatch" -notmatch "$notMatch"
+        } | ForEach-Object {  # quick cleanup, trim, and split
+            ($_ -creplace "$erase", "").Trim() -cSplit '\s+'
+        } | ForEach-Object {  # Re-Join Lines
+            if( $prevLine ) { "$prevLine $_"; $prevLine = $null }
+            elseif( $_ -cmatch "^$joins" ) { $prevLine = "$_" }
+            else { $_ }
+        } | ForEach-Object {  # Embellish to make easier to read
+            $_  -creplace '^(Config)',"`n## `$1" `
+                -creplace '^(Target)','## $1'
+        } | Where-Object { # Second Skip
+            $_ -notmatch '^Remov|^$'
+        }
         return
-        
         # Clean the logs
         # it goes like this, for each line that matches the pattern.
         # split each line along spaces.
@@ -51,11 +85,6 @@ $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
 $stats = [PSCustomObject]@{}
-#    fetch   = ($fetch -eq $true) ? "Fail" : "-"
-#    prepare = ($prepare -eq $true) ? "Fail" : "-"
-#    build   = ($build -eq $true) ? "Fail" : "-"
-#    test    = ($test -eq $true) ? "Fail" : "-"
-#}
 
 # Because Clion starts this script in a pipeline, it errors if the script exits too fast.
 # Trapping the exit condition and sleeping for 1 prevents the error message.

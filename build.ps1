@@ -17,8 +17,8 @@ param(
     [switch] $append,         # Append to the logs rather than clobber
     [string] $filter = ".*",  # Filter which scripts are used.
 
-    [Parameter( Position = 0 )] [string] $target,       # Which target to use
-    [Parameter( Position = 1 )] [string] $gitBranch = "",    # Which git branch to use
+    [Parameter( Position = 0 )] [string] $target,           # Which target to use
+    [Parameter( Position = 1 )] [string] $gitBranch = "",   # Which git branch to use
 
     [Parameter( ValueFromRemainingArguments = $true )]$passThrough #All remaining arguments
 )
@@ -202,7 +202,6 @@ foreach( $script in $buildScripts ) {
     # set default environment and commands.
     $envRun = "pwsh"
     $envActions = "$platform-actions.ps1"
-    $envClean = "CleanLog"
 
     # source command overrides
     H4 "Source variations from: '$targetRoot/$script'"
@@ -272,7 +271,7 @@ $targetRoot/$envActions
     $summary += $statistics
     
     H3 "Process Logs"
-    &$envClean "$traceLog" > $cleanLog
+    CleanLog "$traceLog" > $cleanLog
 }
 
 Figlet -c "Finished"
