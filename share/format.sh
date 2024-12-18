@@ -23,6 +23,61 @@ function use-line {
     $1 "$line"
 }
 
+# Simplest to read from all the junk surrounding this question.
+# https://stackoverflow.com/a/51268514
+# I would use numfmt --to=iec $1; but its not available on macos.
+function Format-Bytes {
+    declare -i num=${1:-0}
+    suffix=( "B" "K" "M" "G" "T" "P" "E" "Z" "Y" )
+    index=0
+    while [ $num -gt 1024 ]; do
+        num=$(( num / 1024 ))
+        index=$((index+1))
+    done
+    printf "%0d%s"  "$num" "${suffix[$index]}"
+}
+
+function Format-Seconds {
+
+    declare -i num=${1:-0}
+    declare -a divisors=( 60 60 24 7 30 365 )
+    declare -a widths=( 2 2 2 1 2 1000 )
+
+    index=0
+    if [ ${#num} -lt 3 ]; then
+        echo "${num}s"
+        return
+    fi
+
+    declare -a comp=()
+    dSize=${#divisors[@]}
+    for (( i=0; i<dSize; i++ )); do
+        d=${divisors[$i]}
+        w=${widths[$i]}
+        if [ $num -gt "$d" ]; then
+            div=$(( num / d ))      # Dividend
+            rem=$(( num - div * d)) # Remainder
+            comp+=("$rem")
+            num=$div
+            index=$((index+1))
+            continue
+        fi
+        break
+    done
+    #remainder
+    comp+=("$num")
+
+    # Join everything together.
+    declare -a suffix=( "s" "m" "h" "d" "w" "m" "y")
+    cSize=${#comp[@]}
+    declare result=""
+    for (( i=cSize-1; i>=0; i-- )); do
+        result+=$(printf "%d%s"  "${comp[i]}" "${suffix[i]}")
+    done
+
+    echo "$result"
+}
+
 function Figlet {
     local customFiglet=/c/git/cmatsuoka/figlet/figlet
 

@@ -199,9 +199,12 @@ function BuildSCons {
         Format-Eval "scons ${buildVars[*]} target=$target"
 
         artifact="$buildRoot/test/project/bin/libgdexample.windows.$target.x86_64.dll"
-        size="$(stat --printf "%s" "$artifact")"
+        bytes="$(stat --printf "%s" "$artifact")"
+        size=$(Format-Bytes "$bytes")
 
-        statArray+=( "scons.$target $((SECONDS - start)) ${size}B")
+        duration=$(Format-Seconds "$seconds")
+
+        statArray+=( "cmake.$target ${duration} ${size}")
 
         H3 "BuildScons Completed"
         printf "%s\n%s" "${statArray[0]}" "${statArray[-1]}" | column -t
@@ -234,14 +237,18 @@ function BuildCMake {
 
     for target in "${targets[@]}"; do
         Figlet "CMake Build" "small"; H3 "target: $target"
-        start=$SECONDS
 
+        declare -i start=$SECONDS
         Format-Eval "cmake --build . ${cmakeVars[*]} -t godot-cpp.test.$target"
+        declare -i seconds=$((SECONDS - start))
 
         artifact="$buildRoot/test/project/bin/libgdexample.windows.$target.x86_64.dll"
-        size="$(stat --printf "%s" "$artifact")"
+        bytes="$(stat --printf "%s" "$artifact")"
+        size=$(Format-Bytes "$bytes")
 
-        statArray+=( "cmake.$target $((SECONDS - start)) ${size}B")
+        duration=$(Format-Seconds "$seconds")
+
+        statArray+=( "cmake.$target ${duration} ${size}")
 
         H3 "BuildCMake Completed"
         printf "%s\n%s" "${statArray[0]}" "${statArray[-1]}" | column -t
@@ -271,10 +278,11 @@ function DefaultProcess {
 
         declare -i start=$SECONDS
         Fetch
-        declare -i duration=$((SECONDS - start))
+        declare -i seconds=$((SECONDS - start))
+        duration=$(Format-Seconds "$seconds")
 
         AArrayUpdate stats fetch OK
-        AArrayUpdate stats fetchDuration $duration
+        AArrayUpdate stats fetchDuration "$duration"
         echo "  -- Duration: $duration"
     fi
 
@@ -284,10 +292,11 @@ function DefaultProcess {
 
         declare -i start=$SECONDS
         Prepare
-        declare -i duration=$((SECONDS - start))
+        declare -i seconds=$((SECONDS - start))
+        duration=$(Format-Seconds "$seconds")
 
         AArrayUpdate stats prepare OK
-        AArrayUpdate stats prepareDuration $duration
+        AArrayUpdate stats prepareDuration "$duration"
         echo "  -- Duration: $duration"
     fi
 
@@ -297,10 +306,11 @@ function DefaultProcess {
 
         declare -i start=$SECONDS
         Build
-        declare -i duration=$((SECONDS - start))
+        declare -i seconds=$((SECONDS - start))
+        duration=$(Format-Seconds "$seconds")
 
         AArrayUpdate stats build OK
-        AArrayUpdate stats buildDuration $duration
+        AArrayUpdate stats buildDuration "$duration"
         echo "  -- Duration: $duration"
     fi
 
@@ -310,10 +320,11 @@ function DefaultProcess {
 
         declare -i start=$SECONDS
         Test
-        declare -i duration=$((SECONDS - start))
+        declare -i seconds=$((SECONDS - start))
+        duration=$(Format-Seconds "$seconds")
 
         AArrayUpdate stats test OK
-        AArrayUpdate stats testDuration $duration
+        AArrayUpdate stats testDuration "$duration"
         echo "  -- Duration: $duration"
     fi
 }

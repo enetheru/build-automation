@@ -5,6 +5,11 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# THis enables unicode characters to show up in the console
+$OutputEncoding = New-Object System.Text.UTF8Encoding
+[console]::InputEncoding = $OutputEncoding
+[console]::OutputEncoding = $OutputEncoding
+
 trap {
     Write-Output "Exception in Format.ps1"
     exit 1
@@ -29,6 +34,16 @@ if( $Host -and $Host.UI -and $Host.UI.RawUI ) {
 } else {
     [int]$columns = 120
 }
+
+###################################- Format -###################################
+#                                                                            #
+#            ███████  ██████  ██████  ███    ███  █████  ████████            #
+#            ██      ██    ██ ██   ██ ████  ████ ██   ██    ██               #
+#            █████   ██    ██ ██████  ██ ████ ██ ███████    ██               #
+#            ██      ██    ██ ██   ██ ██  ██  ██ ██   ██    ██               #
+#            ██       ██████  ██   ██ ██      ██ ██   ██    ██               #
+#                                                                            #
+################################################################################
 
 # Simplest to read from all the junk surrounding this question.
 # https://stackoverflow.com/a/51268514
