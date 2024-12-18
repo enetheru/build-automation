@@ -31,25 +31,26 @@ function RenameFunction {
 }
 
 function SummariseConfig {
-    H2 "Build ${target:-FailTarget} using ${platform:-FailPlatform}-$MSYSTEM"
+    H2 "Build ${target:-FailTarget} using ${config}"
     echo "
-  MSYSTEM     = $MSYSTEM
   script      = ${script:-}
-
 
   fetch       = ${fetch:-}
   prepare     = ${prepare:-}
   build       = ${build:-}
   test        = ${test:-}
-  jobs        = ${jobs:-}
 
+  jobs        = ${jobs:-}
   fresh build = ${fresh:-}
   log append  = ${append:-}
 
   gitUrl      = $gitUrl
   gitBranch   = $gitBranch
 
-  Build Root  = ${buildRoot:-}"
+  platform    = $platform
+  root        = $root
+  targetRoot  = $targetRoot
+  buildRoot   = $buildRoot"
 }
 
 ##################################- updates -###################################
@@ -170,6 +171,21 @@ function Build {
 # Function takes two arguments, array of targets, and array of options.
 # if both unset, then default build options are used.
 function BuildSCons {
+    # If no arrayName was supplied then create an empty one
+    if [ -z "${1:-}" ];then
+        declare -a sconsVars=()
+    # Else Reference an existing array if the names dont clash
+    elif [ "$1" != "sconsVars" ]; then
+        declare -n sconsVars="$1"
+    fi
+
+    # If no arrayName was supplied then create an empty one
+    if [ -z "${2:-}" ];then
+        declare -a targets=("")
+    # Else Reference an existing array if the names dont clash
+    elif [ "$2" != "targets" ]; then
+        declare -n targets="$2"
+    fi
 
     # requires SConstruct file existing in the current directory.
     if [ ! -f "SConstruct" ]; then
@@ -183,28 +199,25 @@ function BuildSCons {
     unset doVerbose
     if [ "${verbose:-1}" -eq 1 ]; then doVerbose="verbose=yes"; fi
 
-    if [ -z "${targets:-}" ]; then
-        targets=("template_release" "template_debug" "editor")
-    fi
-
     declare -a buildVars=( "${doJobs:-}" "${doVerbose:-}" )
-    if [ -n "${sconsVars:-}" ]; then
+    if [ ${#sconsVars[@]} -gt 0 ]; then
         buildVars+=("${sconsVars[@]}")
     fi
 
     for target in "${targets[@]}"; do
-        Figlet "SCons Build" "small"; H3 "target: $target"
+        Figlet "SCons Build" "small";
+        if [ -n "$target" ]; then
+            H3 "target: $target"
+            addTarget="target=$target"
+            target="default"
+        fi
         start=$SECONDS
 
-        Format-Eval "scons ${buildVars[*]} target=$target"
+        Format-Eval "scons ${buildVars[*]} ${addTarget:-}"
 
-        artifact="$buildRoot/test/project/bin/libgdexample.windows.$target.x86_64.dll"
-        bytes="$(stat --printf "%s" "$artifact")"
-        size=$(Format-Bytes "$bytes")
+        duration=$(Format-Seconds "$((SECONDS - start))")
 
-        duration=$(Format-Seconds "$seconds")
-
-        statArray+=( "cmake.$target ${duration} ${size}")
+        statArray+=( "scons.$target ${duration}")
 
         H3 "BuildScons Completed"
         printf "%s\n%s" "${statArray[0]}" "${statArray[-1]}" | column -t
@@ -274,12 +287,10 @@ function Test {
 function DefaultProcess {
     if [ "$fetch" -eq 1 ]; then
         TerminalTitle "Fetch - $config"
-        AArrayUpdate stats fetch Fail
 
         declare -i start=$SECONDS
         Fetch
-        declare -i seconds=$((SECONDS - start))
-        duration=$(Format-Seconds "$seconds")
+        duration=$(Format-Seconds "$((SECONDS - start))")
 
         AArrayUpdate stats fetch OK
         AArrayUpdate stats fetchDuration "$duration"
@@ -288,12 +299,10 @@ function DefaultProcess {
 
     if [ "$prepare" -eq 1 ]; then
         TerminalTitle "Prepare - $config"
-        AArrayUpdate stats prepare Fail
 
         declare -i start=$SECONDS
         Prepare
-        declare -i seconds=$((SECONDS - start))
-        duration=$(Format-Seconds "$seconds")
+        duration=$(Format-Seconds "$((SECONDS - start))")
 
         AArrayUpdate stats prepare OK
         AArrayUpdate stats prepareDuration "$duration"
@@ -302,12 +311,10 @@ function DefaultProcess {
 
     if [ "$build" -eq 1 ]; then
         TerminalTitle "Build - $config"
-        AArrayUpdate stats build Fail
 
         declare -i start=$SECONDS
         Build
-        declare -i seconds=$((SECONDS - start))
-        duration=$(Format-Seconds "$seconds")
+        duration=$(Format-Seconds "$((SECONDS - start))")
 
         AArrayUpdate stats build OK
         AArrayUpdate stats buildDuration "$duration"
@@ -316,12 +323,10 @@ function DefaultProcess {
 
     if [ "$test" -eq 1 ]; then
         TerminalTitle "Test - $config"
-        AArrayUpdate stats test Fail
 
         declare -i start=$SECONDS
         Test
-        declare -i seconds=$((SECONDS - start))
-        duration=$(Format-Seconds "$seconds")
+        duration=$(Format-Seconds "$((SECONDS - start))")
 
         AArrayUpdate stats test OK
         AArrayUpdate stats testDuration "$duration"

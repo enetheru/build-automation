@@ -23,6 +23,16 @@ function use-line {
     $1 "$line"
 }
 
+###################################- Format -###################################
+#                                                                            #
+#            ███████  ██████  ██████  ███    ███  █████  ████████            #
+#            ██      ██    ██ ██   ██ ████  ████ ██   ██    ██               #
+#            █████   ██    ██ ██████  ██ ████ ██ ███████    ██               #
+#            ██      ██    ██ ██   ██ ██  ██  ██ ██   ██    ██               #
+#            ██       ██████  ██   ██ ██      ██ ██   ██    ██               #
+#                                                                            #
+################################################################################
+
 # Simplest to read from all the junk surrounding this question.
 # https://stackoverflow.com/a/51268514
 # I would use numfmt --to=iec $1; but its not available on macos.
@@ -38,12 +48,9 @@ function Format-Bytes {
 }
 
 function Format-Seconds {
-
     declare -i num=${1:-0}
     declare -a divisors=( 60 60 24 7 30 365 )
-    declare -a widths=( 2 2 2 1 2 1000 )
 
-    index=0
     if [ ${#num} -lt 3 ]; then
         echo "${num}s"
         return
@@ -53,13 +60,11 @@ function Format-Seconds {
     dSize=${#divisors[@]}
     for (( i=0; i<dSize; i++ )); do
         d=${divisors[$i]}
-        w=${widths[$i]}
         if [ $num -gt "$d" ]; then
             div=$(( num / d ))      # Dividend
             rem=$(( num - div * d)) # Remainder
             comp+=("$rem")
             num=$div
-            index=$((index+1))
             continue
         fi
         break
@@ -136,20 +141,31 @@ function Center {
 function Right {
     set -- "${1:-Right}" "${2:-}"
     local string="$1" line
-    if [ -z "$2" ];
-    then read -r line
-    else line="$2"
+
+    if [ -z "$2" ]; then
+        read -r line
+    else
+        line="$2"
     fi
 
-    local pos=$(( (${#line} - ${#string}) -1 ))
+    local pos=$(( ${#line} - ${#string} ))
+
     if [ $pos -lt 0 ]; then
-      printf "%s" "$string"
+        printf "%s" "$string"
     else
-      sed -E "s/^(.{$pos}).{${#string}}(.*$)/\1$string\2/" <<< "$line"
+        sed -E "s/^(.{$pos}).{${#string}}(.*$)/\1$string\2/" <<< "$line"
     fi
 }
 
-
+##################################- Headings -##################################
+#                                                                            #
+#       ██   ██ ███████  █████  ██████  ██ ███    ██  ██████  ███████        #
+#       ██   ██ ██      ██   ██ ██   ██ ██ ████   ██ ██       ██             #
+#       ███████ █████   ███████ ██   ██ ██ ██ ██  ██ ██   ███ ███████        #
+#       ██   ██ ██      ██   ██ ██   ██ ██ ██  ██ ██ ██    ██      ██        #
+#       ██   ██ ███████ ██   ██ ██████  ██ ██   ████  ██████  ███████        #
+#                                                                            #
+################################################################################
 
 function H1 {
   Figlet "$1" "big" "-c"
@@ -171,6 +187,16 @@ function H4 {
 function H5 {
   printf "  -- %s\n" "$1"
 }
+
+##################################- Command -###################################
+#                                                                            #
+#       ██████  ██████  ███    ███ ███    ███  █████  ███    ██ ██████       #
+#      ██      ██    ██ ████  ████ ████  ████ ██   ██ ████   ██ ██   ██      #
+#      ██      ██    ██ ██ ████ ██ ██ ████ ██ ███████ ██ ██  ██ ██   ██      #
+#      ██      ██    ██ ██  ██  ██ ██  ██  ██ ██   ██ ██  ██ ██ ██   ██      #
+#       ██████  ██████  ██      ██ ██      ██ ██   ██ ██   ████ ██████       #
+#                                                                            #
+################################################################################
 
 function Format-Command {
   printf "\n  :%s\n  󰞷 %s\n" "$(pwd)" "$1"
@@ -283,3 +309,39 @@ function CleanLog-gcc-scons {
         | sed -E "/($splits)/{x;p;x;}" \
         | sed 'N; /^\n$/d;P;D'
 }
+
+##################################- Aggregate -#################################
+#                                                                              #
+#  █████   ██████   ██████  ██████  ███████  ██████   █████  ████████ ███████  #
+# ██   ██ ██       ██       ██   ██ ██      ██       ██   ██    ██    ██       #
+# ███████ ██   ███ ██   ███ ██████  █████   ██   ███ ███████    ██    █████    #
+# ██   ██ ██    ██ ██    ██ ██   ██ ██      ██    ██ ██   ██    ██    ██       #
+# ██   ██  ██████   ██████  ██   ██ ███████  ██████  ██   ██    ██    ███████  #
+#                                                                              #
+################################################################################
+
+# TODO re-implement this for bash
+#function BigBox {
+#    local message="${1:-Figlet}" font="${2:-standard}" align="${3:-}"
+#
+#    # Get title from stdin stream
+#    set -- "${1:-}" "${2:-}"
+#    local title="$1" line
+#
+#    if [ -z "$2" ]; then
+#        read -r line
+#    else
+#        line="$2"
+#    fi
+#
+#    # Top Line and Space
+#    Fill '#' | Center "- $title -"
+#    Right '#' | Left ' #'
+#
+#    figlet -l -f "ANSI Regular" "$title"
+#    Fill | Center | Left ' #' | Right '#'
+#
+#    # Bottom Space and Line
+#    Right '#' | Left ' #'
+#    Fill '#'
+#}

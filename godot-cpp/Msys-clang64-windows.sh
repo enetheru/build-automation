@@ -67,13 +67,7 @@ function Prepare {
 
 function Build {
     Figlet "Build"
-    statArray=( "target duration size" )
-
-    # shellcheck disable=SC2034
-    sconsVars=(
-        "use_mingw=yes"
-        "use_llvm=yes"
-    )
+    statArray=( "target duration" )
 
     # Erase previous artifacts
     cd "$buildRoot" || return 1
@@ -81,7 +75,20 @@ function Build {
 
     # Build test targets using SCons
     cd "$buildRoot/test" || return 1
-    BuildSCons
+    sconsVars=(
+        "use_mingw=yes"
+        "use_llvm=yes"
+    )
+    sconsTargets=(
+        "template_debug"
+        "template_release"
+        "editor"
+    )
+    BuildSCons sconsVars sconsTargets
+
+#    artifact="$buildRoot/test/project/bin/libgdexample.windows.$target.x86_64.dll"
+#            bytes="$(stat --printf "%s" "$artifact")"
+#            size=$(Format-Bytes "$bytes")
 
     # Erase previous artifacts
     cd "$buildRoot" || return 1

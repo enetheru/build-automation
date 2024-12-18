@@ -58,15 +58,29 @@ function Prepare {
 }
 
 function Build {
-    statArray=( "target duration size" )
+    statArray=( "target duration" )
 
-    sconsVars=( "use_mingw=yes" )
-
+    # Erase previous artifacts
+    cd "$buildRoot" || return 1
     EraseFiles "libgdexample" "dll"
 
+    # Build test targets using SCons
     cd "$buildRoot/test" || return 1
-    BuildSCons
+    sconsVars=( "use_mingw=yes" )
 
+    sconsTargets=(
+        "template_debug"
+        "template_release"
+        "editor"
+    )
+    BuildSCons sconsVars sconsTargets
+
+#    artifact="$buildRoot/test/project/bin/libgdexample.windows.$target.x86_64.dll"
+#            bytes="$(stat --printf "%s" "$artifact")"
+#            size=$(Format-Bytes "$bytes")
+
+    # Erase previous artifacts
+    cd "$buildRoot" || return 1
     EraseFiles "libgdexample" "dll"
 
     cd "$buildRoot/cmake-build" || return 1

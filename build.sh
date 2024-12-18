@@ -7,6 +7,7 @@ set -u          # error and quit on unbound variable
 set -o pipefail # halt when a pipe failure occurs
 #set -x          # execute and print
 
+startTime=$SECONDS
 root=$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )
 
 #### Source Text Formatting Functions
@@ -234,14 +235,14 @@ mkdir -p "$targetRoot/logs-clean"
 
 
 # Clone to bare repo or update
-H3 "Git Update/Clone Bare Repository"
-if [ ! -d "$targetRoot/git" ]; then
-    Format-Eval "git clone --bare \"$gitUrl\" \"$targetRoot/git\""
-else
-    Format-Eval "git --git-dir=\"$targetRoot/git\" fetch --force origin *:*"
-    Format-Eval "git --git-dir=\"$targetRoot/git\" worktree prune"
-    Format-Eval "git --git-dir=\"$targetRoot/git\" worktree list"
-fi
+#H3 "Git Update/Clone Bare Repository"
+#if [ ! -d "$targetRoot/git" ]; then
+#    Format-Eval "git clone --bare \"$gitUrl\" \"$targetRoot/git\""
+#else
+#    Format-Eval "git --git-dir=\"$targetRoot/git\" fetch --force origin *:*"
+#    Format-Eval "git --git-dir=\"$targetRoot/git\" worktree prune"
+#    Format-Eval "git --git-dir=\"$targetRoot/git\" worktree list"
+#fi
 
 declare -a summary=(
         "config fetch prepare build test status duration"
@@ -319,14 +320,19 @@ for script in "${buildScripts[@]}"; do
         "duration:dnf"
     )
 
-    set +e
+
     declare -i start=$SECONDS
 
+    set +e
     $envRun "${useVars[*]} $targetRoot/$envActions" 2>&1 | tee "$traceLog"
+    set -e
+
+    duration=$(Format-Seconds "$((SECONDS - start))")
+    AArrayUpdate stats duration "$duration"
 
     if [ $? ]; then AArrayUpdate stats status Completed; fi
-    AArrayUpdate stats duration $((SECONDS - start))
-    set -e
+
+
 
     # read the last part of the raw log to collect stats
     # Another location where we cannot use 'mapfile -t'
@@ -351,10 +357,12 @@ for script in "${buildScripts[@]}"; do
     CleanLog "$traceLog" > "$cleanLog"
 done
 
-H1 "Finished"
+
 H3 "Original Command: ${argv[*]}"
+echo "Duration: $(Format-Seconds $((SECONDS - startTime)))"
 
 if [ "${#buildScripts[@]}" -gt 1 ]; then
     H3 "Summary"
     printf "%s\n" "${summary[@]}" | column -t -R 6
 fi
+H1 "Finished"

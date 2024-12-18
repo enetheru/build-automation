@@ -49,8 +49,6 @@ exec 5>&1
 source "$root/share/format.sh"
 source "$root/share/build-actions.sh"
 
-declare -a stats=()
-
 trap 'echo "Script Failure";Finalise \(${stats[*]}\); exit 1' 1 2 3 6 14 15
 
 #### Setup our variables
@@ -80,6 +78,7 @@ SummariseConfig
 
 # Add custom things to Summary
 echo "
+  MSYSTEM     = $MSYSTEM
   godot       = $godot
   godot_tr    = $godot_tr"
 
@@ -142,21 +141,10 @@ function TestCommon {
 # override build actions
 source "$targetRoot/$script"
 
-if [ "${fetch:-}" -eq 1 ]; then
-    AArrayUpdate stats fetch Fail
-fi
-
-if [ "${prepare:-}" -eq 1 ]; then
-    AArrayUpdate stats prepare Fail
-fi
-
-if [ "${build:-}" -eq 1 ]; then
-    AArrayUpdate stats build Fail
-fi
-
-if [ "${test:-}" -eq 1 ]; then
-    AArrayUpdate stats test Fail
-fi
+declare -a stats=()
+for item in "fetch" "prepare" "build" "test"; do
+    [ "$item" ] && AArrayUpdate stats $item "Fail"
+done
 
 H3 "$config - Processing"
 

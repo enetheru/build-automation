@@ -285,10 +285,13 @@ $targetRoot/$envActions
     CleanLog "$traceLog" > $cleanLog
 }
 
-Figlet -c "Finished"
+
 H4 "Original Command: $($(Get-PSCallStack)[0].InvocationInfo.Line)"
 
 if( $buildScripts.Length -gt 1 ) {
     H4 "Summary"
     $summary | Format-Table -Property target,config,fetch,prepare,build,test,status,duration
 }
+
+Figlet -c "Finished"
+
