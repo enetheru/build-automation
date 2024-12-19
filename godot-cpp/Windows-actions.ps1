@@ -4,6 +4,9 @@
 # Configuration variables to pass to main build script.
 param ( [switch] $c )
 if( $c ) {
+    [string]$godot = "C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
+    [string]$godot_tr = "C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
+    
     # [System.Uri]$gitUrl = "http://github.com/godotengine/godot-cpp.git"
     [System.Uri]$gitUrl = "C:\Godot\src\godot-cpp"
     if( $gitBranch -eq "" ){ $gitBranch = "name_clash" }
@@ -104,7 +107,8 @@ if( $c ) {
     return
 }
 
-# PowerShell execution options
+# Setup Powershell Preferences
+# https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_preference_variables?view=powershell-7.4#verbosepreference
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
@@ -132,8 +136,6 @@ $config = Split-Path -Path $script -LeafBase
 
 $buildRoot = "$targetRoot\$config"
 
-[string]$godot = "C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
-[string]$godot_tr = "C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
 
 #### Write Summary ####
 SummariseConfig

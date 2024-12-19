@@ -170,13 +170,13 @@ if( $list ) { exit }
 New-Item -Force -ItemType Directory -Path "$targetRoot/logs-raw" | Out-Null
 New-Item -Force -ItemType Directory -Path "$targetRoot/logs-clean" | Out-Null
 
-H3 "Git Update/Clone Bare Repository"
 
 # Clone if not already
+H3 "Git Update/Clone Bare Repository"
 if( -Not (Test-Path -Path "$targetRoot\git" -PathType Container) ) {
     Format-Eval git clone --bare "$gitUrl" "$targetroot\git"
 } else {
-    Format-Eval git --git-dir=$targetRoot\git fetch --force origin *:*
+#    Format-Eval git --git-dir=$targetRoot\git fetch --force origin *:*
     Format-Eval git --git-dir=$targetRoot\git worktree prune
     Format-Eval git --git-dir=$targetRoot\git worktree list
 }

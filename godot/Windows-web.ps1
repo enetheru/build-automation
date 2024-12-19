@@ -3,67 +3,45 @@
 
 # Configuration variables to pass to main build script.
 param ( [switch] $c )
-if( $c -eq $true ) {
+if( $c ) {
     H4 "Using Default env Settings"
     return
 }
 
-$emsdk = "C:\emsdk"
+$script:emsdk = "C:\emsdk"
 
 function Prepare {
-    H1 "Prepare"
+    Figlet "Prepare"
     
-    H4 "Update EmSDK"
-    Set-Location $emsdk
-    Format-Eval git pull
+    UpdateEmscripten
     
-    # perform any updates to emscripten as required.
-    &"$emsdk\emsdk.ps1" install latest
+    Set-Location "$buildRoot"
+    # TODO Erase key files to trigger a re-build so we can capture the build commands.
+    # TODO EraseFiles "basename_pattern" "ext_pattern"
 }
 
 function Build {
     [array]$statArray = @()
-    
-    [array]$targets = @(
-        "template_debug",
-        "template_release",
-        "editor"
-    )
-    
-    #SCons build
-    $doVerbose = ($verbose -eq $true) ? "verbose=yes" : $null
-    $doJobs = ($jobs -gt 0) ? "-j $jobs" : $null
-    
-    [array]$sconsVars = @(
-        "$doVerbose",
-        "$doJobs",
-        "platform=web",
-        "dlink_enabled=yes",
-        "threads=no"
-    )
-    
-    Set-Location "$buildRoot"
+    [ref]$statArrayRef = ([ref]$statArray)
     
     H4 "Activate EmSDK"
     Format-Eval "$emsdk\emsdk.ps1" activate latest
     
-    foreach( $target in $targets ) {
-        H2 "$target"; H1 "SCons Build"
-        $timer = [System.Diagnostics.Stopwatch]::StartNew()
-        
-        Format-Eval "scons $doJobs $doVerbose target=$target $($sconsVars -Join ' ')"
-        
-        $timer.Stop()
-        
-#        $artifact = Get-ChildItem "$buildRoot\bin\godot.web.$target.x86_64.wasm"
-        $newStat = [PSCustomObject] @{
-            target      = "scons.$target"
-            duration    = $timer.Elapsed
-#            size        = DisplayInBytes $artifact.Length
-        }
-        $newStat | Format-Table
-        $statArray += $newStat
-    }
+    ## SCons Build
+    Set-Location "$buildRoot"
     
+    [array]$targets = @(
+        "template_debug",
+        "template_release",
+        "editor")
+    [array]$sconsVars = @(
+        "platform=web",
+        "dlink_enabled=yes",
+        "threads=no")
+    BuildSCons -v $sconsVars -t $targets
+    
+    # TODO Report Build Artifact sizes
+    
+    # Report Results
     $statArray | Format-Table
 }

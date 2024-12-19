@@ -234,12 +234,12 @@ mkdir -p "$targetRoot/logs-raw"
 mkdir -p "$targetRoot/logs-clean"
 
 
- Clone to bare repo or update
+# Clone to bare repo or update
 H3 "Git Update/Clone Bare Repository"
 if [ ! -d "$targetRoot/git" ]; then
     Format-Eval "git clone --bare \"$gitUrl\" \"$targetRoot/git\""
 else
-    Format-Eval "git --git-dir=\"$targetRoot/git\" fetch --force origin *:*"
+#    Format-Eval "git --git-dir=\"$targetRoot/git\" fetch --force origin *:*"
     Format-Eval "git --git-dir=\"$targetRoot/git\" worktree prune"
     Format-Eval "git --git-dir=\"$targetRoot/git\" worktree list"
 fi

@@ -3,40 +3,35 @@
 
 # Configuration variables to pass to main build script.
 param ( [switch] $c )
-if( $c -eq $true ) {
+if( $c ) {
     H4 "Using Default env Settings"
     return
 }
 
-function Build {
-    $doVerbose = ($verbose -eq $true) ? "verbose=yes" : $null
-    $doJobs = ($jobs -gt 0) ? "-j $jobs" : $null
-    
-    [array]$statArray = @()
-    
-    $targets = @(
-        "template_debug",
-        "template_release",
-        "editor"
-    )
+function Prepare {
+    Figlet "Prepare"
     
     Set-Location "$buildRoot"
     
-    foreach( $target in $targets ) {
-        H2 "$target"; H1 "SCons Build"
-        $timer = [System.Diagnostics.Stopwatch]::StartNew()
-        
-        Format-Eval "scons $doJobs $doVerbose target=$target"
-        
-        H4 "$target duration: $($timer.Stop();$timer.Elapsed)"
-        
-        $artifact = Get-ChildItem "$buildRoot\bin\godot.windows.$target.x86_64.exe"
-        $statArray += [PSCustomObject] @{
-            target      = "scons.$target"
-            duration    = $timer.Elapsed
-            size        = DisplayInBytes $artifact.Length
-        }
-    }
+    # TODO Erase key files to trigger a re-build so we can capture the build commands.
+    # TODO EraseFiles "basename_pattern" "ext_pattern"
+}
+
+function Build {
+    [array]$statArray = @()
+    [ref]$statArrayRef = ([ref]$statArray)
     
+    ## SCons Build
+    Set-Location "$buildRoot"
+    
+    [array]$targets = @(
+        "template_debug",
+        "template_release",
+        "editor")
+    BuildSCons -t $targets
+    
+    # TODO Report Build Artifact sizes
+    
+    # Report Results
     $statArray | Format-Table
 }

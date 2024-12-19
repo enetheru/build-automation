@@ -3,62 +3,40 @@
 
 # Configuration variables to pass to main build script.
 param ( [switch] $c )
-if( $c -eq $true ) {
+if( $c ) {
     H4 "Using Default env Settings"
     return
 }
 
-$androidSDK = "C:\androidsdk\cmdline-tools\latest\bin"
-
 function Prepare {
-    H1 "Prepare"
+    Figlet "Prepare"
     
-    H3 "Update Android SDK"
-    $doVerbose = ($verbose -eq $true) ? "--verbose" : $null
-    $env:Path = "$androidSDK;" + $env:Path
+    UpdateAndroid
     
-    Format-Eval "sdkmanager --update $doVerbose *> $null"
+    Set-Location "$buildRoot"
+    # TODO Erase key files to trigger a re-build so we can capture the build commands.
+    # TODO EraseFiles "basename_pattern" "ext_pattern"
 }
 
 function Build {
     [array]$statArray = @()
+    [ref]$statArrayRef = ([ref]$statArray)
+    
+    ## SCons Build
+    Set-Location "$buildRoot"
     
     [array]$targets = @(
         "template_debug",
         "template_release",
-        "editor"
-    )
-    
-    #SCons Build
-    $doVerbose = ($verbose -eq $true) ? "verbose=yes" : $null
-    $doJobs = ($jobs -gt 0) ? "-j $jobs" : $null
-    
+        "editor")
     [array]$sconsVars = @(
-        "$doJobs",
-        "$doVerbose",
         "platform=android"
         "arch=x86_64"
     )
+    BuildSCons -v $sconsVars -t $targets
     
-    Set-Location "$buildRoot"
+    # TODO Report Build Artifact sizes
     
-    foreach( $target in $targets ) {
-        H2 "$target"; H1 "SCons Build"
-        $timer = [System.Diagnostics.Stopwatch]::StartNew()
-        
-        Format-Eval "scons `target=$target $($sconsVars -Join ' ')"
-        
-        $timer.Stop()
-#        $artifact = Get-ChildItem "$buildRoot\bin\godot.android.$target.x86_64.so"
-        
-        $newStat = [PSCustomObject] @{
-            target      = "scons.$target"
-            duration    = $timer.Elapsed
-#            size        = DisplayInBytes $artifact.Length
-        }
-        $newStat | Format-Table
-        $statArray += $newStat
-    }
-    
+    # Report Results
     $statArray | Format-Table
 }

@@ -4,7 +4,8 @@
 # Configuration variables to pass to main build script.
 param ( [switch] $c )
 if( $c ) {
-    [System.Uri]$gitUrl = "http://github.com/godotengine/godot.git"
+#    [System.Uri]$gitUrl = "http://github.com/godotengine/godot.git"
+    [System.Uri]$gitUrl = "C:\Godot\src\godot"
     if( $gitBranch -eq "" ){ $gitBranch = "master" }
     return
 }
@@ -15,12 +16,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
-$stats = [PSCustomObject]@{
-    fetch   = ($fetch -eq $true) ? "Fail" : "-"
-    prepare = ($prepare -eq $true) ? "Fail" : "-"
-    build   = ($build -eq $true) ? "Fail" : "-"
-    test    = ($test -eq $true) ? "Fail" : "-"
-}
+. "$root\share\format.ps1"
+. "$root\share\build-actions.ps1"
+
+$stats = [PSCustomObject]@{}
 
 # Because Clion starts this script in a pipeline, it errors if the script exits too fast.
 # Trapping the exit condition and sleeping for 1 prevents the error message.
@@ -30,9 +29,6 @@ trap {
     Start-Sleep -Seconds 1
 }
 
-. "$root\share\format.ps1"
-. "$root\share\build-actions.ps1"
-
 #### Setup our variables
 
 [string]$thisScript = $(Get-PSCallStack)[0].scriptName
@@ -41,32 +37,15 @@ $targetRoot = $thisScript  | split-path -parent
 
 $config = Split-Path -Path $script -LeafBase
 
-$buildLeaf = ($config -split "-", 2)[-1]
+$buildRoot = "$targetRoot\$config"
 
-$buildRoot = "$targetRoot\build-$buildleaf"
 
 #### Write Summary ####
 SummariseConfig
 
-# Some steps are identical.
-function DeleteBuildArtifacts {
-    Set-Location "$buildRoot"
-    
-    [array]$artifacts = @($(rg -u --files "$buildRoot" `
-        | rg "\.(a|lib|so|dll|dylib|wasm32|wasm)$"))
-    
-    if( $artifacts.Length -gt 0 ) {
-        H3 "Removing key Artifacts"
-        $artifacts | Sort-Object | Get-Unique | ForEach-Object {
-            Write-Host "Removing $_"
-            Remove-Item $_
-        }
-    }
-}
-
 Set-Location "$targetRoot"
 
-# source config-unique action overrides
+# Per config Overrides and functions
 . "$targetRoot\$script"
 
 H3 "$config - Processing"
