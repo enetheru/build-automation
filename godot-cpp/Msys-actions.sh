@@ -7,30 +7,63 @@ if [ "$1" = "get_config" ]; then
     gitBranch=${gitBranch:-"master"}
 
     function CleanLog {
-        H3 "TODO CleanLog for godot-cpp/Darwin-actions.sh"
-    }
+        H3 "This is a generic CleanLog function."
 
-    function CleanLog-Default {
-        matchPattern='(register_types|memory|libgdexample|libgodot-cpp)'
-        rg -M2048 $matchPattern "$1" | sed -E 's/ +/\n/g' \
-            | sed -E ':a;$!N;s/(-(MT|MF|o)|\/D)\n/\1 /;ta;P;D'
-    }
+        # replace these tokens with newlines
+        splitOn=" && | -- "
 
-    function CleanLog-macos {
-        # Cleanup Logs
-        keep='  󰞷 cmake|^ranlib|memory.cpp|Cocoa|libgdexample'
-        scrub="\[[0-9]+\/[0-9]+\]|&&|:|󰞷"
-        joins="-o|-arch|-framework|-t|-j|-MT|-MF|-isysroot|-install_name|Omitted|long|matching"
-        rg -M2048 $keep "$1" \
+        # Lines to ignore
+        notMatch='notmatch'
+        notMatch+='|^scons:' #'rm -f|vcxproj'
+        notMatch+='|^  Removing.*'
+
+        notMatch+="|cmake.exe -E rm -f"
+
+        # Lines to keep
+        lineMatch='  . (cmake|scons)' # Commands to keep
+        lineMatch+='| == (Config|Target)'           # Info to keep
+        lineMatch+='|example\.cpp'
+        lineMatch+='|editor_plugin_registration\.cpp'
+        lineMatch+='|libgodot-cpp\.windows.*?x86_64\.a'
+
+        # Erase prefixes and junk from lines
+        erase="=="
+        erase+="|\[[0-9]+\/[0-9]+\] "           # removes cmake things like: [1/5]
+        erase+='|C:\\msys64\\clang64\\bin\\'    # Location of msys bin path
+        erase+='|C:\\msys64\\ucrt64\\bin\\'     # Location of msys bin path
+        erase+='|C:\/build\/godot-cpp\/Msys-clang64-windows\/'
+        erase+='|C:\/build\/godot-cpp\/Msys-ucrt64-windows\/'
+        erase+='|C:\/msys64\/ucrt64\/bin\/x86_64-w64-mingw32-' # ucrt detected compiler prefixes
+
+        # re-join lines who's options had a space in them
+        joins='(Target|Config):'
+        joins+='|-E|-j|--build|-t|--target|--config'   # CMake/SCons
+        joins+='|-o|-MT|-MF'         # gcc Options
+        joins+='|\/D'                 # MSVC Options
+        joins+="|-arch|-framework|-isysroot|-install_name"
+
+        # Ignore default options and options that dont effect the build to cut down on the noise
+        ignore='-MD|-MT|-MF'
+        ignore+='|󰞷'
+
+        # Default Windows Libs Linked with cmake
+        ignore+='|-lkernel32|-luser32|-lgdi32|-lwinspool|-lshell32|-lole32|-loleaut32|-luuid|-lcomdlg32|-ladvapi32'
+
+        # object files on their own line
+        ignore+='|^.*\.o(bj)?$'
+
+        newLines='^cmake$|^scons$|^clang\+\+$|^ar$|^.*exe$|^g\+\+$|^gcc-ar$'
+
+        sed -E "s/$splitOn/\n/g" "$1" \
+            | sed -En "/$notMatch/d;/$lineMatch/p" \
+            | sed -E "s/$erase//g" \
+            | sed -E 's/ +/\n/g' \
             | sed -E ":start
-                s/ +/\n/g;t start
-                s/$scrub//;t start" \
-            | sed -E ":start
-                \$!N
-                s/($joins)\n/\1 /;t start
+                \$!N; s/($joins)\n/\1 /;t start
                 P;D" \
-            | sed "s/^cmake/\ncmake/" \
-            | sed 'N; /^\n$/d;P;D'
+            | sed -E "/$ignore/d" \
+            | sed -E "s/($newLines)/\n\1/" \
+            | sed 'N; /^\n$/d;P;D' # remove empty lines
     }
 
     return
@@ -143,7 +176,7 @@ source "$targetRoot/$script"
 
 declare -a stats=()
 for item in "fetch" "prepare" "build" "test"; do
-    [ "$item" ] && AArrayUpdate stats $item "Fail"
+    [ ! "$item" ] && AArrayUpdate stats $item "Fail"
 done
 
 H3 "$config - Processing"

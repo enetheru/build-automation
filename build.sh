@@ -332,8 +332,6 @@ for script in "${buildScripts[@]}"; do
 
     if [ $? ]; then AArrayUpdate stats status Completed; fi
 
-
-
     # read the last part of the raw log to collect stats
     # Another location where we cannot use 'mapfile -t'
     # mapfile -t data < <(tail -n 20 "$traceLog" | sed -n "/stats\[\"/p")

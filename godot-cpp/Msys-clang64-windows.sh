@@ -39,7 +39,10 @@ buildDir="$buildRoot/cmake-build"
 function Prepare {
     Figlet "Prepare"
 
-    EraseFiles "editor_plugin_registration" "o|obj"
+    cd "$buildRoot" || exit 1
+    EraseFiles "example|editor_plugin_registration" "o|obj|os"
+    EraseFiles "libgodot-cpp.windows" "a"
+    EraseFiles "libgdexample.windows" "dll"
 
     H3 "CMake Configure"
     doFresh=''
@@ -94,7 +97,6 @@ function Build {
     cd "$buildRoot" || return 1
     EraseFiles "libgdexample" "dll"
 
-    # Build test targets using CMake
     cd "$buildRoot/cmake-build" || return 1
     BuildCMake
 

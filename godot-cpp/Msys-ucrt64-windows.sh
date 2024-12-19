@@ -33,7 +33,10 @@ buildDir="$buildRoot/cmake-build"
 function Prepare {
     Figlet "Prepare"
 
-    EraseFiles "editor_plugin_registration" "o|obj"
+    cd "$buildRoot" || exit 1
+    EraseFiles "example|editor_plugin_registration" "o|obj|os"
+    EraseFiles "libgodot-cpp.windows" "a"
+    EraseFiles "libgdexample.windows" "dll"
 
     H3 "CMake Configure"
     doFresh=''
@@ -58,6 +61,7 @@ function Prepare {
 }
 
 function Build {
+    Figlet "Build"
     statArray=( "target duration" )
 
     # Erase previous artifacts

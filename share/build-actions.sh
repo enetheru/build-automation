@@ -21,6 +21,28 @@ fi
 #                                                                            #
 ################################################################################
 
+function EraseFiles {
+    cd "$buildRoot" || exit 1
+
+    # Make a list of files to remove based on the below criteria
+    fragments="${1:-"NothingToErase"}"
+    extensions="${2:-"NoFileExtensionsSpecified"}"
+
+    declare -a artifacts=()
+    while IFS= read -r line; do
+        artifacts+=("$line")
+    done < <(find . -type f -regextype egrep -regex ".*($fragments).*($extensions)$")
+
+    if [ ${#artifacts[0]} -gt 0 ]; then
+        H3 "Erase Files"
+        Warning "Deleting ${#artifacts[@]} Artifacts"
+        for artifact in "${artifacts[@]}"; do
+            echo "  Removing '$artifact'"
+            rm "$artifact"
+        done
+    fi
+}
+
 # https://mharrison.org/post/bashfunctionoverride/
 # Usage: RenameFunction <old-name> <newname>
 function RenameFunction {
@@ -85,26 +107,6 @@ function UpdateEmscripten {
     cd $emsdk || exit 1
     Format-Eval "git pull"
     Format-Eval "$emsdk/emsdk install latest"
-}
-
-function EraseFiles {
-    cd "$buildRoot" || exit 1
-
-    # Make a list of files to remove based on the below criteria
-    fragments="${1:-"NothingToErase"}"
-    extensions="${2:-"NoFileExtensionsSpecified"}"
-
-    declare -a artifacts=()
-        while IFS= read -r line; do
-            artifacts+=("$line")
-        done < <(find . -type f -regextype egrep -regex ".*($fragments).*($extensions)$")
-    artifacts=("${artifacts:-NoFiles}")
-
-    if [ "${artifacts[0]}" != "NoFiles" ]; then
-        H3 "Erase Files"
-        Warning "Deleting ${#artifacts[@]} Artifacts"
-        printf "  %s\n" "${artifacts[@]}" | tee >(cat >&5) | xargs rm
-    fi
 }
 
 ####################################- Fetch -###################################
@@ -205,12 +207,15 @@ function BuildSCons {
     fi
 
     for target in "${targets[@]}"; do
-        Figlet "SCons Build" "small";
         if [ -n "$target" ]; then
-            H3 "target: $target"
             addTarget="target=$target"
+        else
             target="default"
         fi
+
+        Figlet "SCons Build" "small"
+        H3 "Config: $config"
+        H3 "Target: $target"
         start=$SECONDS
 
         Format-Eval "scons ${buildVars[*]} ${addTarget:-}"
@@ -249,7 +254,9 @@ function BuildCMake {
     fi
 
     for target in "${targets[@]}"; do
-        Figlet "CMake Build" "small"; H3 "target: $target"
+        Figlet "CMake Build" "small"
+        H3 "Config: $config"
+        H3 "Target: $target"
 
         declare -i start=$SECONDS
         Format-Eval "cmake --build . ${cmakeVars[*]} -t godot-cpp.test.$target"
@@ -283,6 +290,15 @@ function Test {
     H3 "No Test Action Specified"
     echo "-"
 }
+##################################- Process -###################################
+#                                                                              #
+#           ██████  ██████   ██████   ██████ ███████ ███████ ███████           #
+#           ██   ██ ██   ██ ██    ██ ██      ██      ██      ██                #
+#           ██████  ██████  ██    ██ ██      █████   ███████ ███████           #
+#           ██      ██   ██ ██    ██ ██      ██           ██      ██           #
+#           ██      ██   ██  ██████   ██████ ███████ ███████ ███████           #
+#                                                                              #
+################################################################################
 
 function DefaultProcess {
     if [ "$fetch" -eq 1 ]; then
@@ -333,16 +349,6 @@ function DefaultProcess {
         echo "  -- Duration: $duration"
     fi
 }
-
-##################################- Process -###################################
-#                                                                            #
-#          ██████  ██████   ██████   ██████ ███████ ███████ ███████          #
-#          ██   ██ ██   ██ ██    ██ ██      ██      ██      ██               #
-#          ██████  ██████  ██    ██ ██      █████   ███████ ███████          #
-#          ██      ██   ██ ██    ██ ██      ██           ██      ██          #
-#          ██      ██   ██  ██████   ██████ ███████ ███████ ███████          #
-#                                                                            #
-################################################################################
 
 function Finalise {
     echo "Output Stats:"
