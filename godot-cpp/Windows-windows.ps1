@@ -4,7 +4,6 @@
 # Configuration variables to pass to main build script.
 param ( [switch] $c )
 if( $c) {
-    H3 "Getting Config Overrides"
     return
 }
 
@@ -21,7 +20,10 @@ function Prepare {
     
     PrepareScons
     
-    PrepareCMake -v @("-DGODOT_ENABLE_TESTING=YES")
+    $cmakeVars = @(
+        "-DGODOT_ENABLE_TESTING=YES"
+    )
+    PrepareCMake -v $cmakeVars
 }
 
 function Build {
@@ -43,7 +45,8 @@ function Build {
     
     # Erase previous artifacts
     Set-Location "$buildRoot"
-    EraseFiles -f "libgdexample" -e "dll"
+    EraseFiles "libgdexample" "dll"
+    EraseFiles "libgodot-cpp" "lib"
     
     ## CMake Build
     Set-Location "$buildRoot\cmake-build"
@@ -61,4 +64,8 @@ function Build {
 
     # Report Results
     $statArray | Format-Table
+}
+
+function Test {
+    TestCommon
 }

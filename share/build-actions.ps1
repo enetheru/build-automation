@@ -101,6 +101,7 @@ function UpdateEmscripten {
 #                  ██      ███████    ██     ██████ ██   ██                  #
 #                                                                            #
 ################################################################################
+
 function Fetch {
     # Create worktree is missing
     if( -Not (Test-Path -Path "$buildRoot" -PathType Container) ) {
@@ -291,7 +292,7 @@ function Test {
 ################################################################################
 
 function DefaultProcess {
-    if( $fetch ) {
+    if( $fetch -eq $true ) {
         $Host.UI.RawUI.WindowTitle = "Fetch - $config"
         $stats | Add-Member -MemberType NoteProperty -Name 'fetch' -Value 'Fail'
         
@@ -304,7 +305,7 @@ function DefaultProcess {
         H3 "$config - Fetch Duration: $($timer.Elapsed)"
     }
     
-    if( $prepare ) {
+    if( $prepare -eq $true ) {
         $Host.UI.RawUI.WindowTitle = "Prepare - $config"
         $stats | Add-Member -MemberType NoteProperty -Name 'prepare' -Value 'Fail'
         
@@ -317,7 +318,7 @@ function DefaultProcess {
         H3 "$config - Prepare Duration: $($timer.Elapsed)"
     }
     
-    if( $build ) {
+    if( $build -eq $true ) {
         $Host.UI.RawUI.WindowTitle = "Build - $config"
         $stats | Add-Member -MemberType NoteProperty -Name 'build' -Value 'Fail'
         
@@ -330,7 +331,7 @@ function DefaultProcess {
         H3 "$config - Build Duration: $($timer.Elapsed)"
     }
     
-    if( $test ) {
+    if( $test -eq $true ) {
         $stats | Add-Member -MemberType NoteProperty -Name 'test' -Value 'Fail'
         $Host.UI.RawUI.WindowTitle = "Test - $config"
         

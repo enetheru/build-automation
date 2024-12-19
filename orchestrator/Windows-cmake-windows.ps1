@@ -17,6 +17,7 @@ $script:buildDir = ''
 
 # Fetch Override
 function MyFetch {
+    # https://stackoverflow.com/questions/24347758/remove-alias-in-script
     Remove-Item 'Alias:\Fetch' -Force
     Fetch #Original Fetch
     FetchSubmodules

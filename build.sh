@@ -108,10 +108,7 @@ argv[0]="$0"
 argv+=("${@}")
 
 if [ $fetch -eq 0 ] && [ $prepare -eq 0 ] && [ $build -eq 0 ] && [ $test -eq 0 ]; then
-    fetch=1
-    prepare=1
-    build=1
-    test=1
+    list=1
 fi
 
 # Parse the target
@@ -363,4 +360,3 @@ if [ "${#buildScripts[@]}" -gt 1 ]; then
     H3 "Summary"
     printf "%s\n" "${summary[@]}" | column -t -R 6
 fi
-H1 "Finished"

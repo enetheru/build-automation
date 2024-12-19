@@ -8,10 +8,21 @@ if( $c ) {
     return
 }
 
-function Prepare {
-    Figlet "Prepare"
+$script:emsdk = "C:\emsdk"
+
+function FetchOverride {
+    Figlet "Fetch"
     
     UpdateAndroid
+    
+    # https://stackoverflow.com/questions/24347758/remove-alias-in-script
+    Remove-Item 'Alias:\Fetch' -Force
+    Fetch #Original Fetch
+}
+New-Alias -Name 'Fetch' -Value 'FetchOVerride' -Scope Global
+
+function Prepare {
+    Figlet "Prepare"
     
     Set-Location "$buildRoot"
     
@@ -30,7 +41,6 @@ function Prepare {
         "-DANDROID_ABI=x86_64",
         "--toolchain `"C:\androidsdk\ndk\23.2.8568313\build\cmake\android.toolchain.cmake`""
     )
-    
     PrepareCMake -v $cmakeVars
 }
 
@@ -66,7 +76,7 @@ function Build {
         "godot-cpp.test.template_release",
         "godot-cpp.test.editor")
     BuildCMake -t $targets
-    
+
     # Report Results
     $statArray | Format-Table
 }

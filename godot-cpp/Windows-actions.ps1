@@ -4,9 +4,6 @@
 # Configuration variables to pass to main build script.
 param ( [switch] $c )
 if( $c ) {
-    [string]$godot = "C:\build\godot\msvc.master\bin\godot.windows.editor.x86_64.exe"
-    [string]$godot_tr = "C:\build\godot\msvc.master\bin\godot.windows.template_release.x86_64.exe"
-    
     # [System.Uri]$gitUrl = "http://github.com/godotengine/godot-cpp.git"
     [System.Uri]$gitUrl = "C:\Godot\src\godot-cpp"
     if( $gitBranch -eq "" ){ $gitBranch = "name_clash" }
@@ -136,6 +133,10 @@ $config = Split-Path -Path $script -LeafBase
 
 $buildRoot = "$targetRoot\$config"
 
+# Custom Variables
+[string]$godot = 'C:\build\godot\Windows-windows-msvc\bin\godot.windows.editor.x86_64.exe'
+[string]$godot_tr = 'C:\build\godot\Windows-windows-msvc\bin\godot.windows.template_release.x86_64.exe'
+[string]$godot_td = 'C:\build\godot\Windows-windows-msvc\bin\godot.windows.template_debug.x86_64.exe'
 
 #### Write Summary ####
 SummariseConfig
@@ -164,13 +165,19 @@ function PrepareScons {
     # SCons - Remove generated source files if exists.
     $doFresh = ($fresh -eq $true) ? "generate_bindings=yes" : $null
     $doVerbose  = ($verbose -eq $true) ? "verbose=yes" : $null
-    $buildVars = @( "$doVerbose", "$doFresh") + $vars
+    $buildVars = @(
+        "$doVerbose",
+        "$doFresh",
+        'build_library=no',
+        'compiledb=yes',
+        "compiledb_file='$config.json'"
+    ) + $vars
     
-    # Is effected by three variables
-    # target arch cpu width, either 32 or 64, FIXME default unknown, I guess host architecture?
-    # generate_template_get_node, default is 'yes'.
-    # precision, single/double, default is 'single'.
-    Format-Eval "scons $($buildVars -Join ' ') build_library=no"
+    # Binding Generation is effected by three variables
+    # arch -  Target Architecture, either 32 or 64, FIXME default unknown, I guess host architecture?
+    # generate_template_get_node -  default is 'yes'.
+    # precision -  single/double, default is 'single'.
+    Format-Eval "scons $($buildVars -Join ' ')"
 }
 
 # SCons - Remove generated source files if exists.
@@ -182,28 +189,53 @@ function EraseGen {
     }
 }
 
+function WaitingForGodot {
+    # Godot spawns and detaches another process, making this harder than it needs to be.
+    # FIXME find a way to get the actual process ID that I want to wait on.
+    while( Get-Process | Where-Object -Property "ProcessName" -Match "godot" ) {
+        #This is a slightly better fix than before, but I still want to get the specific process.
+        Start-Sleep -Milliseconds 15
+    }
+}
+
 function TestCommon {
-    Write-Output "" >> "$targetRoot\summary.log"
-    H4 "$config" >> "$targetRoot\summary.log"
-
-    if( -Not (Test-Path "$buildRoot\test\project\.godot" -PathType Container) ) {
+    Figlet "Test"
+    $projectDir="$buildRoot\test\project"
+    
+    if( -Not (Test-Path "$projectDir\bin\libgdexample.windows.template_release.x86_64.dll" -PathType Leaf) ) {
+        Write-Error "Missing libgdexample.windows.template_release.x86_64.dll"
+        return 1
+    }
+    
+    if( -Not (Test-Path "$projectDir\.godot" -PathType Container) ) {
         H4 "Generate the .godot folder"
-        Format-Command "$godot -e --path `"$buildRoot\test\project`" --quit --headless"
-        & $godot -e --path "$buildRoot\test\project" --quit --headless 2>&1 | Tee-Object -Variable result
-        Start-Sleep -Seconds 1
-
-        if( -Not (Test-Path "$buildRoot\test\project\.godot" -PathType Container) ) {
-            Write-Output "Failed to create .godot folder" >> "$targetRoot\summary.log"
-            return 1
+        & {
+            $PSNativeCommandUseErrorActionPreference = $false
+            &$godot -e --path "$projectDir" --quit --headless *> $null
+            WaitingForGodot
         }
-    } else {
-        H4 "The .godot folder has already been generated."
+        if( -Not (Test-Path "$projectDir\.godot" -PathType Container) ) {
+            Write-Error "Failed to create .godot folder" >> "$targetRoot\summary.log"
+        }
     }
 
     H4 "Run the test project"
     Format-Command "$godot_tr --path `"$buildRoot\test\project\`" --quit --headless`n"
-    & $godot_tr --path "$buildRoot\test\project\" --quit --headless | Tee-Object -Variable result
-    @($result.split( "`r`n" ) | Where-Object { $_ -Match "FINI|PASS|FAIL|Godot" }) >> "$targetRoot\summary.log"
+    
+    H4 "Run the test project"
+    $script:result = ("unknown")
+    & {
+        $PSNativeCommandUseErrorActionPreference = $false
+        Format-Command "$godot_tr --path `"$projectDir`" --quit --headless"
+        &$godot_tr --path "$projectDir" --quit --headless | Out-String
+        WaitingForGodot
+    } | Tee-Object -Variable result
+    
+    if( @($result | Where-Object { $_ })[-1] -Match "PASSED" ) {
+        Write-Output "Test Succeded"
+    } else {
+        Write-Error "Test-Failure"
+    }
 }
 
 Set-Location "$targetRoot"

@@ -68,7 +68,7 @@ else { $platform = "Unknown" }
 $verbose = ($quiet) ? $false : $true
 
 if( -Not ($fetch -Or $prepare -Or $build -Or $test) ) {
-    $fetch = $true; $prepare = $true; $build = $true; $test = $true
+    $list = $true
 }
 
 if( $target -eq "" ) {
@@ -292,6 +292,4 @@ if( $buildScripts.Length -gt 1 ) {
     H4 "Summary"
     $summary | Format-Table -Property target,config,fetch,prepare,build,test,status,duration
 }
-
-Figlet -c "Finished"
 

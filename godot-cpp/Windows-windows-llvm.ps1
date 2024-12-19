@@ -4,15 +4,15 @@
 # Configuration variables to pass to main build script.
 param ( [switch] $c )
 if( $c) {
-    H3 "Getting Config Overrides"
-    $llvmPath = 'C:\Program Files\LLVM\bin\'
-    H4 "Prepend `$env:path with $llvmPath"
-    $env:Path = "$llvmPath;" + $env:Path
     return
 }
 
 function Prepare {
     Figlet "Prepare"
+    
+    H4 "Adding LLVM to PATH"
+    $llvmPath = 'C:\Program Files\LLVM\bin\'
+    $env:Path = "$llvmPath;" + $env:Path
     
     Set-Location "$buildRoot"
     
@@ -56,7 +56,8 @@ function Build {
     
     # Erase previous artifacts
     Set-Location "$buildRoot"
-    EraseFiles -f "libgdexample" -e "dll"
+    EraseFiles "libgdexample" "dll"
+    EraseFiles "libgodot-cpp" "lib"
     
     ## CMake Build
     Set-Location "$buildRoot\cmake-build"
@@ -68,4 +69,8 @@ function Build {
 
     # Report Results
     $statArray | Format-Table
+}
+
+function Test {
+    TestCommon
 }

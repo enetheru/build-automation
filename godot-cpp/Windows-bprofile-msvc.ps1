@@ -3,7 +3,7 @@
 
 # Configuration variables to pass to main build script.
 param ( [switch] $c )
-if( $c -eq $true ) {
+if( $c) {
     $gitBranch = "build_profile"
     return
 }
@@ -13,14 +13,16 @@ function Prepare {
     
     Set-Location "$buildRoot"
     
-    EraseFiles "editor_plugin_registration" "o|d|obj"
-    EraseFiles "libgdexample.windows" "lib"
+    # Erase key files to trigger a re-build so we can capture the build commands.
+    # FIXME investigate compile_commands.json for the above purpose
+    EraseFiles "example|editor_plugin_registration" "o|obj|os"
+    EraseFiles "libgodot-cpp.windows" "a"
+    EraseFiles "libgdexample.windows" "dll"
     
     $cmakeVars = @(
         "-DGODOT_ENABLE_TESTING=YES"
         "-DGODOT_BUILD_PROFILE='..\test\build_profile.json'"
     )
-    
     PrepareCMake -v $cmakeVars
 }
 
@@ -30,7 +32,8 @@ function Build {
     
     # Erase previous artifacts
     Set-Location "$buildRoot"
-    EraseFiles -f "libgdexample" -e "dll"
+    EraseFiles "libgdexample" "dll"
+    EraseFiles "libgodot-cpp" "lib"
     
     ## SCons Build
     Set-Location "$buildRoot\test"
@@ -43,7 +46,8 @@ function Build {
     
     # Erase previous artifacts
     Set-Location "$buildRoot"
-    EraseFiles -f "libgdexample" -e "dll"
+    EraseFiles "libgdexample" "dll"
+    EraseFiles "libgodot-cpp" "lib"
     
     ## CMake Build
     Set-Location "$buildRoot\cmake-build"

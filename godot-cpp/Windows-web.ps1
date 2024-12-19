@@ -3,17 +3,26 @@
 
 # Configuration variables to pass to main build script.
 param ( [switch] $c )
-if( $c -eq $true ) {
+if( $c ) {
     H4 "Using Default env Settings"
     return
 }
 
 $script:emsdk = "C:\emsdk"
 
-function Prepare {
-    Figlet "Prepare"
+function FetchOverride {
+    Figlet "Fetch"
     
     UpdateEmscripten
+    
+    # https://stackoverflow.com/questions/24347758/remove-alias-in-script
+    Remove-Item 'Alias:\Fetch' -Force
+    Fetch #Original Fetch
+}
+New-Alias -Name 'Fetch' -Value 'FetchOVerride' -Scope Global
+
+function Prepare {
+    Figlet "Prepare"
     
     H3 "Activate EmSDK"
     Format-Eval $emsdk\emsdk.ps1 activate latest
@@ -63,7 +72,6 @@ function Build {
     
     ## CMake Build
     Set-Location "$buildRoot\cmake-build"
-    
     [array]$targets = @(
         "godot-cpp.test.template_debug",
         "godot-cpp.test.template_release",
