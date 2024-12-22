@@ -200,6 +200,9 @@ foreach( $script in $buildScripts ) {
 
     $traceLog = "$targetRoot\logs-raw\$config.txt"
     $cleanLog = "$targetRoot\logs-clean\$config.txt"
+    if( -Not $append ) { Write-Output "" > $traceLog }
+    H2 "$config" >> $traceLog
+    Figlet "traceLog" >> $traceLog
     
     # set default environment and commands.
     $envRun = "pwsh"

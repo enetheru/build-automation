@@ -15,11 +15,14 @@ function Prepare {
     Figlet "Prepare"
     
     Set-Location "$buildRoot"
-    # TODO Erase key files to trigger a re-build so we can capture the build commands.
-    # TODO EraseFiles "basename_pattern" "ext_pattern"
+    # Erase key files to trigger a re-build so we can capture the build commands.
+    if( $fresh -eq $true ){
+        Remove-Item -Recurse "bin\*"
+    }
 }
 
 function Build {
+    Figlet "Build"
     [array]$statArray = @()
     [ref]$statArrayRef = ([ref]$statArray)
     

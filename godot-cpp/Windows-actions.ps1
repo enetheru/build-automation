@@ -47,6 +47,11 @@ if( $c ) {
         $joins += '|-o|-MT|-MF'         # gcc Options
         $joins += '|/D'                 # MSVC Options
         
+        # object files on their own line
+        $ignore = 'notMatch'
+        $ignore += '|^.*\.o(bj)?$'
+        $ignore += '|^".*"$'
+        
         $spaceBefore  = ".*exe`$"
         $spaceBefore += "|ar`$|g\+\+`$"              # gcc
         $spaceBefore += "|^em[+]+|^emar|^emranlib"  # Emscripten
@@ -60,24 +65,21 @@ if( $c ) {
         } `
         | Where-Object {    # match and not match.
              $true -and ($_ -Match "$lineMatch") -and ($_ -notmatch "$notMatch")
-            
         } `
-        | Where-Object { # Skip lines that start with the same 80 chars
-            -Not ($_ -cmatch "${prevLine}.*")
-            $prevLine = [Regex]::Escape($_.Substring( 0,[int]::min( $_.Length, 80 ) ) );
-        } `
-        | ForEach-Object {  # erase, trim, split, then remove lines that start the same
-            $prev = "NotMatch"
-            ($_ -creplace "$erase", "").Trim() -cSplit '\s+' | ForEach-Object {
-                if( -Not ($_ -cmatch "${prev}.*") ){
-                    $prev = [Regex]::Escape($_.Substring(0,[int]::min( $_.Length, 10 ))); $_
-                }
-            }
+        | ForEach-Object {  # erase, trim, split
+            ($_ -creplace "$erase", "").Trim() -cSplit '\s+'
         } `
         | ForEach-Object {  # Re-Join Lines
             if( $prevOpt ) { "$prevOpt $_"; $prevOpt = $null }
             elseif( $_ -cmatch "^$joins" ) { $prevOpt = "$_" }
             else { $_ }
+        } `
+        | Where-Object { # Skip lines that start with the same 80 chars
+            -Not ($_ -cmatch "${prevLine}.*")
+            $prevLine = [Regex]::Escape($_.Substring( 0,[int]::min( $_.Length, 80 ) ) );
+        } `
+        | Where-Object { # ignore some lines
+            -Not ($_ -cmatch "$ignore")
         } `
         | ForEach-Object {  # Embellish to make easier to read
             $_  -creplace '"cmake.exe"','cmake.exe'`

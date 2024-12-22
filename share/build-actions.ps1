@@ -82,14 +82,51 @@ function UpdateAndroid {
     Format-Eval "sdkmanager --update $doVerbose"
 }
 
-function UpdateEmscripten {
+function EmscriptenUpdate {
+    param(
+        $emsdk = "C:\emsdk",
+        $version = "latest"
+    )
     H3 "Update Emscripten SDK"
     
-    $emsdk = "C:\emsdk"
+    if( -Not (Test-Path -Path "$emsdk" -PathType Container) ) {
+        Write-Error "Missing emsdk Path: '$emsdk'"
+        return 1
+    }
+    if( -Not (Test-Path -Path "$emsdk\emsdk.ps1" -PathType Leaf) ) {
+        Write-Error "Missing Script: '$emsdk\emsdk.ps1'"
+        return 1
+    }
+    
+    if( $version -match "latest" ){
+        # scons: *** [bin\.web_zip\godot.editor.worker.js] The system cannot find the file specified
+        # https://forum.godotengine.org/t/error-while-building-godot-4-3-web-template/86368
+        
+        Write-Warning "Latest Emscripten version is not oficially supported"
+        Write-Output @"
+    # Official Requirements:
+    # godotengine - 4.0+     | Emscripten 1.39.9
+    # godotengine - 4.2+     | Emscripten 3.1.39
+    # godotengine - master  | Emscripten 3.1.62
+    #
+    # But in the github action runner, it's 3.1.64
+    # And all of the issues related show 3.1.64
+"@
+    }
     
     Set-Location $emsdk
     Format-Eval git pull
-    Format-Eval $emsdk\emsdk.ps1 install latest
+    
+    Format-Eval $emsdk\emsdk.ps1 install $version
+}
+
+function EmscriptenActivate {
+    param(
+        $emsdk = "C:\emsdk",
+        $version = "latest"
+    )
+    H4 "Activate EmSDK"
+    Format-Eval "$emsdk\emsdk.ps1" activate $version
 }
 
 ####################################- Fetch -###################################
