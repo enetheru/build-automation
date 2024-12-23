@@ -67,7 +67,7 @@ function SummariseConfig {
   log append  = ${append:-}
 
   gitUrl      = $gitUrl
-  gitBranch   = $gitBranch
+  gitHash     = $gitHash
 
   platform    = $platform
   root        = $root
@@ -133,7 +133,7 @@ function Fetch {
 
     # Update worktree
     cd "$buildRoot" || return 1
-    Format-Eval "git checkout --force --detach $gitBranch" || return 1
+    Format-Eval "git checkout --force --detach $gitHash" || return 1
     Format-Eval "git status" || return 1
     Fill "-"
     set -e

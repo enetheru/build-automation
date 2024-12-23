@@ -35,11 +35,11 @@ echo "
 
 #gitUrl=http://github.com/enetheru/godot-cpp.git
 gitUrl=${gitUrl:-"http://github.com/enetheru/godot-cpp-test.git"}
-gitBranch=${gitBranch:-"main"}
+gitHash=${gitHash:-"main"}
 
 echo "
   gitUrl      = $gitUrl
-  gitBranch   = $gitBranch"
+  gitHash   = $gitHash"
 
 godot="/c/build/godot/msvc.master/bin/godot.windows.editor.x86_64.exe"
 godot_tr="/c/build/godot/msvc.master/bin/godot.windows.template_release.x86_64.exe"

@@ -52,7 +52,7 @@ Write-Output @"
   log append  = $append
 
   target      = $target
-  branch      = $gitBranch
+  branch      = $gitHash
 "@
 
 # Main Variables
@@ -67,12 +67,12 @@ Write-Output @"
 
 # [System.Uri]$gitUrl = "http://github.com/godotengine/godot-cpp-test.git"
 [System.Uri]$gitUrl = "C:/Godot/src/godot-cpp-test"
-[string]$gitBranch = "main"
+[string]$gitHash = "main"
 
 Write-Output @"
 
   gitUrl      = $gitUrl
-  gitBranch   = $gitBranch
+  gitHash   = $gitHash
 "@
 
 # Get the target root from this script location

@@ -6,7 +6,7 @@ param ( [switch] $c )
 if( $c ) {
 #    [System.Uri]$gitUrl = "http://github.com/godotengine/godot.git"
     [System.Uri]$gitUrl = "C:\Godot\src\godot"
-    if( $gitBranch -eq "" ){ $gitBranch = "master" }
+    if( $gitHash -eq "" ){ $gitHash = "master" }
     return
 }
 

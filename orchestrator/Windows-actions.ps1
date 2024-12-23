@@ -66,13 +66,13 @@ Write-Output @"
 [System.Uri]$gitUrl = "C:\Godot\extensions\godot-orchestrator"
 #[string]$sourceBranch = "2.0"
 #[string]$sourceHash = "e4ef00d9ed8ad67b876f0e6223b03bd7b2fc3d93" #2.0.4.stable
-[string]$gitBranch = "2.1-modernise"
+[string]$gitHash = "2.1-modernise"
 #[string]$sourceHash = "d091f26c28de2b7108c9890f2b97b901795fa151" # 2.1.2.stable
 
 Write-Output @"
 
   gitUrl      = $gitUrl
-  gitBranch   = $gitBranch
+  gitHash   = $gitHash
 "@
 
 # Get the target root from this script location

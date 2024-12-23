@@ -6,7 +6,7 @@ param ( [switch] $c )
 if( $c ) {
     # [System.Uri]$gitUrl = "http://github.com/godotengine/godot-cpp.git"
     [System.Uri]$gitUrl = "C:\Godot\src\godot-cpp"
-    if( $gitBranch -eq "" ){ $gitBranch = "name_clash" }
+    if( $gitHash -eq "" ){ $gitHash = "name_clash" }
     
     # This function is called when the build is completed to whittle down the
     # build log to something usable. It can be overridden in the build script.

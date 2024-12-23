@@ -17,7 +17,7 @@ source "$root/share/format.sh"
 ##########################    Function Definitions    #########################
 Syntax()
 {
-   echo "Syntax: ./build.sh [-hfcbt] [--list] [--fresh] [--append] [--filter=<regex>] <target> [gitBranch]"
+   echo "Syntax: ./build.sh [-hfcbt] [--list] [--fresh] [--append] [--filter=<regex>] <target> [gitHash]"
 }
 
 Help()
@@ -102,7 +102,7 @@ append=${append:-0}
 filter=${filter:-".*"}
 
 gitUrl=""
-gitBranch=""
+gitHash=""
 
 argv[0]="$0"
 argv+=("${@}")
@@ -124,7 +124,7 @@ fi
 
 # Parse the optional branch
 if [ -n "${1:-}" ]; then
-    gitBranch="$1"
+    gitHash="$1"
     shift 1
 fi
 
@@ -154,7 +154,7 @@ echo "
   targetRoot  = $targetRoot
 
   gitUrl      = $gitUrl
-  gitBranch   = $gitBranch
+  gitHash   = $gitHash
 "
 
 # Get Target Scripts
@@ -215,7 +215,7 @@ declare -a savedVars=(
     "targetRoot='$targetRoot'"
 
     "gitUrl='$gitUrl'"
-    "gitBranch='$gitBranch'"
+    "gitHash='$gitHash'"
 )
 
 ############################    Begin Processing    ###########################
@@ -291,7 +291,7 @@ for script in "${buildScripts[@]}"; do
         "append='$append'"
 
         "gitUrl='$gitUrl'"
-        "gitBranch='$gitBranch'"
+        "gitHash='$gitHash'"
 
         "traceLog='$traceLog'"
         "cleanLog='$cleanLog'"

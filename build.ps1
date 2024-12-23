@@ -3,22 +3,27 @@
 
 [CmdletBinding( PositionalBinding = $false )]
 param(
-    [Alias( "f" )] [switch] $fetch,
-    [Alias( "p" )] [switch] $prepare,
-    [Alias( "b" )] [switch] $build,
-    [Alias( "t" )] [switch] $test,
+    [switch] $list,             # show the list of scripts and exit
+    [Alias( "q" )] [int] $quiet,
+    
+    [Alias( "u" )] [switch] $update,    # Update tools
+    [Alias( "f" )] [switch] $fetch,     # Fetch latest source
+    [Alias( "c" )] [switch] $clean,     # clean the build directory
+    [Alias( "p" )] [switch] $prepare,   # prepare the build
+                   [switch] $fresh,     # re-fresh the configuration
+    [Alias( "b" )] [switch] $build,     # build the source
+    [Alias( "t" )] [switch] $test,      # test
+    [Alias( "a" )] [switch] $all,       # prepare, build
     
     [Alias( "j" )] [int] $jobs = ([Environment]::ProcessorCount -1),
-    [Alias( "q" )] [int] $quiet,
-
-    [switch] $list,           # show the list of scripts and exit
-    [switch] $fresh,          # re-fresh the configuration
-    [switch] $clean,          # clean the build directory
-    [switch] $append,         # Append to the logs rather than clobber
-    [string] $filter = ".*",  # Filter which scripts are used.
-
-    [Parameter( Position = 0 )] [string] $target,           # Which target to use
-    [Parameter( Position = 1 )] [string] $gitBranch = "",   # Which git branch to use
+    
+    [switch] $append,                   # Append to the logs rather than clobber
+    
+    [string] $target,                   # Which target to use
+    [string] $filter    = ".*",         # Filter which scripts are used.
+    
+    [string] $gitUrl    = "",           # The Url to clone from
+    [string] $gitHash   = "",           # the Commit to checkout
 
     [Parameter( ValueFromRemainingArguments = $true )]$passThrough #All remaining arguments
 )
@@ -103,7 +108,7 @@ Write-Output @"
   target      = $target
   targetRoot  = $targetRoot
 
-  gitBranch   = $gitBranch
+  gitHash   = $gitHash
   gitUrl      = $gitUrl
 "@
 
@@ -155,7 +160,7 @@ if( $list ) { exit }
     "`$targetRoot='$targetRoot'",
 
     "`$gitUrl    ='$gitUrl'",
-    "`$gitBranch ='$gitBranch'"
+    "`$gitHash ='$gitHash'"
 )
 
 ############################    Begin Processing    ###########################
@@ -173,12 +178,15 @@ New-Item -Force -ItemType Directory -Path "$targetRoot/logs-clean" | Out-Null
 
 # Clone if not already
 H3 "Git Update/Clone Bare Repository"
-if( -Not (Test-Path -Path "$targetRoot\git" -PathType Container) ) {
-    Format-Eval git clone --bare "$gitUrl" "$targetroot\git"
-} else {
-#    Format-Eval git --git-dir=$targetRoot\git fetch --force origin *:*
-    Format-Eval git --git-dir=$targetRoot\git worktree prune
-    Format-Eval git --git-dir=$targetRoot\git worktree list
+if( $fetch -eq $true ) {
+    if( -Not (Test-Path -Path "$targetRoot\git" -PathType Container) ) {
+        Format-Eval git clone --bare "$gitUrl" "$targetroot\git"
+    } else {
+        Format-Eval git --git-dir=$targetRoot\git fetch --force origin *:*
+        Format-Eval git log -1 --pretty=%B
+        Format-Eval git --git-dir=$targetRoot\git worktree list
+        Format-Eval git --git-dir=$targetRoot\git worktree prune
+    }
 }
 
 [array]$summary = @()
@@ -235,7 +243,7 @@ foreach( $script in $buildScripts ) {
         "`$append       = '$append'",
         
         "`$gitUrl       = '$gitUrl'",
-        "`$gitBranch    = '$gitBranch'",
+        "`$gitHash    = '$gitHash'",
         
         "`$traceLog     = '$traceLog'",
         "`$cleanLog     = '$cleanLog'"

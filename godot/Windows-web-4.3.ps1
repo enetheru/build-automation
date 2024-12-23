@@ -5,7 +5,7 @@
 param ( [switch] $c )
 if( $c ) {
     H4 "Using Default env Settings"
-    $gitBranch = "4.3"
+    $gitHash = "4.3"
     return
 }
 

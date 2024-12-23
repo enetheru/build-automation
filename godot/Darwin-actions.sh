@@ -9,7 +9,7 @@ config="${script%.*}"
 buildRoot="$targetRoot/$config"
 
 gitUrl=${gitUrl:-"http://github.com/enetheru/godot.git"}
-gitBranch=${gitBranch:-"master"}
+gitHash=${gitHash:-"master"}
 
 # Get the target root from this script location
 # targetRoot=${targetRoot:-$( cd -- "$( dirname -- "$0}" )" &> /dev/null && pwd )}
@@ -33,7 +33,7 @@ echo "
 
   target      = $target
   gitUrl      = $gitUrl
-  gitBranch   = $gitBranch
+  gitHash     = $gitHash
 
   platform    = $platform
   root        = $root

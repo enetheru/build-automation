@@ -4,7 +4,7 @@
 # Note, the main script is bash, so this needs to conform to bash standards.
 if [ "$1" = "get_config" ]; then
     gitUrl=${gitUrl:-"http://github.com/enetheru/godot-cpp.git"}
-    gitBranch=${gitBranch:-"master"}
+    gitHash=${gitHash:-"master"}
 
     function CleanLog {
         H3 "TODO CleanLog for godot-cpp/Darwin-actions.sh"
@@ -35,11 +35,11 @@ echo "
 
 #gitUrl=http://github.com/enetheru/godot-cpp.git
 gitUrl=${gitUrl:-"http://github.com/enetheru/godot-cpp.git"}
-gitBranch=${gitBranch:-"master"}
+gitHash=${gitHash:-"master"}
 
 echo "
   gitUrl      = $gitUrl
-  gitBranch   = $gitBranch"
+  gitHash   = $gitHash"
 
 godot="/c/build/godot/msvc.master/bin/godot.windows.editor.x86_64.exe"
 godot_tr="/c/build/godot/msvc.master/bin/godot.windows.template_release.x86_64.exe"

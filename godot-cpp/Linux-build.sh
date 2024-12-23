@@ -7,7 +7,7 @@ godot=$root/godot/linux-master/bin/godot.linuxbsd.editor.x86_64
 godot_tr=$root/godot/linux-master-tr/bin/godot.linuxbsd.template_release.x86_64
 
 gitUrl=http://github.com/enetheru/godot-cpp.git
-gitBranch=${gitBranch:-"master"}
+gitHash=${gitHash:-"master"}
 
 
 H2 " Build $target using $platform "
@@ -38,7 +38,7 @@ echo "  fresh       = $fresh"
 echo "  append      = $append"
 echo
 echo "  target      = $target"
-echo "  branch      = $gitBranch"
+echo "  branch      = $gitHash"
 echo 
 echo "  matches     = $regexFilter"
 echo
@@ -46,7 +46,7 @@ echo "  godot.editor            = $godot"
 echo "  godot.template_release  = $godot_tr"
 echo
 echo "  gitUrl      = $gitUrl"
-echo "  gitBranch   = $gitBranch"
+echo "  gitHash   = $gitHash"
 echo
 echo "  platform    = $platform"
 echo "  root        = $root"

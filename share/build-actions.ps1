@@ -52,7 +52,7 @@ function SummariseConfig {
   log append  = $append
 
   gitUrl      = $gitUrl
-  gitBranch   = $gitBranch
+  gitHash     = $gitHash
 
   platform    = $platform
   root        = $root
@@ -150,7 +150,7 @@ function Fetch {
     
     # Update worktree
     Set-Location "$buildRoot"
-    Format-Eval git checkout --force -d $gitBranch
+    Format-Eval git checkout --force -d $gitHash
     Format-Eval git status
 }
 

@@ -4,7 +4,7 @@
 # Configuration variables to pass to main build script.
 param ( [switch] $c )
 if( $c) {
-    $gitBranch = "build_profile"
+    $gitHash = "build_profile"
     return
 }
 

@@ -64,12 +64,12 @@ Write-Output @"
 
 # [System.Uri]$sourceOrigin = "https://github.com/enetheru/godot-flatbuffers.git"
 [System.Uri]$gitUrl = "C:\Godot\extensions\gdflatbuffers"
-[string]$gitBranch = "4.4"
+[string]$gitHash = "4.4"
 
 Write-Output @"
 
   gitUrl      = $gitUrl
-  gitBranch   = $gitBranch
+  gitHash   = $gitHash
 "@
 
 # Get the target root from this script location
