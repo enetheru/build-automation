@@ -120,13 +120,20 @@ function EmscriptenUpdate {
     Format-Eval $emsdk\emsdk.ps1 install $version
 }
 
+[bool]$script:emsdk_activated = $False
+
 function EmscriptenActivate {
     param(
         $emsdk = "C:\emsdk",
         $version = "latest"
     )
-    H4 "Activate EmSDK"
+    if( $emsdk_activated -eq $True ){
+        H4 "Emscripten SDK is already activated."
+        return
+    }
+    H4 "Activate Emscripten SDK"
     Format-Eval "$emsdk\emsdk.ps1" activate $version
+    $emsdk_activated = $True
 }
 
 ####################################- Fetch -###################################

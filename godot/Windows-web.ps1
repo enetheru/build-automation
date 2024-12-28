@@ -8,7 +8,8 @@ if( $c ) {
     return
 }
 
-# godotengine - 4.3 | Emscripten 3.1.39
+# Documentation specifies that for godotengine 4.3 the Emscripten version is 3.1.39. but that fails.
+# the github CI uses 3.1.64, so thats what we will use.
 $script:emsdk = "C:\emsdk"
 $script:emsdkVersion = "3.1.64"
 

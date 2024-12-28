@@ -9,11 +9,12 @@ if( $c ) {
 }
 
 $script:emsdk = "C:\emsdk"
+$script:emsdkVersion = "3.1.64"
 
 function FetchOverride {
     Figlet "Fetch"
     
-    UpdateEmscripten
+    EmscriptenUpdate "$emsdk" "$emsdkVersion"
     
     # https://stackoverflow.com/questions/24347758/remove-alias-in-script
     Remove-Item 'Alias:\Fetch' -Force
@@ -24,8 +25,7 @@ New-Alias -Name 'Fetch' -Value 'FetchOVerride' -Scope Global
 function Prepare {
     Figlet "Prepare"
     
-    H3 "Activate EmSDK"
-    Format-Eval $emsdk\emsdk.ps1 activate latest
+    EmscriptenActivate "$emsdk" "$emsdkVersion"
     
     Set-Location "$buildRoot"
     
@@ -52,9 +52,11 @@ function Build {
     [array]$statArray = @()
     [ref]$statArrayRef = ([ref]$statArray)
     
-    # TODO Erase previous artifacts
-#    Set-Location "$buildRoot"
-#    EraseFiles -f "libgdexample" -e "dll"
+    EmscriptenActivate "$emsdk" "$emsdkVersion"
+    
+    # Erase previous artifacts
+    Set-Location "$buildRoot"
+    EraseFiles -f "libgdexample.web" -e "wasm"
     
     #SCons Build
     Set-Location "$buildRoot\test"
@@ -66,9 +68,9 @@ function Build {
     )
     BuildSCons -v @("platform=web") -t $targets
     
-    # TODO Erase previous artifacts
-    #    Set-Location "$buildRoot"
-    #    EraseFiles -f "libgdexample" -e "dll"
+    # Erase previous artifacts
+    Set-Location "$buildRoot"
+    EraseFiles -f "libgdexample.web" -e "wasm"
     
     ## CMake Build
     Set-Location "$buildRoot\cmake-build"
