@@ -1,0 +1,1 @@
+$buildConfigs += "beans"

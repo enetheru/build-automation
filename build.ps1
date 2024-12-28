@@ -19,6 +19,7 @@ param(
     
     [switch] $append,                   # Append to the logs rather than clobber
     
+    [Parameter( Position = 0 )]
     [string] $target,                   # Which target to use
     [string] $filter    = ".*",         # Filter which scripts are used.
     
@@ -84,6 +85,8 @@ if( $target -eq "" ) {
 $targetRoot = "$root\$target"
 
 #### Source Configuration and Function Overrides from Target Actions
+[array]$buildConfigs = @()
+. "$targetRoot\${platform}.config.ps1"
 . "$targetRoot\${platform}-actions.ps1" -c
 
 #############################    Print Summary    #############################
@@ -108,13 +111,25 @@ Write-Output @"
   target      = $target
   targetRoot  = $targetRoot
 
-  gitHash   = $gitHash
+  gitHash     = $gitHash
   gitUrl      = $gitUrl
 "@
 
+###################################- Config -###################################
+# Print Scripts
+Write-Output @"
+
+  buildConfigs:
+"@
+
+$buildConfigs | ForEach-Object { Write-Output "    $_" }
+exit
+
+#################################- End Config -#################################
+
 # Get Target Scripts
 $buildScripts = @( Get-Item $targetRoot/$platform*.ps1 `
-    | Where-Object BaseName -NotMatch 'actions' `
+    | Where-Object BaseName -NotMatch 'actions|config' `
     | Where-Object BaseName -CMatch "$filter" `
     | ForEach-Object { $_.Name } )
 
