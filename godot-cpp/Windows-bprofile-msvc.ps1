@@ -66,3 +66,7 @@ function Build {
     # Report Results
     $statArray | Format-Table
 }
+
+function Test {
+    TestCommon
+}

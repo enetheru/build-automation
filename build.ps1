@@ -175,7 +175,6 @@ if( $list ) { exit }
 New-Item -Force -ItemType Directory -Path "$targetRoot/logs-raw" | Out-Null
 New-Item -Force -ItemType Directory -Path "$targetRoot/logs-clean" | Out-Null
 
-
 # Clone if not already
 H3 "Git Update/Clone Bare Repository"
 if( $fetch -eq $true ) {

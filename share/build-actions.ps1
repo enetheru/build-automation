@@ -151,7 +151,7 @@ function Fetch {
     # Update worktree
     Set-Location "$buildRoot"
     Format-Eval git checkout --force -d $gitHash
-    Format-Eval git status
+    Format-Eval git log -1
 }
 
 ##################################- Prepare -###################################
