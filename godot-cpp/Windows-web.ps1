@@ -31,8 +31,8 @@ function Prepare {
     
     # Erase key files to trigger a re-build so we can capture the build commands.
     # FIXME investigate compile_commands.json for the above purpose
-    EraseFiles "editor_plugin_registration" "o|d|obj"
-    EraseFiles "libgodot-cpp.web" "a"
+#    EraseFiles "editor_plugin_registration" "o|d|obj"
+#    EraseFiles "libgodot-cpp.web" "a"
     
     PrepareScons -v @("platform=web")
     
@@ -55,8 +55,8 @@ function Build {
     EmscriptenActivate "$emsdk" "$emsdkVersion"
     
     # Erase previous artifacts
-    Set-Location "$buildRoot"
-    EraseFiles -f "libgdexample.web" -e "wasm"
+#    Set-Location "$buildRoot"
+#    EraseFiles -f "libgdexample.web" -e "wasm"
     
     #SCons Build
     Set-Location "$buildRoot\test"
@@ -64,13 +64,15 @@ function Build {
     [array]$targets = @(
         "template_debug",
         "template_release",
-        "editor"
-    )
-    BuildSCons -v @("platform=web") -t $targets
+        "editor")
+    [array]$sconsVars = @(
+        "platform=web",
+        "threads=no")
+    BuildSCons -v $sconsVars -t $targets
     
     # Erase previous artifacts
-    Set-Location "$buildRoot"
-    EraseFiles -f "libgdexample.web" -e "wasm"
+#    Set-Location "$buildRoot"
+#    EraseFiles -f "libgdexample.web" -e "wasm"
     
     ## CMake Build
     Set-Location "$buildRoot\cmake-build"

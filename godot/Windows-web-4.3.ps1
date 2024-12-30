@@ -52,10 +52,16 @@ function Build {
     [array]$targets = @(
         "template_debug",
         "template_release",
-        "editor"
-        )
+        "editor")
     [array]$sconsVars = @(
-        "platform=web" )
+        "platform=web",
+        "dlink_enabled=yes",
+        "threads=yes",
+        "warnings=extra",
+        "werror=yes",
+        "debug_symbols=no"
+        # "use_closure_compiler=yes", # Fails to run command due to invalid quoting Error listed below #1
+    )
     BuildSCons -v $sconsVars -t $targets
     
     # TODO Report Build Artifact sizes

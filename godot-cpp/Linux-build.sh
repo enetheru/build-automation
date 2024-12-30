@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC2154,SC1090
 set -Ee
 prev_dir=$(pwd)
@@ -11,10 +11,10 @@ gitHash=${gitHash:-"master"}
 
 
 H2 " Build $target using $platform "
-if test -n "$BASH" ; then script=$BASH_SOURCE
-elif test -n "$TMOUT"; then script=${.sh.file}
-elif test -n "$ZSH_NAME" ; then script=${(%):-%x}
-elif test ${0##*/} = dash; then x=$(lsof -p $$ -Fn0 | tail -1); script=${x#n}
+if test -n "$BASH" ; then script=${BASH_SOURCE[0]}
+#elif test -n "$TMOUT"; then script=${.sh.file}
+#elif test -n "$ZSH_NAME" ; then script=${(%):-%x}
+#elif test ${0##*/} = dash; then x=$(lsof -p $$ -Fn0 | tail -1); script=${x#n}
 else script=$0
 fi
 
@@ -83,10 +83,6 @@ mkdir -p "$targetRoot/logs-clean"
 
 # Some steps are identical.
 PrepareCommon(){
-
-    local prev
-    prev="$(pwd)"
-
     cd "$buildRoot" || exit 1
     # Clean up key artifacts to trigger rebuild
     declare -a artifacts
