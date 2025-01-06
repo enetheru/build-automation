@@ -93,7 +93,7 @@ function Figlet {
         # When I output text with figlet it inserts a completely useles character as the space.
         $q1 = [char] 0x2001  # [MQSP]
         
-        &$customFiglet $alignment -w "$width" -f "$font" "$message" `
+        &$customFiglet $alignment -w "$width" -f "$font" "'$message'" `
             | Where-Object { $_ -NotMatch "^\s*$" } `
             | ForEach-Object {
                 if( $_.length -eq 0 ) { return }
@@ -265,12 +265,19 @@ function Print-Last-Error {
 ################################################################################
 
 function BigBox {
-    Fill '#' | Center "- $args -"
-    Right '#' | Left ' #'
+    [CmdletBinding( PositionalBinding = $false )]
+    param(
+        [string]$comment = '#',
+        [string]$fill = '#',
+        [int]$columns = 80,
+        [Parameter( ValueFromRemainingArguments = $true )]$message
+    )
+    Fill $fill | Center "- $args -" | Left $comment
+    Right '#' | Left '#'
     figlet -l -f "ANSI Regular" "$args" | ForEach-Object {
         Fill | Center $_ | Left ' #' | Right '#'
     }
-    Right '#' | Left ' #'
+    Right '#' | Left '#'
     Fill '#'
 }
 
@@ -280,4 +287,45 @@ function CMakeH1 {
         $width = 79
     }
     Fill '=' $width | Left '#[' | Center "[ $args ]" | Right '] '
+}
+
+function CodeHeading {
+    [CmdletBinding( PositionalBinding = $false )]
+    param(
+        [int]$columns = 80,
+        [string]$comment = '#',
+        [string]$pad = ' ',
+        [string]$border = '#',
+        [switch]$compact,
+        [string]$above,
+        [string]$below,
+        [Parameter( ValueFromRemainingArguments = $true )]$message
+    )
+    # Support surrounding border | 012
+    # and background             | 3B5
+    # using nine characters.     | 678
+    
+    if( $border.Length -lt 9 ) {
+        [string[]]$edges = ("$($border[0])" * 9).ToCharArray()
+        $edges[4] = ' '
+    } else {
+        [string[]]$edges = $border.ToCharArray()
+    }
+    
+    if( -Not ($comment -eq $edges[3]) ){
+        0,3,6 | ForEach-Object { $edges[$_] = "${comment}${pad}$($edges[$_])" }
+    }
+    
+    $top = Fill -width $columns -filler $edges[1] | Left $edges[0] | Right $edges[2]
+    $mid = Fill -width $columns -filler $edges[4] | Left $edges[3] | Right $edges[5]
+    $bottom = Fill -width $columns -filler $edges[7] | Left $edges[6] | Right $edges[8]
+    
+    "${comment}${pad}MARK: ${message}"
+    $above ? ($top | Center "$above") : $top
+    $compact ? $null : $mid
+    figlet -l -f "ANSI Regular" "${message}" | ForEach-Object {
+        $mid | Center $_
+    }
+    $compact ? $null : $mid
+    $below ? ($bottom | Center "$below") : $bottom
 }
