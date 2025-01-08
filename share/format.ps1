@@ -289,7 +289,16 @@ function CMakeH1 {
     Fill '=' $width | Left '#[' | Center "[ $args ]" | Right '] '
 }
 
-function CodeHeading {
+# MARK: CodeBox
+# ╓────────────────────────────────────────────────────────────────────────────╖
+# ║         ██████  ██████  ██████  ███████ ██████   ██████  ██   ██           ║
+# ║        ██      ██    ██ ██   ██ ██      ██   ██ ██    ██  ██ ██            ║
+# ║        ██      ██    ██ ██   ██ █████   ██████  ██    ██   ███             ║
+# ║        ██      ██    ██ ██   ██ ██      ██   ██ ██    ██  ██ ██            ║
+# ║         ██████  ██████  ██████  ███████ ██████   ██████  ██   ██           ║
+# ╙────────────────────────────────────────────────────────────────────────────╜
+# The above with:  CodeBox "CodeBox" -border "╓─╖║ ║╙─╜" -compact
+function CodeBox {
     [CmdletBinding( PositionalBinding = $false )]
     param(
         [int]$columns = 80,
@@ -301,9 +310,12 @@ function CodeHeading {
         [string]$below,
         [Parameter( ValueFromRemainingArguments = $true )]$message
     )
-    # Support surrounding border | 012
-    # and background             | 3B5
-    # using nine characters.     | 678
+    # Support surrounding border | 012 | ╓─╖ | ╭─╮ | ▛▀▜
+    # and background             | 3B5 | ║ ║ | │ │ | ▌ ▐
+    # using nine characters.     | 678 | ╙─╜ | ╰─╯ | ▙▄▟
+    # Eg.
+    # "╓─╖║ ║╙─╜", "╔═╗║ ║╚═╝", "╭─╮│ │╰─╯", "▛▀▜▌ ▐▙▄▟",
+    # "┌─┐│ │└─┘", "┏━┓┃ ┃┗━┛", "╒═╕│ │╘═╛"
     
     if( $border.Length -lt 9 ) {
         [string[]]$edges = ("$($border[0])" * 9).ToCharArray()
