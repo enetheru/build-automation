@@ -3,7 +3,6 @@
 
 # Powershell execution options
 Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
 
 # THis enables unicode characters to show up in the console
 $OutputEncoding = New-Object System.Text.UTF8Encoding
