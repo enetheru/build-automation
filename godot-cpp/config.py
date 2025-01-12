@@ -3,7 +3,14 @@ import time
 import types
 from types import SimpleNamespace
 
-from share.format import figlet, h3, fill
+# My imports
+from share.format import *
+
+target_config = SimpleNamespace(**{
+    'gitUrl'  : "http://github.com/enetheru/godot-cpp.git",
+    'gitHash' : None,
+    'build_configs' : {}
+})
 
 #TEMPORARY FIX
 jobs = 1
@@ -65,29 +72,28 @@ scons_command.command = types.MethodType( build_scons, scons_command )
 # ║          ██████  ██████  ██   ████ ██      ██  ██████  ███████            ║
 # ╙───────────────────────────────────────────────────────────────────────────╜
 # Construct build configurations
-build_configs : list = []
 
 #[=============================[ test config 1 ]=============================]
 new_config = SimpleNamespace(**{
     'name' : 'Windows.scons.template_debug',
     'gitUrl'  : "http://github.com/enetheru/godot-cpp.git",
     'gitHash' : None,
-    'build_command' : scons_command
+    # 'build_command' : scons_command
 })
-new_config.build = types.MethodType( lambda _self: _self.build_command.command("first",["build vars"]), new_config )
+# new_config.build = types.MethodType( lambda _self: _self.build_command.command("first",["build vars"]), new_config )
 
-build_configs.append( new_config )
+target_config.build_configs[new_config.name] = new_config
 
 #[=============================[ test config 2 ]=============================]
 new_config = SimpleNamespace(**{
     'name' : 'Windows.scons.template_release',
     'gitUrl'  : "http://github.com/enetheru/godot-cpp.git",
     'gitHash' : None,
-    'build_command' : scons_command
+    # 'build_command' : scons_command
 })
-new_config.build = types.MethodType( lambda _self: _self.build_command.command("second",["build vars"]), new_config )
+# new_config.build = types.MethodType( lambda _self: _self.build_command.command("second",["build vars"]), new_config )
 
-build_configs.append( new_config )
+target_config.build_configs[new_config.name] = new_config
 
 #{cmake,meson}
 #{make,ninja,scons,msvc,autotools,gradle,etc}

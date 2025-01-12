@@ -73,3 +73,6 @@ mono_crash.*.json
 /*/*.txt
 /*/*.txt.md
 summary.log
+/build_log.txt
+
+__pycache__/

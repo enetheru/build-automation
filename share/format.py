@@ -6,6 +6,7 @@ import shlex
 import shutil
 import subprocess
 import typing
+import re
 
 # # Update output buffer size to prevent clipping in Visual Studio output window.
 # if( $Host -and $Host.UI -and $Host.UI.RawUI ) {
@@ -69,7 +70,7 @@ def figlet(message:str, options:dict=None):
         'font':'standard'
     }
     # other figlet fonts I like are 'standard','Ogre', 'Stronger Than All' and 'ANSI Regular'
-    opts = {**defaults,**options}
+    opts = defaults | options
 
     # figlet_path = shutil.which("figlet")
     figlet_path = shutil.which( custom_figlet )
@@ -125,27 +126,33 @@ def right( msg:str='Right', line:str='' ):
 def terminal_title( message ):
     print( f"\033]0;{message}\007" )
 
-def h1(msg:str = 'heading 1', file:typing.IO=None):
-    string = figlet( msg, {'align':'c','font':'big'} )
-    if file:
-        file.write(string)
-        return string
-    print( string )
+def h1( msg:str = 'heading 1', file:typing.IO=None ):
+    title = figlet( msg, {'align':'c','font':'big'} )
+    string = os.linesep.join([s for s in title.splitlines() if not re.match( r'^\s*$', s)])
 
-def h2(msg:str = 'heading 2', file:typing.IO=None):
-    string = f'\n{centre( f'- {msg} -' , fill('='))}\n'
-    if file:
-        file.write(string)
-        return string
-    print( string )
+    if file: file.write(string)
+    else: print( string )
+    return string
+
+def h2(msg:str = 'heading 2', newline=True,file:typing.IO=None):
+    string = f'{'\n' if newline else ''}{centre( f'- {msg} -' , fill('='))}'
+    if file: file.write(string)
+    else: print( string )
+    return string
 
 #
-def h3(msg:str = 'heading 3'):
-    print( f'\n == {msg} ==')
+def h3(msg:str = 'heading 3', newline=True, file:typing.IO=None):
+    string =  f'{'\n' if newline else ''} == {msg} =='
+    if file: file.write(string)
+    else: print( string )
+    return string
 
 
-def h4(msg:str = 'heading 4'):
-    print( f"  => {msg}")
+def h4(msg:str = 'heading 4', file:typing.IO=None):
+    string =  f'  => {msg}'
+    if file: file.write(string)
+    else: print( string )
+    return string
 
 # MARK: COMMAND
 ##################################- Command -###################################
