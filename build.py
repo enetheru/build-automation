@@ -4,7 +4,6 @@ import multiprocessing
 import platform
 import importlib.util
 import sys
-import types
 
 from datetime import datetime
 from typing import IO
@@ -63,16 +62,8 @@ out_pipe.tee(open(log_path, 'w'), 'build_log')
 # Add all the things from the command line
 parser.parse_args(namespace=bargs)
 
-bargs.items = types.MethodType( lambda self: [[k,v] for k,v in self.__dict__.items() if k != 'items'], bargs)
-
-def print_config( dict_like ):
-    for k, v in dict_like.items():
-        if k in ['build_configs', 'env_command']:
-            continue
-        print(f'  {k:14s}= {v}')
-        if k in ['root_dir', 'append', 'filter', 'test', 'gitHash', 'target_root']:
-            print('')
-
+def get_interior_dict( subject )->dict:
+    return { k:v for k,v in subject.__dict__.items()}
 
 # ########################    Process Parameter Flags    ########################
 if not (bargs.fetch or bargs.prepare or bargs.build or bargs.test):
@@ -90,7 +81,9 @@ def print_eval(message):
 terminal_title("Build Automation")
 h1("AutoBuild")
 h3("Options", newline=False)
-print_config(bargs)
+
+for k,v in get_interior_dict(bargs).items():
+    print(f'  {k:14s}= {v}')
 
 # MARK: Configs
 # ==================[ Import Configurations ]==================-
@@ -115,15 +108,6 @@ for config_file in bargs.root_dir.glob(target_glob):
     # add to config dictionary
     config_imports[f'{target_name}'] = config
     target_configs[f'{target_name}'] = config.target_config
-
-# Add the items() method to the target config SimpleNamespace's
-for target_name, target_config in target_configs.items():
-    target_config.items = types.MethodType( lambda self: [[k,v] for k,v in self.__dict__.items() if k != 'items'], target_config)
-
-    build_configs:dict = target_config.build_configs
-    for build_name, build_config in build_configs.items():
-        build_config.items = types.MethodType( lambda self: [[k,v] for k,v in self.__dict__.items() if k != 'items'], build_config)
-
 
 for target_name, target_config in target_configs.items():
     build_configs:dict = target_config.build_configs
@@ -175,8 +159,7 @@ def clean_log(raw_file: IO, clean_file: IO):
 
 for target_name, target_config in target_configs.items():
     # ================[ Target Config Overrides ]==================-
-    # FIXME targs.__dict__ = target_config.__dict__ | bargs.__dict__
-    for k,v in bargs.items():
+    for k,v in get_interior_dict(bargs).items():
         if not getattr(target_config, k, False):
             setattr(target_config, k, v)
 
@@ -197,7 +180,13 @@ for target_name, target_config in target_configs.items():
     # ================[ Target Heading / Config ]==================-
     h2(target_name)
     print(figlet(target_name, {'font': 'standard'}))
-    print_config(target_config)
+    for k,v in get_interior_dict( target_config ).items():
+        if k == 'build_configs':
+            print( f'  {k:14s}=')
+            for s in v.keys():
+                print( f'    {s}')
+            continue
+        print(f'  {k:14s}= {v}')
 
     # ====================[ Git Clone/Update ]=====================-
     if target_config.fetch:
@@ -214,9 +203,8 @@ for target_name, target_config in target_configs.items():
     # Process Configs
     # MARK: pConfig
     for build_name, build_config in target_config.build_configs.items():
-        terminal_title(f'{target_name} - {build_name}')
-
-        for k,v in target_config.items():
+        for k,v in get_interior_dict(target_config).items():
+            if k in ['build_configs']: continue # Dont copy the list of build configs.
             setattr(build_config, k, v)
 
         # =================[ Build Config Overrides ]==================-
@@ -235,12 +223,17 @@ for target_name, target_config in target_configs.items():
 
         # =================[ Build Heading / Config ]==================-
         print('\n', centre(f'[ {build_config.name} ]', fill('- ', 80)))
-        print_config(build_config)
+        terminal_title(f'{target_name} - {build_name}')
+        for k,v in get_interior_dict( build_config ).items():
+            if k == 'env_command':
+                print(f'  {k:14s}= {v[0]} ...')
+                continue
+            print(f'  {k:14s}= {v}')
+
 
         # ====================[ Run Build Script ]=====================-
         h3("Run")
-        for l in build_config.env_command:
-            print( l )
+        print( ''.join( build_config.env_command ) )
 
         build_config.stats = {'start_time': datetime.now()}
         with subprocess.Popen(build_config.env_command, stdout=subprocess.PIPE) as proc:
