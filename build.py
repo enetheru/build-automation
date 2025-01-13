@@ -56,7 +56,7 @@ bargs.platform = platform.system()
 bargs.root_dir = pathlib.Path(__file__).parent
 
 # Log everything to a file
-log_path = bargs.root_dir.joinpath('build_log.txt')
+log_path = bargs.root_dir / 'build_log.txt'
 out_pipe.tee(open(log_path, 'w'), 'build_log')
 
 # Add all the things from the command line
@@ -165,7 +165,7 @@ for target_name, target_config in target_configs.items():
 
     target_config.target_name = target_name
 
-    target_config.target_root = target_config.root_dir.joinpath(f'{target_name}')
+    target_config.target_root = target_config.root_dir / f'{target_name}'
     os.chdir(target_config.target_root)
 
     # =====================[ stdout Logging ]======================-
@@ -173,7 +173,7 @@ for target_name, target_config in target_configs.items():
     os.makedirs(target_config.target_root.joinpath(f'logs-clean'), exist_ok=True)
 
     # Tee stdout to log file.
-    log_path = target_config.target_root.joinpath(f"logs-raw/{target_name}.txt")
+    log_path = target_config.target_root / f"logs-raw/{target_name}.txt"
     log_file = open(log_path, 'a' if target_config.append else 'w', buffering=1, encoding="utf-8")
     out_pipe.tee(log_file, target_name)
 
@@ -189,16 +189,16 @@ for target_name, target_config in target_configs.items():
         print(f'  {k:14s}= {v}')
 
     # ====================[ Git Clone/Update ]=====================-
-    if target_config.fetch:
-        h3("Git Update/Clone Bare Repository")
-        bare_git_path = target_config.target_root.joinpath('git')
-        if not bare_git_path.exists():
-            print_eval(f'git clone --bare "{target_config.gitUrl}" "{bare_git_path}"')
-        else:
-            print_eval(f'git --git-dir="{bare_git_path}" fetch --force origin *:*')
-            print_eval('git log -1 --pretty=%B')
-            print_eval(f'git --git-dir="{bare_git_path}" worktree list')
-            print_eval(f'git --git-dir="{bare_git_path}" worktree prune')
+    # FIXME if target_config.fetch:
+    #     h3("Git Update/Clone Bare Repository")
+    #     bare_git_path = target_config.target_root / 'git'
+    #     if not bare_git_path.exists():
+    #         print_eval(f'git clone --bare "{target_config.gitUrl}" "{bare_git_path}"')
+    #     else:
+    #         print_eval(f'git --git-dir="{bare_git_path}" fetch --force origin *:*')
+    #         print_eval('git log -1 --pretty=%B')
+    #         print_eval(f'git --git-dir="{bare_git_path}" worktree list')
+    #         print_eval(f'git --git-dir="{bare_git_path}" worktree prune')
 
     # Process Configs
     # MARK: pConfig
@@ -209,15 +209,25 @@ for target_name, target_config in target_configs.items():
 
         # =================[ Build Config Overrides ]==================-
         build_config.config_name = build_config.name
-        build_config.build_root = build_config.target_root.joinpath(build_config.name)
+        build_config.build_root = build_config.target_root / build_config.name
+
+        # Add env_type if it doesnt exist.
+        if 'env_type' not in get_interior_dict(build_config):
+            build_config.env_type = ''
 
         # env_command
-        if 'env_command' not in build_config.__dict__:
-            build_config.env_command = python_command(build_config.__dict__,
+        env_commmand = []
+        match build_config.env_type:
+            case 'python':
+                env_command = python_command(get_interior_dict(build_config), build_config.env_script )
+            case 'powershell':
+                env_command = pwsh_command(get_interior_dict(build_config), build_config.env_script )
+            case _:
+                env_command = python_command(get_interior_dict(build_config),
                 'print( "A build Environment command was not set." )' )
 
         # =====================[ stdout Logging ]======================-
-        log_path = build_config.target_root.joinpath(f"logs-raw/{build_config.name}.txt")
+        log_path = build_config.target_root / f"logs-raw/{build_config.name}.txt"
         log_file = open(log_path, 'a' if build_config.append else 'w', buffering=1, encoding="utf-8")
         out_pipe.tee(log_file, build_config.name)
 
@@ -233,13 +243,19 @@ for target_name, target_config in target_configs.items():
 
         # ====================[ Run Build Script ]=====================-
         h3("Run")
-        print( ''.join( build_config.env_command ) )
+        print( ' '.join( env_command ) )
 
         build_config.stats = {'start_time': datetime.now()}
-        with subprocess.Popen(build_config.env_command, stdout=subprocess.PIPE) as proc:
-            for line in proc.stdout:
+        with subprocess.Popen( env_command, stdout=subprocess.PIPE) as proc:
+            # FIXME pretty sure this evaluates after the command is completed
+            #   It would be nicer if this was evaluated in realtime
+            for line_bytes in proc.stdout:
+                line = line_bytes.decode('utf8').rstrip()
+                print(line)
                 # TODO I can watch for print statements here which assign statistics.
-                print(line.decode('utf8').rstrip())
+                # FIXME if line.startswith('scrape_this|'):
+                #     eval(line.split('|')[1], globals(), locals() )
+
 
         # TODO create a timeout for the processing, something reasonable.
         #   this should be defined in the build config as the largest possible build time that is expected.
@@ -257,7 +273,7 @@ for target_name, target_config in target_configs.items():
 
         h3("Post Run Actions")
         h4('Clean Log')
-        cleanlog_path = build_config.target_root.joinpath(f"logs-clean/{build_config.name}.txt")
+        cleanlog_path = build_config.target_root / f"logs-clean/{build_config.name}.txt"
         with open(log_path, 'r') as log_raw, open(cleanlog_path, 'w') as log_clean:
             clean_log(log_raw, log_clean)
 

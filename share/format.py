@@ -179,9 +179,12 @@ def h4(msg:str = 'heading 4', file:typing.IO=None):
 # https://stackoverflow.com/questions/54091396/live-output-stream-from-python-subprocess
 # https://docs.python.org/3.12/library/shlex.html#shlex.split
 def print_eval( command:str, dry:bool=False ):
+  # FIXME   print(f"""
+  # 󰝰 {os.getcwd()}
+  # 󰞷 {command}""")
     print(f"""
-  󰝰 {os.getcwd()}
-  󰞷 {command}""")
+  CWD: {os.getcwd()}
+     $ {command}""")
     if dry: return
     with subprocess.Popen( shlex.split(command), stdout=subprocess.PIPE ) as proc:
         for line in proc.stdout:
