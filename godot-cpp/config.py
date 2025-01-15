@@ -1,27 +1,9 @@
 #!/usr/bin/env python
 from types import SimpleNamespace
 
-# My imports
-from share.format import *
-
 target_config = SimpleNamespace(**{
     'gitUrl'  : "http://github.com/enetheru/godot-cpp.git",
-    'gitHash' : None,
     'build_configs' : {}
-})
-
-# MARK: SConsBuild
-# ╓───────────────────────────────────────────────────────────────────────────╖
-# ║   ██████  █████  █████  ███   ██ ██████ █████  ██   ██ ██ ██     █████    ║
-# ║   ██     ██     ██   ██ ████  ██ ██     ██  ██ ██   ██ ██ ██     ██  ██   ║
-# ║   ██████ ██     ██   ██ ██ ██ ██ ██████ █████  ██   ██ ██ ██     ██  ██   ║
-# ║       ██ ██     ██   ██ ██  ████     ██ ██  ██ ██   ██ ██ ██     ██  ██   ║
-# ║   ██████  █████  █████  ██   ███ ██████ █████   █████  ██ ██████ █████    ║
-# ╙───────────────────────────────────────────────────────────────────────────╜
-scons_command = SimpleNamespace(**{
-    'name'        : "SCons Build",
-    'status'      : "dnf",
-    'duration'    : None
 })
 
 # MARK: Configs
@@ -33,12 +15,38 @@ scons_command = SimpleNamespace(**{
 # ║          ██████  ██████  ██   ████ ██      ██  ██████  ███████            ║
 # ╙───────────────────────────────────────────────────────────────────────────╜
 # Construct build configurations
-
-#[=============================[ test config 1 ]=============================]
+#[=====================[ Windows.SCons.template_release ]=====================]
 new_config = SimpleNamespace(**{
-    'name' : 'Windows.scons.template_debug',
+    'name' : 'Windows.SCons.template_release',
     'gitUrl'  : "http://github.com/enetheru/godot-cpp.git",
-    'gitHash' : None,
+    'env_type':'python',
+    'env_script': """
+from actions import *
+
+stats = {}
+
+name = config['name']
+
+if config['fetch']:
+    stats['fetch'] = {'name':'fetch'}
+    terminal_title(f'Fetch - {name}')
+    with Timer(container=stats['fetch']):
+        git_fetch( config )
+        
+if config['build']:
+    stats['build'] = {'name':'build'}
+    terminal_title(f"Build - {name}")
+    with Timer(container=stats['build']):
+        build_scons( config, build_vars=['target=template_release'] )
+"""
+})
+
+target_config.build_configs[new_config.name] = new_config
+#[======================[ Windows.SCons.template_debug ]======================]
+
+new_config = SimpleNamespace(**{
+    'name' : 'Windows.SCons.template_debug',
+    'gitUrl'  : "http://github.com/enetheru/godot-cpp.git",
     'env_type':'python',
     'env_script': f"""
 from actions import *
@@ -61,11 +69,10 @@ if config['build']:
 
 target_config.build_configs[new_config.name] = new_config
 
-#[=============================[ test config 2 ]=============================]
+#[==========================[ Windows.SCons.editor ]==========================]
 new_config = SimpleNamespace(**{
-    'name' : 'Windows.scons.template_release',
+    'name' : 'Windows.SCons.editor',
     'gitUrl'  : "http://github.com/enetheru/godot-cpp.git",
-    'gitHash' : None,
 })
 
 target_config.build_configs[new_config.name] = new_config

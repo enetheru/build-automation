@@ -5,7 +5,7 @@ from pathlib import Path
 
 from share.format import *
 
-class timer(ContextDecorator):
+class Timer(ContextDecorator):
     def __init__(self, container:dict ):
         if not container:
             self.stats = {'name':'timer'}
@@ -72,41 +72,8 @@ def build_scons( config:dict, build_vars:list = [] ):
     h3(f'Config: { name }')
     h3(f'Target: {target}')
 
-    # FIXME take this out of dry mode.
-    print_eval( f'scons {' '.join(filter(None, build_vars))} target={target}' )
+    print_eval( f'scons {' '.join(filter(None, build_vars))}', dry=config['dry'] )
 
     h3('BuildScons Completed')
 
     fill('-')
-
-
-def process( config:dict ):
-    name = config['name']
-
-    if config['fetch']:
-        terminal_title(f'Fetch - {name}')
-        stats = {'name':'fetch'}
-        with timer(container=stats):
-            git_fetch(config)
-
-    if config['prepare']:
-        terminal_title(f"Prepare - {name}")
-        stats = {'name':'prepare'}
-        with timer(container=stats):
-            time.sleep(1)  # FIXME temporary
-            # TODO Prepare
-
-    if config['build']:
-        terminal_title(f"Build - {name}")
-        stats = {'name':'build'}
-        with timer(container=stats):
-            time.sleep(1)  # FIXME temporary
-            # TODO Build
-
-    if config['test']:
-        terminal_title(f"Test - {name}")
-        stats = {'name':'test'}
-        with timer(container=stats):
-            time.sleep(1)  # FIXME temporary
-            # TODO Test
-

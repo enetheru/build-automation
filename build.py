@@ -65,18 +65,6 @@ parser.parse_args(namespace=bargs)
 def get_interior_dict( subject )->dict:
     return { k:v for k,v in subject.__dict__.items()}
 
-# ########################    Process Parameter Flags    ########################
-if not (bargs.fetch or bargs.prepare or bargs.build or bargs.test):
-    bargs.list = True
-
-# redefine print_eval so that we can do dry runs.
-from share.format import print_eval as print_and_evaluate
-
-
-def print_eval(message):
-    print_and_evaluate(message, bargs.dry)
-
-
 # ================[ Main Heading and Options ]=================-
 terminal_title("Build Automation")
 h1("AutoBuild")
@@ -130,9 +118,8 @@ for target_name, target_config in target_configs.items():
 
 
 # List only.
-# FIXME this is temporarily disabled for testing.
-# if bargs.list:
-#     exit()
+if bargs.list:
+    exit()
 
 # MARK: Defaults
 # ====================[ Default Commands ]=====================-
@@ -189,16 +176,16 @@ for target_name, target_config in target_configs.items():
         print(f'  {k:14s}= {v}')
 
     # ====================[ Git Clone/Update ]=====================-
-    # FIXME if target_config.fetch:
-    #     h3("Git Update/Clone Bare Repository")
-    #     bare_git_path = target_config.target_root / 'git'
-    #     if not bare_git_path.exists():
-    #         print_eval(f'git clone --bare "{target_config.gitUrl}" "{bare_git_path}"')
-    #     else:
-    #         print_eval(f'git --git-dir="{bare_git_path}" fetch --force origin *:*')
-    #         print_eval('git log -1 --pretty=%B')
-    #         print_eval(f'git --git-dir="{bare_git_path}" worktree list')
-    #         print_eval(f'git --git-dir="{bare_git_path}" worktree prune')
+    if target_config.fetch:
+        h3("Git Update/Clone Bare Repository")
+        bare_git_path = target_config.target_root / 'git'
+        if not bare_git_path.exists():
+            print_eval(f'git clone --bare "{target_config.gitUrl}" "{bare_git_path}"')
+        else:
+            print_eval(f'git --git-dir="{bare_git_path}" fetch --force origin *:*')
+            print_eval('git log -1 --pretty=%B')
+            print_eval(f'git --git-dir="{bare_git_path}" worktree list')
+            print_eval(f'git --git-dir="{bare_git_path}" worktree prune')
 
     # Process Configs
     # MARK: pConfig
