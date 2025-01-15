@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from types import SimpleNamespace
 
-target_config = SimpleNamespace(**{
+project_config = SimpleNamespace(**{
     'gitUrl'  : "http://github.com/enetheru/godot-cpp.git",
     'build_configs' : {}
 })
@@ -48,7 +48,7 @@ pp( stats, indent=4 )
 """
     })
 
-    target_config.build_configs[new_config.name] = new_config
+    project_config.build_configs[new_config.name] = new_config
 
 #[==========================[ Windows.SCons.test.* ]==========================]
 for build_target in ['template_release','template_debug','editor']:
@@ -83,7 +83,7 @@ pp( stats, indent=4 )
 """
     })
 
-    target_config.build_configs[new_config.name] = new_config
+    project_config.build_configs[new_config.name] = new_config
 #{cmake,meson}
 #{make,ninja,scons,msvc,autotools,gradle,etc}
 #{gcc,clang,msvc,appleclang,ibm,etc}

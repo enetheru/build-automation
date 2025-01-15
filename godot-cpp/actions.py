@@ -39,7 +39,7 @@ def git_fetch( config:dict ):
     # Create worktree is missing
     if not pathlib.Path(config['build_root']).exists():
         h3("Create WorkTree")
-        print_eval( f'git --git-dir="{Path(config['target_root']) / 'git'}" worktree add -d "{config['build_root']}"' )
+        print_eval( f'git --git-dir="{Path(config['project_root']) / 'git'}" worktree add -d "{config['build_root']}"' )
     else:
         h3("Update WorkTree")
 
@@ -52,7 +52,7 @@ def git_fetch( config:dict ):
 
 def build_scons( config:dict, build_vars:list = [] ):
     name = config['config_name']
-    target = config['target_name']
+    project = config['project_name']
     build_root = Path( config['build_root'] )
     jobs = config['jobs']
 
@@ -70,7 +70,7 @@ def build_scons( config:dict, build_vars:list = [] ):
 
     figlet( name, {'font': 'small'})
     h3(f'Config: { name }')
-    h3(f'Target: {target}')
+    h3(f'project: {project}')
 
     print_eval( f'scons {' '.join(filter(None, build_vars))}', dry=config['dry'] )
 

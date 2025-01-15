@@ -26,9 +26,9 @@ parser_io.add_argument('--list', action='store_true')  # only list configs do no
 # Text Logger Option
 parser_io.add_argument('--append', action='store_true')  # Append to the logs rather than clobber
 
-# Filter which target/configurations get built.
-parser_filter = parser.add_argument_group('target filter')
-parser_filter.add_argument('--target', default='*')
+# Filter which project/configurations get built.
+parser_filter = parser.add_argument_group('project filter')
+parser_filter.add_argument('--project', default='*')
 parser_filter.add_argument('--filter', default='.*')
 
 # Process actions
@@ -76,17 +76,17 @@ for k,v in get_interior_dict(bargs).items():
 # MARK: Configs
 # ==================[ Import Configurations ]==================-
 
-h3('Targets and Configs')
+h3('projects and Configs')
 h4("Load Config Files")
-target_glob = f'{bargs.target}/config.py'
-print('  using file glob: ', target_glob)
+project_glob = f'{bargs.project}/config.py'
+print('  using file glob: ', project_glob)
 
-# Import target_config files.
+# Import project_config files.
 config_imports:dict = {}
-target_configs:dict = {}
-for config_file in bargs.root_dir.glob(target_glob):
-    # get the name of the target
-    target_name = os.path.basename(config_file.parent)
+project_configs:dict = {}
+for config_file in bargs.root_dir.glob(project_glob):
+    # get the name of the project
+    project_name = os.path.basename(config_file.parent)
     # Create Module Spec
     spec = importlib.util.spec_from_file_location(name='config', location=config_file)
     # import module
@@ -94,25 +94,25 @@ for config_file in bargs.root_dir.glob(target_glob):
     # load module
     spec.loader.exec_module(config)
     # add to config dictionary
-    config_imports[f'{target_name}'] = config
-    target_configs[f'{target_name}'] = config.target_config
+    config_imports[f'{project_name}'] = config
+    project_configs[f'{project_name}'] = config.project_config
 
-for target_name, target_config in target_configs.items():
-    build_configs:dict = target_config.build_configs
-    # Filter the configs in the target to match the filter criteria
-    target_config.build_configs = {k: v for k, v in build_configs.items() if re.search(bargs.filter, v.name)}
+for project_name, project_config in project_configs.items():
+    build_configs:dict = project_config.build_configs
+    # Filter the configs in the project to match the filter criteria
+    project_config.build_configs = {k: v for k, v in build_configs.items() if re.search(bargs.filter, v.name)}
 
-# keep only targets which have a build config.
-target_configs = {k: v for k, v in target_configs.items() if len(v.build_configs)}
+# keep only projects which have a build config.
+project_configs = {k: v for k, v in project_configs.items() if len(v.build_configs)}
 
-if not len(target_configs):
-    print("No target/config matches criteria")
+if not len(project_configs):
+    print("No project/config matches criteria")
     exit()
 
-h4("list target/config")
-for target_name, target_config in target_configs.items():
-    build_configs:dict = target_config.build_configs
-    print('  target: ', target_name)
+h4("list project/config")
+for project_name, project_config in project_configs.items():
+    build_configs:dict = project_config.build_configs
+    print('  project: ', project_name)
     for build_name, build_config in build_configs.items():
         print('    ', build_name)
 
@@ -144,30 +144,30 @@ def clean_log(raw_file: IO, clean_file: IO):
 
 # TODO Setup a keyboard interrupt to cancel a job and exit the loop, rather than quit the whole script.
 
-for target_name, target_config in target_configs.items():
-    # ================[ Target Config Overrides ]==================-
+for project_name, project_config in project_configs.items():
+    # ================[ project Config Overrides ]==================-
     for k,v in get_interior_dict(bargs).items():
-        if not getattr(target_config, k, False):
-            setattr(target_config, k, v)
+        if not getattr(project_config, k, False):
+            setattr(project_config, k, v)
 
-    target_config.target_name = target_name
+    project_config.project_name = project_name
 
-    target_config.target_root = target_config.root_dir / f'{target_name}'
-    os.chdir(target_config.target_root)
+    project_config.project_root = project_config.root_dir / f'{project_name}'
+    os.chdir(project_config.project_root)
 
     # =====================[ stdout Logging ]======================-
-    os.makedirs(target_config.target_root.joinpath(f'logs-raw'), exist_ok=True)
-    os.makedirs(target_config.target_root.joinpath(f'logs-clean'), exist_ok=True)
+    os.makedirs(project_config.project_root.joinpath(f'logs-raw'), exist_ok=True)
+    os.makedirs(project_config.project_root.joinpath(f'logs-clean'), exist_ok=True)
 
     # Tee stdout to log file.
-    log_path = target_config.target_root / f"logs-raw/{target_name}.txt"
-    log_file = open(log_path, 'a' if target_config.append else 'w', buffering=1, encoding="utf-8")
-    out_pipe.tee(log_file, target_name)
+    log_path = project_config.project_root / f"logs-raw/{project_name}.txt"
+    log_file = open(log_path, 'a' if project_config.append else 'w', buffering=1, encoding="utf-8")
+    out_pipe.tee(log_file, project_name)
 
-    # ================[ Target Heading / Config ]==================-
-    h2(target_name)
-    print(figlet(target_name, {'font': 'standard'}))
-    for k,v in get_interior_dict( target_config ).items():
+    # ================[ project Heading / Config ]==================-
+    h2(project_name)
+    print(figlet(project_name, {'font': 'standard'}))
+    for k,v in get_interior_dict( project_config ).items():
         if k == 'build_configs':
             print( f'  {k:14s}=')
             for s in v.keys():
@@ -176,11 +176,11 @@ for target_name, target_config in target_configs.items():
         print(f'  {k:14s}= {v}')
 
     # ====================[ Git Clone/Update ]=====================-
-    if target_config.fetch:
+    if project_config.fetch:
         h3("Git Update/Clone Bare Repository")
-        bare_git_path = target_config.target_root / 'git'
+        bare_git_path = project_config.project_root / 'git'
         if not bare_git_path.exists():
-            print_eval(f'git clone --bare "{target_config.gitUrl}" "{bare_git_path}"')
+            print_eval(f'git clone --bare "{project_config.gitUrl}" "{bare_git_path}"')
         else:
             print_eval(f'git --git-dir="{bare_git_path}" fetch --force origin *:*')
             print_eval(f'git --git-dir="{bare_git_path}" log -1 --pretty=%B')
@@ -189,14 +189,14 @@ for target_name, target_config in target_configs.items():
 
     # Process Configs
     # MARK: pConfig
-    for build_name, build_config in target_config.build_configs.items():
-        for k,v in get_interior_dict(target_config).items():
+    for build_name, build_config in project_config.build_configs.items():
+        for k,v in get_interior_dict(project_config).items():
             if k in ['build_configs']: continue # Dont copy the list of build configs.
             setattr(build_config, k, v)
 
         # =================[ Build Config Overrides ]==================-
         build_config.config_name = build_config.name
-        build_config.build_root = build_config.target_root / build_config.name
+        build_config.build_root = build_config.project_root / build_config.name
 
         # Add env_type if it doesnt exist.
         if 'env_type' not in get_interior_dict(build_config):
@@ -214,13 +214,13 @@ for target_name, target_config in target_configs.items():
                 'print( "A build Environment command was not set." )' )
 
         # =====================[ stdout Logging ]======================-
-        log_path = build_config.target_root / f"logs-raw/{build_config.name}.txt"
+        log_path = build_config.project_root / f"logs-raw/{build_config.name}.txt"
         log_file = open(log_path, 'a' if build_config.append else 'w', buffering=1, encoding="utf-8")
         out_pipe.tee(log_file, build_config.name)
 
         # =================[ Build Heading / Config ]==================-
         print('\n', centre(f'[ {build_config.name} ]', fill('- ', 80)))
-        terminal_title(f'{target_name} - {build_name}')
+        terminal_title(f'{project_name} - {build_name}')
         for k,v in get_interior_dict( build_config ).items():
             if k == 'env_command':
                 print(f'  {k:14s}= {v[0]} ...')
@@ -254,7 +254,7 @@ for target_name, target_config in target_configs.items():
         build_config.stats['end_time'] = datetime.now()
         build_config.stats['duration'] = build_config.stats['end_time'] - build_config.stats['start_time']
 
-        h3(f'{build_config.target_name}/{build_config.name} - Statistics')
+        h3(f'{build_config.project_name}/{build_config.name} - Statistics')
         for k, v in build_config.stats.items():
             print(f"  {k:14} = {v}")
 
@@ -262,14 +262,14 @@ for target_name, target_config in target_configs.items():
 
         h3("Post Run Actions")
         h4('Clean Log')
-        cleanlog_path = build_config.target_root / f"logs-clean/{build_config.name}.txt"
+        cleanlog_path = build_config.project_root / f"logs-clean/{build_config.name}.txt"
         with open(log_path, 'r') as log_raw, open(cleanlog_path, 'w') as log_clean:
             clean_log(log_raw, log_clean)
 
         print(fill(' -'))
 
-    # remove the target output log.
-    out_pipe.pop(target_name)
+    # remove the project output log.
+    out_pipe.pop(project_name)
 
 # MARK: Post
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
@@ -281,11 +281,9 @@ for target_name, target_config in target_configs.items():
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 h3("Final Stats")
 print(f'  {"original_command":14} = {bargs.command}')
-for target_name, target_config in target_configs.items():
-    print(f'  {target_name}')
-    for build_name, build_config in target_config.build_configs.items():
-        print(f'    {build_name}')
-        for k, v in build_config.stats.items():
-            print(f"      {k:10} = {v}")
+for project_name, project_config in project_configs.items():
+    print(f'  {project_name}')
+    for build_name, build_config in project_config.build_configs.items():
+        print(f'    {build_name:60s} - {build_config.stats['duration']}')
 
 out_pipe.pop('build_log')
