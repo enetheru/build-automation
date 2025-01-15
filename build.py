@@ -192,7 +192,8 @@ for project_name, project_config in project_configs.items():
     for build_name, build_config in project_config.build_configs.items():
         for k,v in get_interior_dict(project_config).items():
             if k in ['build_configs']: continue # Dont copy the list of build configs.
-            setattr(build_config, k, v)
+            if v or k not in get_interior_dict(build_config).keys():
+                setattr(build_config, k, v)
 
         # =================[ Build Config Overrides ]==================-
         build_config.config_name = build_config.name
