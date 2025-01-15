@@ -183,7 +183,7 @@ for target_name, target_config in target_configs.items():
             print_eval(f'git clone --bare "{target_config.gitUrl}" "{bare_git_path}"')
         else:
             print_eval(f'git --git-dir="{bare_git_path}" fetch --force origin *:*')
-            print_eval('git log -1 --pretty=%B')
+            print_eval(f'git --git-dir="{bare_git_path}" log -1 --pretty=%B')
             print_eval(f'git --git-dir="{bare_git_path}" worktree list')
             print_eval(f'git --git-dir="{bare_git_path}" worktree prune')
 
@@ -233,7 +233,9 @@ for target_name, target_config in target_configs.items():
         print( ' '.join( env_command ) )
 
         build_config.stats = {'start_time': datetime.now()}
-        with subprocess.Popen( env_command, stdout=subprocess.PIPE) as proc:
+        with subprocess.Popen( env_command,
+                               stderr=subprocess.STDOUT,
+                               stdout=subprocess.PIPE) as proc:
             # FIXME pretty sure this evaluates after the command is completed
             #   It would be nicer if this was evaluated in realtime
             for line_bytes in proc.stdout:

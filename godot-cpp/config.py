@@ -15,17 +15,21 @@ target_config = SimpleNamespace(**{
 # ║          ██████  ██████  ██   ████ ██      ██  ██████  ███████            ║
 # ╙───────────────────────────────────────────────────────────────────────────╜
 # Construct build configurations
-#[=====================[ Windows.SCons.template_release ]=====================]
-new_config = SimpleNamespace(**{
-    'name' : 'Windows.SCons.template_release',
-    'gitUrl'  : "http://github.com/enetheru/godot-cpp.git",
-    'env_type':'python',
-    'env_script': """
+
+#[============================[ Windows.SCons.* ]============================]
+for build_target in ['template_release','template_debug','editor']:
+    new_config = SimpleNamespace(**{
+        'name' : f'Windows.SCons.{build_target}',
+        'build_target':build_target,
+        'env_type':'python',
+        'env_script': """
+from pprint import pp
 from actions import *
 
-stats = {}
-
 name = config['name']
+build_target = config['build_target']
+
+stats = {'name':name}
 
 if config['fetch']:
     stats['fetch'] = {'name':'fetch'}
@@ -37,46 +41,49 @@ if config['build']:
     stats['build'] = {'name':'build'}
     terminal_title(f"Build - {name}")
     with Timer(container=stats['build']):
-        build_scons( config, build_vars=['target=template_release'] )
+        build_scons( config, build_vars=[f'target={build_target}'] )
+
+h3( 'build_config stats' )
+pp( stats, indent=4 )
 """
-})
+    })
 
-target_config.build_configs[new_config.name] = new_config
-#[======================[ Windows.SCons.template_debug ]======================]
+    target_config.build_configs[new_config.name] = new_config
 
-new_config = SimpleNamespace(**{
-    'name' : 'Windows.SCons.template_debug',
-    'gitUrl'  : "http://github.com/enetheru/godot-cpp.git",
-    'env_type':'python',
-    'env_script': f"""
+#[==========================[ Windows.SCons.test.* ]==========================]
+for build_target in ['template_release','template_debug','editor']:
+    new_config = SimpleNamespace(**{
+        'name' : f'Windows.SCons.test.{build_target}',
+        'build_target':build_target,
+        'build_root':'test',
+        'env_type':'python',
+        'env_script': """
+from pprint import pp
 from actions import *
 
 name = config['name']
+build_target = config['build_target']
+
+stats = {'name':name}
 
 if config['fetch']:
-    terminal_title(f'Fetch - {{name}}')
-    stats = {{'name':'fetch'}}
-    with timer(container=stats):
-        git_fetch(config)
+    stats['fetch'] = {'name':'fetch'}
+    terminal_title(f'Fetch - {name}')
+    with Timer(container=stats['fetch']):
+        git_fetch( config )
         
 if config['build']:
-    terminal_title(f"Build - {{name}}")
-    stats = {{'name':'build'}}
-    with timer(container=stats):
-        build_scons( config )
+    stats['build'] = {'name':'build'}
+    terminal_title(f"Build - {name}")
+    with Timer(container=stats['build']):
+        build_scons( config, build_vars=[f'target={build_target}'] )
+
+h3( 'build_config stats' )
+pp( stats, indent=4 )
 """
-})
+    })
 
-target_config.build_configs[new_config.name] = new_config
-
-#[==========================[ Windows.SCons.editor ]==========================]
-new_config = SimpleNamespace(**{
-    'name' : 'Windows.SCons.editor',
-    'gitUrl'  : "http://github.com/enetheru/godot-cpp.git",
-})
-
-target_config.build_configs[new_config.name] = new_config
-
+    target_config.build_configs[new_config.name] = new_config
 #{cmake,meson}
 #{make,ninja,scons,msvc,autotools,gradle,etc}
 #{gcc,clang,msvc,appleclang,ibm,etc}
