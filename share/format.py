@@ -178,17 +178,22 @@ def h4(msg:str = 'heading 4', file:typing.IO=None):
 # https://www.devgem.io/posts/capturing-realtime-output-from-a-subprocess-in-python
 # https://stackoverflow.com/questions/54091396/live-output-stream-from-python-subprocess
 # https://docs.python.org/3.12/library/shlex.html#shlex.split
-def print_eval( command:str, dry:bool=False ):
+def print_eval( command:str, dry:bool=False ) -> int:
   # FIXME   print(f"""
   # 󰝰 {os.getcwd()}
   # 󰞷 {command}""")
     print(f"""
   CWD: {os.getcwd()}
      $ {command}""")
-    if dry: return
-    with subprocess.Popen( shlex.split(command), stdout=subprocess.PIPE ) as proc:
+    if dry: return 0
+    returncode:int
+    with subprocess.Popen( shlex.split(command),
+                           stderr=subprocess.STDOUT,
+                           stdout=subprocess.PIPE ) as proc:
         for line in proc.stdout:
             print(line.decode('utf8').rstrip())
+        returncode = proc.returncode
+    return returncode
 
 # function Print-Last-Error {
 #     H4 "last exit?     = $LASTEXITCODE"
