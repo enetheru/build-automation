@@ -132,18 +132,15 @@ def clean_log(raw_file: IO, clean_file: IO):
     for i in range(10):
         clean_file.write(raw_file.readline())
 
-
-# MARK: Process
-# ╓────────────────────────────────────────────────────────────────────────────╖
-# ║         ██████  ██████   ██████   ██████ ███████ ███████ ███████           ║
-# ║         ██   ██ ██   ██ ██    ██ ██      ██      ██      ██                ║
-# ║         ██████  ██████  ██    ██ ██      █████   ███████ ███████           ║
-# ║         ██      ██   ██ ██    ██ ██      ██           ██      ██           ║
-# ║         ██      ██   ██  ██████   ██████ ███████ ███████ ███████           ║
-# ╙────────────────────────────────────────────────────────────────────────────╜
-
+# MARK: pProject
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ___                         ___          _        _                       │
+# │ | _ \_ _ ___  __ ___ ______ | _ \_ _ ___ (_)___ __| |_                     │
+# │ |  _/ '_/ _ \/ _/ -_|_-<_-< |  _/ '_/ _ \| / -_) _|  _|                    │
+# │ |_| |_| \___/\__\___/__/__/ |_| |_| \___// \___\__|\__|                    │
+# │                                        |__/                                │
+# ╰────────────────────────────────────────────────────────────────────────────╯
 # TODO Setup a keyboard interrupt to cancel a job and exit the loop, rather than quit the whole script.
-
 for project_name, project_config in project_configs.items():
     # ================[ project Config Overrides ]==================-
     for k,v in get_interior_dict(bargs).items():
@@ -187,8 +184,14 @@ for project_name, project_config in project_configs.items():
             print_eval(f'git --git-dir="{bare_git_path}" worktree list')
             print_eval(f'git --git-dir="{bare_git_path}" worktree prune')
 
-    # Process Configs
-    # MARK: pConfig
+    # MARK: pBuildConfig
+    # ╭────────────────────────────────────────────────────────────────────────────╮
+    # │  ___                          ___           __ _                           │
+    # │ | _ \_ _ ___  __ ___ ______  / __|___ _ _  / _(_)__ _                      │
+    # │ |  _/ '_/ _ \/ _/ -_|_-<_-< | (__/ _ \ ' \|  _| / _` |                     │
+    # │ |_| |_| \___/\__\___/__/__/  \___\___/_||_|_| |_\__, |                     │
+    # │                                                 |___/                      │
+    # ╰────────────────────────────────────────────────────────────────────────────╯
     for build_name, build_config in project_config.build_configs.items():
         for k,v in get_interior_dict(project_config).items():
             if k in ['build_configs']: continue # Dont copy the list of build configs.
@@ -198,23 +201,24 @@ for project_name, project_config in project_configs.items():
         # =================[ Build Config Overrides ]==================-
         build_config.config_name = build_config.name
         build_config.build_root = build_config.project_root / build_config.name
+        script_path = build_config.project_root / f'{build_config.name}.py'
 
-        # Add env_type if it doesnt exist.
-        if 'env_type' not in get_interior_dict(build_config):
-            build_config.env_type = ''
+        #[======================[ Format and Save Build Script ]======================]
+        h4('Processing Build Script')
+        script = python_preamble( build_config ) + build_config.script.format(**get_interior_dict(build_config))
+        with open( script_path, 'w') as file:
+            file.write( script )
 
-        # env_command
-        env_commmand = []
-        match build_config.env_type:
-            case 'python':
-                env_command = python_command(get_interior_dict(build_config), build_config.env_script )
-            case 'powershell':
-                env_command = pwsh_command(get_interior_dict(build_config), build_config.env_script )
-            case _:
-                env_command = python_command(get_interior_dict(build_config),
-                'print( "A build Environment command was not set." )' )
+        #[==========================[ Shell / Environment ]==========================]
+        h4('Determine Shell Environment')
+        if 'shell' in get_interior_dict(build_config).keys() and build_config.shell in shells.keys():
+                env_command = shells[build_config.shell]
+                env_command += [f'python "{script_path}"']
+        else:
+            env_command = ['python', '-c', """print('config missing "shell" key')"""]
 
         # =====================[ stdout Logging ]======================-
+        h4('Configure Logging')
         log_path = build_config.project_root / f"logs-raw/{build_config.name}.txt"
         log_file = open(log_path, 'a' if build_config.append else 'w', buffering=1, encoding="utf-8")
         out_pipe.tee(log_file, build_config.name)
@@ -222,12 +226,6 @@ for project_name, project_config in project_configs.items():
         # =================[ Build Heading / Config ]==================-
         print('\n', centre(f'[ {build_config.name} ]', fill('- ', 80)))
         terminal_title(f'{project_name} - {build_name}')
-        for k,v in get_interior_dict( build_config ).items():
-            if k == 'env_command':
-                print(f'  {k:14s}= {v[0]} ...')
-                continue
-            print(f'  {k:14s}= {v}')
-
 
         # ====================[ Run Build Script ]=====================-
         h3("Run")

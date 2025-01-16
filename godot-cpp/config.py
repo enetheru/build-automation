@@ -19,19 +19,16 @@ scons_script = """
 from pprint import pp
 from actions import *
 
-name = config['name']
-build_target = config['build_target']
+stats = {{'name':'{name}'}}
 
-stats = {'name':name}
-
-if config['fetch']:
-    stats['fetch'] = {'name':'fetch'}
+if {fetch}:
+    stats['fetch'] = {{'name':'fetch'}}
     terminal_title(f'Fetch - {name}')
     with Timer(container=stats['fetch']):
         git_fetch( config )
         
-if config['build']:
-    stats['build'] = {'name':'build'}
+if {build}:
+    stats['build'] = {{'name':'build'}}
     terminal_title(f"Build - {name}")
     with Timer(container=stats['build']):
         build_scons( config, build_vars=[f'target={build_target}'] )
@@ -77,65 +74,83 @@ if config['build']:
 h3( 'build_config stats' )
 pp( stats, indent=4 )
 """
+msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
 
-# MARK: Configs
-# ╓───────────────────────────────────────────────────────────────────────────╖
-# ║          ██████  ██████  ███    ██ ███████ ██  ██████  ███████            ║
-# ║         ██      ██    ██ ████   ██ ██      ██ ██       ██                 ║
-# ║         ██      ██    ██ ██ ██  ██ █████   ██ ██   ███ ███████            ║
-# ║         ██      ██    ██ ██  ██ ██ ██      ██ ██    ██      ██            ║
-# ║          ██████  ██████  ██   ████ ██      ██  ██████  ███████            ║
-# ╙───────────────────────────────────────────────────────────────────────────╜
+# ╒════════════════════════════════════════════════════════════════════════════╕
+# │            ██████  ███████ ███████ ██   ██ ████████  ██████  ██████        │
+# │            ██   ██ ██      ██      ██  ██     ██    ██    ██ ██   ██       │
+# │            ██   ██ █████   ███████ █████      ██    ██    ██ ██████        │
+# │            ██   ██ ██           ██ ██  ██     ██    ██    ██ ██            │
+# │            ██████  ███████ ███████ ██   ██    ██     ██████  ██            │
+# ╘════════════════════════════════════════════════════════════════════════════╛
 # Construct build configurations
+# MARK: Linux
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  _    _                                                                    │
+# │ | |  (_)_ _ _  ___ __                                                      │
+# │ | |__| | ' \ || \ \ /                                                      │
+# │ |____|_|_||_\_,_/_\_\                                                      │
+# ╰────────────────────────────────────────────────────────────────────────────╯
 
-#[============================[ Windows.SCons.* ]============================]
+# MARK: MacOS
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  __  __          ___  ___                                                  │
+# │ |  \/  |__ _ __ / _ \/ __|                                                 │
+# │ | |\/| / _` / _| (_) \__ \                                                 │
+# │ |_|  |_\__,_\__|\___/|___/                                                 │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
+# MARK: Windows
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │ __      ___         _                                                      │
+# │ \ \    / (_)_ _  __| |_____ __ _____                                       │
+# │  \ \/\/ /| | ' \/ _` / _ \ V  V (_-<                                       │
+# │   \_/\_/ |_|_||_\__,_\___/\_/\_//__/                                       │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
+#[=================================[ SCons ]=================================]
 for build_target in ['template_release','template_debug','editor']:
     new_config = SimpleNamespace(**{
         'name' : f'Windows.SCons.{build_target}',
         'build_target':build_target,
-        'env_type':'python',
-        'env_script': scons_script
+        'script': scons_script,
+        'shell':'msys2.clang64'
     })
 
     project_config.build_configs[new_config.name] = new_config
 
-#[==========================[ Windows.SCons.test.* ]==========================]
-for build_target in ['template_release','template_debug','editor']:
-    new_config = SimpleNamespace(**{
-        'name' : f'Windows.SCons.test.{build_target}',
-        'build_target':build_target,
-        'env_type':'python',
-        'env_script': scons_script
-    })
+# ╒════════════════════════════════════════════════════════════════════════════╕
+# │                 ███    ███  ██████  ██████  ██ ██      ███████             │
+# │                 ████  ████ ██    ██ ██   ██ ██ ██      ██                  │
+# │                 ██ ████ ██ ██    ██ ██████  ██ ██      █████               │
+# │                 ██  ██  ██ ██    ██ ██   ██ ██ ██      ██                  │
+# │                 ██      ██  ██████  ██████  ██ ███████ ███████             │
+# ╘════════════════════════════════════════════════════════════════════════════╛
 
-    project_config.build_configs[new_config.name] = new_config
+# MARK: Android
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │    _           _         _    _                                            │
+# │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
+# │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
+# │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
+# ╰────────────────────────────────────────────────────────────────────────────╯
 
-#[============================[ Windows.CMake.* ]============================]
-for build_target in ['template_release','template_debug','editor']:
-    new_config = SimpleNamespace(**{
-        'name' : f'Windows.CMake.test.{build_target}',
-        'env_type':'python',
-        'env_script': cmake_script,
-        'godot_build_profile':'test/build_profile.json',
-        'cmake_config_vars':['-DGODOT_ENABLE_TESTING=ON'],
-        'cmake_build_vars':['--target',f'godot-cpp.test.{build_target}'],
-    })
+# MARK: iOS
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  _  ___  ___                                                               │
+# │ (_)/ _ \/ __|                                                              │
+# │ | | (_) \__ \                                                              │
+# │ |_|\___/|___/                                                              │
+# ╰────────────────────────────────────────────────────────────────────────────╯
 
-    project_config.build_configs[new_config.name] = new_config
-
-#[================================[ grab_bag ]================================]
-new_config = SimpleNamespace(**{
-    'gitUrl'  : "http://github.com/enetheru/godot-cpp.git",
-    'gitHash'  : "947f0071bce8a6dc575986f77250dd42826065e1",
-    'name' : f'pr.grab_bag',
-    'env_type':'python',
-    'env_script': cmake_script,
-    'godot_build_profile':'test/build_profile.json',
-    'cmake_config_vars':['-DGODOT_ENABLE_TESTING=ON'],
-    'cmake_build_vars':['--target',f'godot-cpp.test.template_release'],
-})
-
-project_config.build_configs[new_config.name] = new_config
+# MARK: Web
+# ╒════════════════════════════════════════════════════════════════════════════╕
+# │                            ██     ██ ███████ ██████                        │
+# │                            ██     ██ ██      ██   ██                       │
+# │                            ██  █  ██ █████   ██████                        │
+# │                            ██ ███ ██ ██      ██   ██                       │
+# │                             ███ ███  ███████ ██████                        │
+# ╘════════════════════════════════════════════════════════════════════════════╛
 
 
 #{cmake,meson}

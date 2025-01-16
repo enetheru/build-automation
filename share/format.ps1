@@ -93,7 +93,7 @@ function Figlet {
         # When I output text with figlet it inserts a completely useles character as the space.
         $q1 = [char] 0x2001  # [MQSP]
         
-        &$customFiglet $alignment -w "$width" -f "$font" "'$message'" `
+        &$customFiglet $alignment -w "$width" -f "$font" "$message" `
             | Where-Object { $_ -NotMatch "^\s*$" } `
             | ForEach-Object {
                 if( $_.length -eq 0 ) { return }
@@ -140,13 +140,14 @@ function Center {
 function Left {
     [CmdletBinding( )]
     param(
+        [int]$indent = 0,
         [Parameter( Position = 0 )][string]$string = 'Left ',
         [Parameter( Position = 1, ValueFromPipeline )][string]$line = "$(Fill)"
     )
     
     process {
         $pos = 0
-        $length = $string.Length
+        $length = $string.Length + $indent
         
         if( $pos -lt 0 ) {
             Write-Output $string
@@ -161,12 +162,13 @@ function Left {
 function Right {
     [CmdletBinding( )]
     param(
+        [int]$indent = 0,
         [Parameter( Position = 0 )][string]$string = ' Right',
         [Parameter( Position = 1, ValueFromPipeline )][string]$line = "$(Fill)"
     )
 
     process {
-        $pos = $line.Length - $string.Length
+        $pos = ($line.Length - $string.Length) - $indent
         $length = $string.Length
 
         if( $pos -lt 0 ) {
@@ -176,6 +178,33 @@ function Right {
             $replaceExp = "`${front}${string}`${rear}"
             $line -creplace $searchExp,$replaceExp
         }
+    }
+}
+
+function Align {
+    [CmdletBinding( )]
+    param(
+        [int]$indent = 0,
+        [string]$mode = 'center', # recognises [left, center, right] # TODO justified?
+        [Parameter( Position = 0 )][string]$string = 'Alignment',
+        [Parameter( Position = 1, ValueFromPipeline )][string]$line = "$(Fill)"
+    )
+    
+    process {
+        [int]$pos = 0
+        switch($mode ){
+            'left'   { $pos = $indent }
+            'center' { $pos = (($line.Length - $string.Length) / 2) + $indent}
+            'right'  { $pos = ($line.Length - $string.Length) - $indent }
+        }
+        [int]$length = $string.Length
+        
+        if( $pos -lt 0 ) {
+            $pos = 0
+        }
+        $searchExp = "^(?<front>.{$pos}).{$length}(?<rear>.*$)"
+        $replaceExp = "`${front}${string}`${rear}"
+        $line -creplace $searchExp,$replaceExp
     }
 }
 
@@ -304,10 +333,12 @@ function CodeBox {
         [int]$columns = 80,
         [string]$comment = '#',
         [string]$pad = ' ',
-        [string]$border = '#',
+        [string]$border = "╒═╕│ │╘═╛",
         [switch]$compact,
         [string]$above,
         [string]$below,
+        [string]$font = 'ANSI Regular',
+        [string]$align = 'center',
         [Parameter( ValueFromRemainingArguments = $true )]$message
     )
     # Support surrounding border | 012 | ╓─╖ | ╭─╮ | ▛▀▜
@@ -335,8 +366,10 @@ function CodeBox {
     "${comment}${pad}MARK: ${message}"
     $above ? ($top | Center "$above") : $top
     $compact ? $null : $mid
-    figlet -l -f "ANSI Regular" "${message}" | ForEach-Object {
-        $mid | Center $_
+    figlet -l -f "$font" ${message} | ForEach-Object {
+#        $mid | Center $_
+#
+        $mid | Align -mode $align $_ -indent 4
     }
     $compact ? $null : $mid
     $below ? ($bottom | Center "$below") : $bottom
