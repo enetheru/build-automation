@@ -48,10 +48,10 @@ from actions import *
 name = config['name']
 if 
 
-build_root = Path(config['build_root'])
+source_dir = Path(config['source_dir'])
 
 if 'godot_build_profile' in config.keys():
-    build_profile = build_root / config['godot_build_profile']
+    build_profile = source_dir / config['godot_build_profile']
     config['cmake_config_vars'] += [f'-DGODOT_BUILD_PROFILE="{build_profile}"']
 
 stats = {'name':name}

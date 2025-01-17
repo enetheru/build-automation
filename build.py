@@ -200,7 +200,7 @@ for project_name, project_config in project_configs.items():
 
         # =================[ Build Config Overrides ]==================-
         build_config.config_name = build_config.name
-        build_config.build_root = build_config.project_root / build_config.name
+        build_config.source_dir = build_config.project_root / build_config.name
         script_path = build_config.project_root / f'{build_config.name}.py'
 
         #[======================[ Format and Save Build Script ]======================]

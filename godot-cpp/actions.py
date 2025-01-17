@@ -45,14 +45,14 @@ class Timer(ContextDecorator):
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 def git_fetch( config:dict ):
     # Create worktree is missing
-    if not pathlib.Path(config['build_root']).exists():
+    if not pathlib.Path(config['source_dir']).exists():
         h3("Create WorkTree")
-        print_eval( f'git --git-dir="{Path(config['project_root']) / 'git'}" worktree add -d "{config['build_root']}"' )
+        print_eval( f'git --git-dir="{Path(config['project_root']) / 'git'}" worktree add -d "{config['source_dir']}"' )
     else:
         h3("Update WorkTree")
 
     # Update worktree
-    os.chdir( config['build_root'])
+    os.chdir( config['source_dir'])
     print_eval( f'git checkout --force -d { config['gitHash'] }' )
     print_eval( 'git log -1' )
 
@@ -68,14 +68,14 @@ def git_fetch( config:dict ):
 def build_scons( config:dict, build_vars:list = [] ):
     name = config['config_name']
     project = config['project_name']
-    build_root = Path( config['build_root'] )
+    source_dir = Path( config['source_dir'] )
     jobs = config['jobs']
 
-    os.chdir( build_root )
+    os.chdir( source_dir )
 
     # requires SConstruct file existing in the current directory.
-    if not (build_root / 'SConstruct').exists():
-        raise f'Missing SConstruct in {build_root}'
+    if not (source_dir / 'SConstruct').exists():
+        raise f'Missing SConstruct in {source_dir}'
 
     do_jobs = f'-j {jobs}' if jobs > 0 else None
     do_verbose = 'verbose=yes' if config['quiet'] is False else None
@@ -103,19 +103,19 @@ def build_scons( config:dict, build_vars:list = [] ):
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
 def prepare_cmake( config:dict, prep_vars:list = [] ) -> dict:
-    build_root = Path( config['build_root'] )
+    source_dir = Path( config['source_dir'] )
 
-    os.chdir( build_root )
+    os.chdir( source_dir )
 
     # requires CMakeLists.txt file existing in the current directory.
-    if not (build_root / 'CMakeLists.txt').exists():
-        raise f'Missing CMakeLists.txt in {build_root}'
+    if not (source_dir / 'CMakeLists.txt').exists():
+        raise f'Missing CMakeLists.txt in {source_dir}'
 
     # Check for build_dir
     if 'build_dir' in config.keys():
         build_dir = config['build_dir']
     else:
-        config['build_dir'] = build_dir = build_root / 'cmake_build'
+        config['build_dir'] = build_dir = source_dir / 'cmake_build'
 
     # Create Build Directory
     if not build_dir.is_dir():
