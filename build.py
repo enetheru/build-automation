@@ -193,12 +193,18 @@ for project_name, project_config in project_configs.items():
     # │                                                 |___/                      │
     # ╰────────────────────────────────────────────────────────────────────────────╯
     for build_name, build_config in project_config.build_configs.items():
+        # =================[ Build Heading / Config ]==================-
+        terminal_title(f'{project_name} - {build_name}')
+        print('\n', centre( f'- Started: {build_name} -', fill('=', 80)))
+
+        # =================[ Build Config Overrides ]==================-
+        # update from project config
         for k,v in get_interior_dict(project_config).items():
             if k in ['build_configs']: continue # Dont copy the list of build configs.
             if v or k not in get_interior_dict(build_config).keys():
                 setattr(build_config, k, v)
 
-        # =================[ Build Config Overrides ]==================-
+        # additional overrides
         build_config.config_name = build_config.name
         build_config.source_dir = build_config.project_root / build_config.name
         script_path = build_config.project_root / f'{build_config.name}.py'
@@ -211,21 +217,20 @@ for project_name, project_config in project_configs.items():
 
         #[==========================[ Shell / Environment ]==========================]
         h4('Determine Shell Environment')
+        env_command:list = list() # reset variable from previous loop
         if 'shell' in get_interior_dict(build_config).keys() and build_config.shell in shells.keys():
-                env_command = shells[build_config.shell]
-                env_command += [f'python "{script_path}"']
+            print(f'    Using: {build_config.shell}')
+            env_command = shells[build_config.shell].copy()
+            env_command += [f'python "{script_path}"']
         else:
-            env_command = ['python', '-c', """print('config missing "shell" key')"""]
+            print(f'    config missing key: shell, bailing on config.')
+            continue
 
         # =====================[ stdout Logging ]======================-
         h4('Configure Logging')
         log_path = build_config.project_root / f"logs-raw/{build_config.name}.txt"
         log_file = open(log_path, 'a' if build_config.append else 'w', buffering=1, encoding="utf-8")
         out_pipe.tee(log_file, build_config.name)
-
-        # =================[ Build Heading / Config ]==================-
-        print('\n', centre(f'[ {build_config.name} ]', fill('- ', 80)))
-        terminal_title(f'{project_name} - {build_name}')
 
         # ====================[ Run Build Script ]=====================-
         h3("Run")
@@ -265,7 +270,7 @@ for project_name, project_config in project_configs.items():
         with open(log_path, 'r') as log_raw, open(cleanlog_path, 'w') as log_clean:
             clean_log(log_raw, log_clean)
 
-        print(fill(' -'))
+        print(centre( f'Completed: {build_config.name}', fill(' -', 80)))
 
     # remove the project output log.
     out_pipe.pop(project_name)

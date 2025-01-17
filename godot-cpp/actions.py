@@ -68,14 +68,17 @@ def git_fetch( config:dict ):
 def build_scons( config:dict, build_vars:list = [] ):
     name = config['config_name']
     project = config['project_name']
-    source_dir = Path( config['source_dir'] )
     jobs = config['jobs']
 
-    os.chdir( source_dir )
+    build_dir = Path( config['build_dir'] )
+    if not build_dir.is_absolute():
+        build_dir = Path(config['source_dir']) / build_dir
+
+    os.chdir( build_dir )
 
     # requires SConstruct file existing in the current directory.
-    if not (source_dir / 'SConstruct').exists():
-        raise f'Missing SConstruct in {source_dir}'
+    if not (build_dir / 'SConstruct').exists():
+        raise f'Missing SConstruct in {build_dir}'
 
     do_jobs = f'-j {jobs}' if jobs > 0 else None
     do_verbose = 'verbose=yes' if config['quiet'] is False else None
@@ -111,11 +114,14 @@ def prepare_cmake( config:dict, prep_vars:list = [] ) -> dict:
     if not (source_dir / 'CMakeLists.txt').exists():
         raise f'Missing CMakeLists.txt in {source_dir}'
 
-    # Check for build_dir
+    # determine build directory
     if 'build_dir' in config.keys():
-        build_dir = config['build_dir']
+        build_dir = Path(config['build_dir'])
     else:
-        config['build_dir'] = build_dir = source_dir / 'cmake_build'
+        build_dir = Path('build-cmake')
+
+    if not build_dir.is_absolute():
+        config['build_dir'] = build_dir = source_dir / build_dir
 
     # Create Build Directory
     if not build_dir.is_dir():

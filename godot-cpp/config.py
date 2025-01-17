@@ -16,22 +16,23 @@ project_config = SimpleNamespace(**{
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
 scons_script = """
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 from pprint import pp
 from actions import *
 
 stats = {{'name':'{name}'}}
 
-if {fetch}:
+if config['fetch']:
     stats['fetch'] = {{'name':'fetch'}}
-    terminal_title(f'Fetch - {name}')
+    terminal_title('Fetch - {name}')
     with Timer(container=stats['fetch']):
         git_fetch( config )
         
-if {build}:
+if config['build']:
     for target in {build_targets}:
         build_vars = {build_vars} + [f'target={{target}}']
         stats['build'] = {{'name':'target'}}
-        terminal_title(f"Build - {name}")
+        terminal_title('Build - {name}')
         with Timer(container=stats['build']):
             build_scons( config, build_vars=build_vars )
 
@@ -40,39 +41,29 @@ pp( stats, indent=4 )
 """
 
 cmake_script = """
-# <above this line is the config and environment code>
-
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 from pprint import pp
 from actions import *
 
-name = config['name']
-if 
-
-source_dir = Path(config['source_dir'])
-
-if 'godot_build_profile' in config.keys():
-    build_profile = source_dir / config['godot_build_profile']
-    config['cmake_config_vars'] += [f'-DGODOT_BUILD_PROFILE="{build_profile}"']
-
-stats = {'name':name}
+stats = {{'name':'{name}'}}
 
 if config['fetch']:
-    stats['fetch'] = {'name':'fetch'}
-    terminal_title(f'Fetch - {name}')
+    stats['fetch'] = {{'name':'fetch'}}
+    terminal_title('Fetch - {name}')
     with Timer(container=stats['fetch']):
         git_fetch( config )
 
 if config['prepare']:
-    stats['prepare'] = {'name':'prepare'}
-    terminal_title(f"Prepare - {name}")
+    stats['prepare'] = {{'name':'prepare'}}
+    terminal_title('Prepare - {name}')
     with Timer(container=stats['prepare']):
-        prepare_cmake( config, prep_vars=config['cmake_config_vars'])
-        
+        prepare_cmake( config, prep_vars={prep_vars})
+
 if config['build']:
-    stats['build'] = {'name':'build'}
-    terminal_title(f"Build - {name}")
+    stats['build'] = {{'name':'build'}}
+    terminal_title('Build - {name}')
     with Timer(container=stats['build']):
-        build_cmake( config, build_vars=config['cmake_build_vars'] )
+        build_cmake( config, build_vars={build_vars} )
 
 h3( 'build_config stats' )
 pp( stats, indent=4 )
@@ -143,6 +134,10 @@ msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"
 #   - Hot Re-Load ON/OFF
 #   - Exceptions ON/OFF
 
+# Naming of builds.
+#   host.env.build_tool.compiler.options
+# Where any of the above are omitted it obvious
+
 #[=======================[ SCons Default with Profile ]=======================]
 new_config = SimpleNamespace(**{
     'name' : f'w64.scons.msvc',
@@ -154,16 +149,40 @@ new_config = SimpleNamespace(**{
 })
 project_config.build_configs[new_config.name] = new_config
 
-#[=================[ MSYS2.Clang SCons Default with Profile ]=================]
-# new_config = SimpleNamespace(**{
-#     'name' : f'w64.scons.clang64',
-#     'build_targets':['template_release','template_debug','editor'],
-#     'script': scons_script,
-#     'build_vars':[],
-#     'shell':'msys2.clang64'
-# })
-# project_config.build_configs[new_config.name] = new_config
+#[================[ MSYS2/CLANG64 SCons Default with Profile ]================]
+new_config = SimpleNamespace(**{
+    'name' : 'w64.clang64.scons',
+    'shell':'msys2.clang64',
+    'script': scons_script,
+    'build_dir':'test',
+    'build_vars':['build_profile="build_profile.json"', 'use_llvm=yes', 'use_mingw=yes'],
+    'build_targets':['template_release','template_debug','editor']
+})
+project_config.build_configs[new_config.name] = new_config
 
+#[================[ MSYS2/UCRT64 SCons Default with Profile ]================]
+new_config = SimpleNamespace(**{
+    'name' : 'w64.ucrt64.scons',
+    'shell':'msys2.ucrt64',
+    'script': scons_script,
+    'build_dir':'test',
+    'build_vars':['build_profile="build_profile.json"', 'use_mingw=yes'],
+    'build_targets':['template_release','template_debug','editor']
+})
+project_config.build_configs[new_config.name] = new_config
+
+#[=======================[ CMake Default with Profile ]=======================]
+new_config = SimpleNamespace(**{
+    'name' : 'w64.cmake.msvc',
+    'shell':'pwsh',
+    'script': cmake_script,
+    'build_dir':'cmake-build',
+    'build_profile':'test/build_profile.json',
+    'prep_vars':['-DGODOT_ENABLE_TESTING=ON'],
+    'build_vars':None,
+    'build_targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
+})
+project_config.build_configs[new_config.name] = new_config
 # ╒════════════════════════════════════════════════════════════════════════════╕
 # │                 ███    ███  ██████  ██████  ██ ██      ███████             │
 # │                 ████  ████ ██    ██ ██   ██ ██ ██      ██                  │
