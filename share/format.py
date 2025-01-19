@@ -8,6 +8,8 @@ import subprocess
 import typing
 import re
 
+from rich import print
+
 # # Update output buffer size to prevent clipping in Visual Studio output window.
 # if( $Host -and $Host.UI -and $Host.UI.RawUI ) {
 #     $rawUI = $Host.UI.RawUI
@@ -121,10 +123,6 @@ def right( msg:str='Right', line:str='' ):
 #        ██   ██ ███████ ██   ██ ██████  ██ ██   ████  ██████  ███████         #
 #                                                                              #
 ################################################################################
-
-
-def terminal_title( message ):
-    print( f"\033]0;{message}\007" )
 
 def h1( msg:str = 'heading 1', file:typing.IO=None ):
     title = figlet( msg, {'align':'c','font':'big'} )

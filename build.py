@@ -8,14 +8,17 @@ import sys
 from datetime import datetime
 from typing import IO
 
+import rich
+from rich import print
+from rich.console import Console
+
 # Local Imports
-from share.pipe import Pipe
+from share.ConsoleMultiplex import ConsoleMultiplex
 from share.format import *
 from share.env_commands import *
 
-out_pipe = Pipe()
-stdout = sys.stdout
-sys.stdout = out_pipe
+console = ConsoleMultiplex()
+rich._console = console
 
 # MARK: Options
 parser = argparse.ArgumentParser(prog='Build-Automation', description='Builds Things', epilog='Build All The Things!!')
@@ -57,7 +60,7 @@ bargs.root_dir = pathlib.Path(__file__).parent
 
 # Log everything to a file
 log_path = bargs.root_dir / 'build_log.txt'
-out_pipe.tee(open(log_path, 'w'), 'build_log')
+console.tee(Console( file=open(log_path, 'w'), force_terminal=True), 'build_log' )
 
 # Add all the things from the command line
 parser.parse_args(namespace=bargs)
@@ -66,7 +69,7 @@ def get_interior_dict( subject )->dict:
     return { k:v for k,v in subject.__dict__.items()}
 
 # ================[ Main Heading and Options ]=================-
-terminal_title("Build Automation")
+console.set_window_title("AutoBuild")
 h1("AutoBuild")
 h3("Options", newline=False)
 
@@ -106,7 +109,7 @@ project_configs = {k: v for k, v in project_configs.items() if len(v.build_confi
 
 h3('projects and Configs')
 if not len(project_configs):
-    print("No project/config matches criteria")
+    print("[red]No project/config matches criteria[/red]")
     exit()
 
 for project_name, project_config in project_configs.items():
@@ -158,7 +161,7 @@ for project_name, project_config in project_configs.items():
     # Tee stdout to log file.
     log_path = project_config.project_root / f"logs-raw/{project_name}.txt"
     log_file = open(log_path, 'a' if project_config.append else 'w', buffering=1, encoding="utf-8")
-    out_pipe.tee(log_file, project_name)
+    console.tee(Console(file=log_file, force_terminal=True), project_name)
 
     # ================[ project Heading / Config ]==================-
     h2(project_name)
@@ -193,7 +196,7 @@ for project_name, project_config in project_configs.items():
     # ╰────────────────────────────────────────────────────────────────────────────╯
     for build_name, build_config in project_config.build_configs.items():
         # =================[ Build Heading / Config ]==================-
-        terminal_title(f'{project_name} - {build_name}')
+        console.set_window_title(f'{project_name} - {build_name}')
         print('\n', centre( f'- Started: {build_name} -', fill('=', 80)))
 
         # =================[ Build Config Overrides ]==================-
@@ -229,7 +232,7 @@ for project_name, project_config in project_configs.items():
         h4('Configure Logging')
         log_path = build_config.project_root / f"logs-raw/{build_config.name}.txt"
         log_file = open(log_path, 'a' if build_config.append else 'w', buffering=1, encoding="utf-8")
-        out_pipe.tee(log_file, build_config.name)
+        console.tee(Console(file=log_file, force_terminal=True), build_config.name)
 
         # ====================[ Run Build Script ]=====================-
         h3("Run")
@@ -261,7 +264,7 @@ for project_name, project_config in project_configs.items():
         for k, v in build_config.stats.items():
             print(f"  {k:14} = {v}")
 
-        out_pipe.pop(build_config.name)
+        console.pop(build_config.name)
 
         h3("Post Run Actions")
         h4('Clean Log')
@@ -272,7 +275,7 @@ for project_name, project_config in project_configs.items():
         print(centre( f'Completed: {build_config.name}', fill(' -', 80)))
 
     # remove the project output log.
-    out_pipe.pop(project_name)
+    console.pop(project_name)
 
 # MARK: Post
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
@@ -289,4 +292,4 @@ for project_name, project_config in project_configs.items():
     for build_name, build_config in project_config.build_configs.items():
         print(f'    {build_name:60s} - {build_config.stats['duration']}')
 
-out_pipe.pop('build_log')
+console.pop('build_log')

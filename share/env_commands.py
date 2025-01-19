@@ -68,6 +68,11 @@ def python_preamble( config:SimpleNamespace ) -> str:
     lines = [
         'import sys',
         'from pathlib import Path',
+        'import rich',
+        'from rich import print',
+        'from rich.console import Console',
+        '',
+        'rich._console = console = Console(soft_wrap=False, width=9000)',
         f'sys.path.append({repr(str(config.root_dir))})',
         'config = {'
     ]

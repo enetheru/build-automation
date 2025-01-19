@@ -24,7 +24,7 @@ stats = {{'name':'{name}'}}
 
 if config['fetch']:
     stats['fetch'] = {{'name':'fetch'}}
-    terminal_title('Fetch - {name}')
+    console.set_window_title('Fetch - {name}')
     with Timer(container=stats['fetch']):
         git_fetch( config )
         
@@ -32,7 +32,7 @@ if config['build']:
     for target in {build_targets}:
         build_vars = {build_vars} + [f'target={{target}}']
         stats['build'] = {{'name':'target'}}
-        terminal_title('Build - {name}')
+        console.set_window_title('Build - {name}')
         with Timer(container=stats['build']):
             build_scons( config, build_vars=build_vars )
 
@@ -50,7 +50,7 @@ stats = {{'name':'{name}'}}
 #[=================================[ Fetch ]=================================]
 if config['fetch']:
     stats['fetch'] = {{'name':'fetch'}}
-    terminal_title('Fetch - {name}')
+    console.set_window_title('Fetch - {name}')
     with Timer(container=stats['fetch']):
         git_fetch( config )
 
@@ -66,14 +66,14 @@ if config['build_profile']:
 
 if config['prepare']:
     stats['prepare'] = {{'name':'prepare'}}
-    terminal_title('Prepare - {name}')
+    console.set_window_title('Prepare - {name}')
     with Timer(container=stats['prepare']):
         prepare_cmake( config, prep_vars=cmake_config_vars)
 
 #[=================================[ Build ]=================================]
 if config['build']:
     stats['build'] = {{'name':'build'}}
-    terminal_title('Build - {name}')
+    console.set_window_title('Build - {name}')
     with Timer(container=stats['build']):
         build_cmake( config, build_vars={build_vars} )
 
