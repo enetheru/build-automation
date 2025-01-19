@@ -47,24 +47,40 @@ from actions import *
 
 stats = {{'name':'{name}'}}
 
+#[=================================[ Fetch ]=================================]
 if config['fetch']:
     stats['fetch'] = {{'name':'fetch'}}
     terminal_title('Fetch - {name}')
     with Timer(container=stats['fetch']):
         git_fetch( config )
 
+#[===============================[ Configure ]===============================]
+cmake_config_vars = config['prep_vars']
+
+if config['build_profile']:
+    profile_path = Path(config['build_profile'])
+    if not profile_path.is_absolute():
+        profile_path = config['source_dir'] / profile_path
+    h4(f'using build profile:{{profile_path}}')
+    cmake_config_vars.append(f'-DGODOT_BUILD_PROFILE="{{os.fspath(profile_path)}}"')
+
 if config['prepare']:
     stats['prepare'] = {{'name':'prepare'}}
     terminal_title('Prepare - {name}')
     with Timer(container=stats['prepare']):
-        prepare_cmake( config, prep_vars={prep_vars})
+        prepare_cmake( config, prep_vars=cmake_config_vars)
 
+#[=================================[ Build ]=================================]
 if config['build']:
     stats['build'] = {{'name':'build'}}
     terminal_title('Build - {name}')
     with Timer(container=stats['build']):
         build_cmake( config, build_vars={build_vars} )
 
+#[==================================[ Test ]==================================]
+
+
+#[=================================[ Stats ]=================================]
 h3( 'build_config stats' )
 pp( stats, indent=4 )
 """
@@ -178,7 +194,7 @@ new_config = SimpleNamespace(**{
     'script': cmake_script,
     'build_dir':'cmake-build',
     'build_profile':'test/build_profile.json',
-    'prep_vars':['-DGODOT_ENABLE_TESTING=ON'],
+    'prep_vars':['--fresh', '-DGODOT_ENABLE_TESTING=ON'],
     'build_vars':None,
     'build_targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
 })

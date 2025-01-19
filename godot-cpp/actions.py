@@ -157,8 +157,10 @@ def build_cmake( config:dict, build_vars:list = [] ) -> dict:
 
     # requires CMakeLists.txt file existing in the current directory.
     if not Path('CMakeCache.txt').exists():
-        raise f'Missing CMakeCache.txt in {os.getcwd()}'
+        print(f'Missing CMakeCache.txt in {os.getcwd()}')
+        raise 'Missing CMakeCache.txt'
 
+    build_vars = filter(None, build_vars)
     build_vars = [
                      f'-j {jobs}' if jobs > 0 else None,
                      '--verbose' if not config['quiet'] else None

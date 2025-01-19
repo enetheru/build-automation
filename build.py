@@ -75,11 +75,10 @@ for k,v in get_interior_dict(bargs).items():
 
 # MARK: Configs
 # ==================[ Import Configurations ]==================-
-
-h3('projects and Configs')
-h4("Load Config Files")
 project_glob = f'{bargs.project}/config.py'
-print('  using file glob: ', project_glob)
+
+print()
+h4(f'Load Config Files using file glob: {project_glob}')
 
 # Import project_config files.
 config_imports:dict = {}
@@ -105,16 +104,16 @@ for project_name, project_config in project_configs.items():
 # keep only projects which have a build config.
 project_configs = {k: v for k, v in project_configs.items() if len(v.build_configs)}
 
+h3('projects and Configs')
 if not len(project_configs):
     print("No project/config matches criteria")
     exit()
 
-h4("list project/config")
 for project_name, project_config in project_configs.items():
     build_configs:dict = project_config.build_configs
-    print('  project: ', project_name)
+    print('  - ', project_name)
     for build_name, build_config in build_configs.items():
-        print('    ', build_name)
+        print('    - ', build_name)
 
 
 # List only.

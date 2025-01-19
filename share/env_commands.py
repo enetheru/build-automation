@@ -65,16 +65,19 @@ def pwsh_preamble( defs:dict, command:str ) -> str:
 #[=================================[ Python ]=================================]
 def python_preamble( config:SimpleNamespace ) -> str:
     from pathlib import WindowsPath
-    mini_script = 'import sys\n'
-    mini_script += f'sys.path.append({repr(str(config.root_dir))})\n'
-    mini_script += 'config = {\n'
+    lines = [
+        'import sys',
+        'from pathlib import Path',
+        f'sys.path.append({repr(str(config.root_dir))})',
+        'config = {'
+    ]
     for k, v in config.__dict__.items():
         # Skip items that we dont want
         if k in ['script']:
             continue
         if isinstance( v, WindowsPath ):
-            mini_script += f'\t{repr(k)}:{repr(str(v))},\n'
+            lines.append( f'\t{repr(k)}:Path({repr(str(v))}),' )
             continue
-        mini_script += f'\t{repr(k)}:{repr(v)},\n'
-    mini_script += '}\n'
-    return mini_script
+        lines.append( f'\t{repr(k)}:{repr(v)},' )
+    lines.append( '}' )
+    return '\n'.join( lines )
