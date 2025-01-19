@@ -152,7 +152,7 @@ def prepare_cmake( config:dict, prep_vars:list = [] ) -> dict:
 # ║  ██████ ██      ██ ██   ██ ██   ██ ███████     ██████   ██████  ██ ███████ ██████      ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
-def build_cmake( config:dict, build_vars:list = [] ) -> dict:
+def build_cmake( config:dict ) -> dict:
     jobs = config['jobs']
 
     # requires CMakeLists.txt file existing in the current directory.
@@ -160,15 +160,17 @@ def build_cmake( config:dict, build_vars:list = [] ) -> dict:
         print(f'Missing CMakeCache.txt in {os.getcwd()}')
         raise 'Missing CMakeCache.txt'
 
-    build_vars = filter(None, build_vars)
-    build_vars = [
-                     f'-j {jobs}' if jobs > 0 else None,
-                     '--verbose' if not config['quiet'] else None
-                 ] + build_vars
+    cmake_build_vars = [
+        f'-j {jobs}' if jobs > 0 else None,
+        '--verbose' if not config['quiet'] else None
+    ]
+    build_vars = config['build_vars']
+    if build_vars:
+        cmake_build_vars += build_vars
 
-    print( figlet( 'CMake Build', {'font': 'small'}) )
-
-    returncode = print_eval( f'cmake --build . {' '.join(filter(None, build_vars))}', dry=config['dry'] )
+    for target in config['build_targets']:
+        print( figlet( 'CMake Build', {'font': 'small'}) )
+        returncode = print_eval( f'cmake --build . {' '.join(filter(None, cmake_build_vars))} --target={target}', dry=config['dry'] )
 
     h3('CMake Build Completed')
 

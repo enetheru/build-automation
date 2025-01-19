@@ -75,7 +75,7 @@ if config['build']:
     stats['build'] = {{'name':'build'}}
     console.set_window_title('Build - {name}')
     with Timer(container=stats['build']):
-        build_cmake( config, build_vars={build_vars} )
+        build_cmake( config )
 
 #[==================================[ Test ]==================================]
 
@@ -195,7 +195,7 @@ new_config = SimpleNamespace(**{
     'build_dir':'cmake-build',
     'build_profile':'test/build_profile.json',
     'prep_vars':['--fresh', '-DGODOT_ENABLE_TESTING=ON'],
-    'build_vars':None,
+    'build_vars':['--config Release'],
     'build_targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
 })
 project_config.build_configs[new_config.name] = new_config
