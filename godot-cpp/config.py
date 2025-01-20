@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import copy
 from types import SimpleNamespace
 import itertools
 
@@ -24,18 +25,16 @@ from actions import *
 stats = {{'name':'{name}'}}
 
 if config['fetch']:
-    stats['fetch'] = {{'name':'fetch'}}
     console.set_window_title('Fetch - {name}')
+    stats['fetch'] = {{'name':'fetch'}}
     with Timer(container=stats['fetch']):
         git_fetch( config )
         
 if config['build']:
-    for target in {build_targets}:
-        build_vars = {build_vars} + [f'target={{target}}']
-        stats['build'] = {{'name':'target'}}
-        console.set_window_title('Build - {name}')
-        with Timer(container=stats['build']):
-            build_scons( config, build_vars=build_vars )
+    console.set_window_title('Build - {name}')
+    stats['build'] = {{'name':'build'}}
+    with Timer(container=stats['build']):
+        scons_build( config )
 
 h3( 'build_config stats' )
 pp( stats, indent=4 )
@@ -174,7 +173,6 @@ toolchains = ['msvc',               # Microsoft Visual Studio
 
 build_tool = ['scons','cmake']
 
-
 generators = ['Visual Studio 17 2022', 'Ninja', 'Ninja Multi-Config']
 
 for toolchain, build_tool in itertools.product( toolchains, build_tool):
@@ -182,7 +180,7 @@ for toolchain, build_tool in itertools.product( toolchains, build_tool):
         'name' : f'w64.{build_tool}.{toolchain}',
         'shell':'pwsh',
         'build_tool':build_tool,
-        'script': cmake_script,
+        'script': None,
         'cmake':{
             'build_dir':'build-cmake',
             'godot_build_profile':'test/build_profile.json',
@@ -192,27 +190,41 @@ for toolchain, build_tool in itertools.product( toolchains, build_tool):
         },
         'scons':{
             'build_dir':'test',
-            'build_profile':'build_profile.json',
+            'build_vars':['build_profile=build_profile.json'],
             'targets':['template_release','template_debug','editor'],
         },
     })
 
     match build_tool, toolchain:
         case 'cmake', 'msvc':
-            cfg.cmake['config_vars'] = ['-G"Visual Studio 17 2022"'] + cfg.cmake['config_vars']
-            cfg.cmake['build_vars'].append('--config Release')
-            cfg.cmake['tool_vars'] = msbuild_extras
+            cfg.script = cmake_script
+        case 'scons', 'msvc':
+            cfg.script = scons_script
         case _:
             continue
 
-    # match generator:
-    #     case 'Visual Studio 17 2022':
-    #         cfg.prep_vars = ['-G"Visual Studio 17 2022"'] + cfg.prep_vars
-    #         cfg.build_tool_vars += msbuild_extras
-    #     case _:
-    #         continue
+    # Add the generator variations.
+    original = copy.deepcopy(cfg)
+    if build_tool == 'cmake':
+        cfg = copy.deepcopy(original)
+        for gen in generators:
+            match gen:
+                case 'Ninja':
+                    cfg.name = original.name + '.ninja'
+                case 'Ninja Multi-Config':
+                    cfg.name = original.name + '.ninja-multi'
+                    cfg.cmake['build_vars'].append('--config Release')
+                case 'Visual Studio 17 2022':
+                    cfg.name = original.name + '.vs17'
+                    cfg.cmake['build_vars'].append('--config Release')
+                    cfg.cmake['tool_vars'] = msbuild_extras
+                case _:
+                    raise "Invalid Generator"
 
-    project_config.build_configs[cfg.name] = cfg
+            cfg.cmake['config_vars'] = [f'-G"{gen}"'] + original.cmake['config_vars']
+            project_config.build_configs[cfg.name] = cfg
+    else:
+        project_config.build_configs[cfg.name] = cfg
 
 # ╒════════════════════════════════════════════════════════════════════════════╕
 # │                 ███    ███  ██████  ██████  ██ ██      ███████             │

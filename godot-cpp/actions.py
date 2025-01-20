@@ -65,12 +65,13 @@ def git_fetch( config:dict ):
 # ║      ██ ██      ██    ██ ██  ██ ██      ██     ██   ██ ██    ██ ██ ██      ██   ██     ║
 # ║ ███████  ██████  ██████  ██   ████ ███████     ██████   ██████  ██ ███████ ██████      ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
-def build_scons( config:dict, build_vars:list = [] ):
-    name = config['config_name']
-    project = config['project_name']
-    jobs = config['jobs']
+def scons_build( config:dict ):
+    scons:dict = config['scons']
 
-    build_dir = Path( config['build_dir'] )
+    jobs = config['jobs']
+    returncode:int=0
+
+    build_dir = Path( scons['build_dir'] )
     if not build_dir.is_absolute():
         build_dir = Path(config['source_dir']) / build_dir
 
@@ -78,22 +79,28 @@ def build_scons( config:dict, build_vars:list = [] ):
 
     # requires SConstruct file existing in the current directory.
     if not (build_dir / 'SConstruct').exists():
-        raise f'Missing SConstruct in {build_dir}'
+        print(f'[red]Missing SConstruct in {build_dir}')
+        raise 'Missing SConstruct'
 
-    do_jobs = f'-j {jobs}' if jobs > 0 else None
-    do_verbose = 'verbose=yes' if config['quiet'] is False else None
+    cmd_chunks = [
+        'scons',
+        f'-j {jobs}' if jobs > 0 else None,
+        'verbose=yes' if config['quiet'] is False else None,
+    ]
+    if 'build_vars' in scons.keys():
+        cmd_chunks += scons['build_vars']
 
-    build_vars = [do_jobs, do_verbose] + build_vars
+    for target in scons['targets']:
+        build_command:str = ' '.join(filter(None, cmd_chunks))
+        build_command += f' target={target}'
 
-    print( figlet( name, {'font': 'small'}) )
-    h3(f'Config: { name }')
-    h3(f'project: {project}')
-
-    print_eval( f'scons {' '.join(filter(None, build_vars))}', dry=config['dry'] )
+        print( figlet( 'SCons Build', {'font': 'small'}) )
+        returncode = print_eval( build_command, dry=config['dry'] )
 
     h3('BuildScons Completed')
 
     fill('-')
+    return {'returncode':returncode}
 
 
 # MARK: CMake Prep
@@ -163,6 +170,7 @@ def cmake_configure( config:dict ) -> dict:
 def cmake_build( config:dict ) -> dict:
     jobs:int = config['jobs']
     cmake:dict = config['cmake']
+    returncode:int=0
 
     # requires CMakeLists.txt file existing in the current directory.
     if not (Path(cmake['build_dir']) / 'CMakeCache.txt').exists():
@@ -183,8 +191,8 @@ def cmake_build( config:dict ) -> dict:
         build_command:str = ' '.join(filter(None, chunks))
         build_command += f' --target {target}'
 
-        if 'build_tool_vars' in cmake.keys():
-            build_command += ' ' + ' '.join(filter(None, cmake['build_tool_vars']))
+        if 'tool_vars' in cmake.keys():
+            build_command += ' ' + ' '.join(filter(None, cmake['tool_vars']))
 
         print( figlet( 'CMake Build', {'font': 'small'}) )
         returncode = print_eval( build_command, dry=config['dry'] )
