@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from types import SimpleNamespace
+import itertools
 
 project_config = SimpleNamespace(**{
     'gitUrl'  : "http://github.com/enetheru/godot-cpp.git",
@@ -41,11 +42,11 @@ pp( stats, indent=4 )
 """
 
 cmake_script = """
-#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 from pprint import pp
 from actions import *
 
 stats = {{'name':'{name}'}}
+cmake = config['cmake']
 
 #[=================================[ Fetch ]=================================]
 if config['fetch']:
@@ -55,27 +56,25 @@ if config['fetch']:
         git_fetch( config )
 
 #[===============================[ Configure ]===============================]
-cmake_config_vars = config['prep_vars']
-
-if config['build_profile']:
-    profile_path = Path(config['build_profile'])
+if 'godot_build_profile' in cmake:
+    profile_path = Path(cmake['godot_build_profile'])
     if not profile_path.is_absolute():
         profile_path = config['source_dir'] / profile_path
-    h4(f'using build profile:{{profile_path}}')
-    cmake_config_vars.append(f'-DGODOT_BUILD_PROFILE="{{os.fspath(profile_path)}}"')
+    h4(f'using build profile: "{{profile_path}}"')
+    cmake['config_vars'].append(f'-DGODOT_BUILD_PROFILE="{{os.fspath(profile_path)}}"')
 
 if config['prepare']:
-    stats['prepare'] = {{'name':'prepare'}}
     console.set_window_title('Prepare - {name}')
+    stats['prepare'] = {{'name':'prepare'}}
     with Timer(container=stats['prepare']):
-        prepare_cmake( config, prep_vars=cmake_config_vars)
+        cmake_configure( config )
 
 #[=================================[ Build ]=================================]
 if config['build']:
     stats['build'] = {{'name':'build'}}
     console.set_window_title('Build - {name}')
     with Timer(container=stats['build']):
-        build_cmake( config )
+        cmake_build( config )
 
 #[==================================[ Test ]==================================]
 
@@ -154,51 +153,67 @@ msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"
 #   host.env.build_tool.compiler.options
 # Where any of the above are omitted it obvious
 
-#[=======================[ SCons Default with Profile ]=======================]
-new_config = SimpleNamespace(**{
-    'name' : f'w64.scons.msvc',
-    'shell':'pwsh',
-    'script': scons_script,
-    'build_dir':'test',
-    'build_vars':['build_profile="build_profile.json"'],
-    'build_targets':['template_release','template_debug','editor'],
-})
-project_config.build_configs[new_config.name] = new_config
+# The variations of toolchains for mingw are listed here: https://www.mingw-w64.org/downloads/
+toolchains = ['msvc',               # Microsoft Visual Studio
+              'llvm-clang',         # clang from llvm.org
+              'llvm-clang-cl',      # clang-cl from llvm.org
+              'llvm-mingw-i686',    # llvm based mingw-w64 toolchain.
+              'llvm-mingw-x86_64',  #   https://github.com/mstorsjo/llvm-mingw
+              'llvm-mingw-aarch64', #
+              'llvm-mingw-armv7',   #
+              'mingw64',            # mingw from https://github.com/niXman/mingw-builds-binaries/releases,
+                                    #   This is also the default toolchain for clion.
+              'android',            # https://developer.android.com/tools/sdkmanager
+              'emscripten',         # https://emscripten.org/
+              'mingw32-gcc',        # i686      gcc linking against msvcrt
+              'mingw64-gcc',        # x86_64    gcc linking against msvcrt
+              'ucrt64-gcc',         # x86_64    gcc linking against ucrt
+              'clang32-clang',      # i686      clang linking against ucrt
+              'clang64-clang',      # x86_64    clang linking against ucrt
+              'clangarm64-clang']   # aarch64   clang linking against ucrt
 
-#[================[ MSYS2/CLANG64 SCons Default with Profile ]================]
-new_config = SimpleNamespace(**{
-    'name' : 'w64.clang64.scons',
-    'shell':'msys2.clang64',
-    'script': scons_script,
-    'build_dir':'test',
-    'build_vars':['build_profile="build_profile.json"', 'use_llvm=yes', 'use_mingw=yes'],
-    'build_targets':['template_release','template_debug','editor']
-})
-project_config.build_configs[new_config.name] = new_config
+build_tool = ['scons','cmake']
 
-#[================[ MSYS2/UCRT64 SCons Default with Profile ]================]
-new_config = SimpleNamespace(**{
-    'name' : 'w64.ucrt64.scons',
-    'shell':'msys2.ucrt64',
-    'script': scons_script,
-    'build_dir':'test',
-    'build_vars':['build_profile="build_profile.json"', 'use_mingw=yes'],
-    'build_targets':['template_release','template_debug','editor']
-})
-project_config.build_configs[new_config.name] = new_config
 
-#[=======================[ CMake Default with Profile ]=======================]
-new_config = SimpleNamespace(**{
-    'name' : 'w64.cmake.msvc',
-    'shell':'pwsh',
-    'script': cmake_script,
-    'build_dir':'cmake-build',
-    'build_profile':'test/build_profile.json',
-    'prep_vars':['--fresh', '-DGODOT_ENABLE_TESTING=ON'],
-    'build_vars':['--config Release'],
-    'build_targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
-})
-project_config.build_configs[new_config.name] = new_config
+generators = ['Visual Studio 17 2022', 'Ninja', 'Ninja Multi-Config']
+
+for toolchain, build_tool in itertools.product( toolchains, build_tool):
+    cfg = SimpleNamespace(**{
+        'name' : f'w64.{build_tool}.{toolchain}',
+        'shell':'pwsh',
+        'build_tool':build_tool,
+        'script': cmake_script,
+        'cmake':{
+            'build_dir':'build-cmake',
+            'godot_build_profile':'test/build_profile.json',
+            'config_vars':['-DGODOT_ENABLE_TESTING=ON'],
+            'build_vars':[],
+            'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
+        },
+        'scons':{
+            'build_dir':'test',
+            'build_profile':'build_profile.json',
+            'targets':['template_release','template_debug','editor'],
+        },
+    })
+
+    match build_tool, toolchain:
+        case 'cmake', 'msvc':
+            cfg.cmake['config_vars'] = ['-G"Visual Studio 17 2022"'] + cfg.cmake['config_vars']
+            cfg.cmake['build_vars'].append('--config Release')
+            cfg.cmake['tool_vars'] = msbuild_extras
+        case _:
+            continue
+
+    # match generator:
+    #     case 'Visual Studio 17 2022':
+    #         cfg.prep_vars = ['-G"Visual Studio 17 2022"'] + cfg.prep_vars
+    #         cfg.build_tool_vars += msbuild_extras
+    #     case _:
+    #         continue
+
+    project_config.build_configs[cfg.name] = cfg
+
 # ╒════════════════════════════════════════════════════════════════════════════╕
 # │                 ███    ███  ██████  ██████  ██ ██      ███████             │
 # │                 ████  ████ ██    ██ ██   ██ ██ ██      ██                  │

@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+from share.format import *
+
 # MARK: Shells
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  ___ _        _ _    ___                              _                    │
@@ -65,24 +67,26 @@ def pwsh_preamble( defs:dict, command:str ) -> str:
 #[=================================[ Python ]=================================]
 def python_preamble( config:SimpleNamespace ) -> str:
     from pathlib import WindowsPath
-    lines = [
-        'import sys',
-        'from pathlib import Path',
-        'import rich',
-        'from rich import print',
-        'from rich.console import Console',
-        '',
-        'rich._console = console = Console(soft_wrap=False, width=9000)',
-        f'sys.path.append({repr(str(config.root_dir))})',
-        'config = {'
-    ]
+    script = f"""
+import sys
+from pathlib import Path
+import rich
+from rich import print
+from rich.console import Console
+
+rich._console = console = Console(soft_wrap=False, width=9000)
+sys.path.append({repr(str(config.root_dir))})
+
+"""
+    chunk = ['config = {']
     for k, v in config.__dict__.items():
         # Skip items that we dont want
         if k in ['script']:
             continue
         if isinstance( v, WindowsPath ):
-            lines.append( f'\t{repr(k)}:Path({repr(str(v))}),' )
+            chunk.append( f'\t{repr(k)}:Path({repr(str(v))}),' )
             continue
-        lines.append( f'\t{repr(k)}:{repr(v)},' )
-    lines.append( '}' )
-    return '\n'.join( lines )
+        chunk.append( f'\t{repr(k)}:{repr(v)},' )
+    chunk.append( '}' )
+    chunk.append(centre( ' End Of Preamble ', left( '#', fill( '- ', 80))))
+    return script + '\n'.join( chunk )

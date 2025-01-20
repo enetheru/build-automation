@@ -58,6 +58,11 @@ bargs.command = ' '.join(sys.argv)
 bargs.platform = platform.system()
 bargs.root_dir = pathlib.Path(__file__).parent
 
+#re-define print_eval to take the global dry command.
+from share.format import print_eval as print_eval_base
+def print_eval( command ):
+    print_eval_base( command, dry=project_config.dry)
+
 # Log everything to a file
 log_path = bargs.root_dir / 'build_log.txt'
 console.tee(Console( file=open(log_path, 'w'), force_terminal=True), 'build_log' )
