@@ -46,10 +46,10 @@ class Timer(ContextDecorator):
 def git_fetch( config:dict ):
     # Create worktree is missing
     if not pathlib.Path(config['source_dir']).exists():
-        h3("Create WorkTree")
+        h4("Create WorkTree")
         print_eval( f'git --git-dir="{Path(config['project_root']) / 'git'}" worktree add -d "{config['source_dir']}"', dry=config['dry'] )
     else:
-        h3("Update WorkTree")
+        h4("Update WorkTree")
 
     # Update worktree
     os.chdir( config['source_dir'])

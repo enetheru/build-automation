@@ -206,6 +206,7 @@ for project_name, project_config in project_configs.items():
 
         # =================[ Build Config Overrides ]==================-
         # update from project config
+        h4('Update Configuration')
         for k,v in get_interior_dict(project_config).items():
             if k in ['build_configs']: continue # Dont copy the list of build configs.
             if v or k not in get_interior_dict(build_config).keys():

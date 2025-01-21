@@ -204,10 +204,10 @@ for toolchain, build_tool in itertools.product( toolchains, build_tool):
             continue
 
     # Add the generator variations.
-    original = copy.deepcopy(cfg)
+    original = cfg
     if build_tool == 'cmake':
-        cfg = copy.deepcopy(original)
         for gen in generators:
+            cfg = copy.deepcopy( original )
             match gen:
                 case 'Ninja':
                     cfg.name = original.name + '.ninja'
@@ -215,7 +215,6 @@ for toolchain, build_tool in itertools.product( toolchains, build_tool):
                     cfg.name = original.name + '.ninja-multi'
                     cfg.cmake['build_vars'].append('--config Release')
                 case 'Visual Studio 17 2022':
-                    cfg.name = original.name + '.vs17'
                     cfg.cmake['build_vars'].append('--config Release')
                     cfg.cmake['tool_vars'] = msbuild_extras
                 case _:
