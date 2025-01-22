@@ -22,37 +22,57 @@ scons_script = """
 from pprint import pp
 from actions import *
 
-stats = {{'name':'{name}'}}
+stats:dict = dict()
 
+#[=================================[ Fetch ]=================================]
 if config['fetch']:
     console.set_window_title('Fetch - {name}')
-    stats['fetch'] = {{'name':'fetch'}}
-    with Timer(container=stats['fetch']):
-        git_fetch( config )
-        
+    timer = Timer()
+    with timer:
+        result = git_fetch( config )
+        if result['returncode']:
+            timer.status = 'Failed'
+    stats['fetch'] = timer.get_dict()
+
+#[=================================[ Build ]=================================]
 if config['build']:
     console.set_window_title('Build - {name}')
-    stats['build'] = {{'name':'build'}}
-    with Timer(container=stats['build']):
-        scons_build( config )
+    timer = Timer()
+    with timer:
+        result = scons_build( config )
+        if result['returncode']:
+            timer.status = 'Failed'
+    stats['build'] = timer.get_dict()
 
-h3( 'build_config stats' )
-pp( stats, indent=4 )
+#[=================================[ Stats ]=================================]
+from rich.table import Table
+table = Table(title="Stats", highlight=True, min_width=80)
+
+table.add_column("Section", style="cyan", no_wrap=True)
+table.add_column("Status", style="magenta")
+table.add_column("Duration", style="green")
+
+for cmd_name, cmd_stats in stats.items():
+    table.add_row( cmd_name, f'{{cmd_stats['status']}}', f'{{cmd_stats['duration']}}')
+
+print( table )
 """
 
 cmake_script = """
-from pprint import pp
 from actions import *
 
-stats = {{'name':'{name}'}}
+stats:dict = dict()
 cmake = config['cmake']
 
 #[=================================[ Fetch ]=================================]
 if config['fetch']:
-    stats['fetch'] = {{'name':'fetch'}}
     console.set_window_title('Fetch - {name}')
-    with Timer(container=stats['fetch']):
-        git_fetch( config )
+    timer = Timer()
+    with timer:
+        result = git_fetch( config )
+        if result['returncode']:
+            timer.status = 'Failed'
+    stats['fetch'] = timer.get_dict()
 
 #[===============================[ Configure ]===============================]
 if 'godot_build_profile' in cmake:
@@ -64,23 +84,39 @@ if 'godot_build_profile' in cmake:
 
 if config['prepare']:
     console.set_window_title('Prepare - {name}')
-    stats['prepare'] = {{'name':'prepare'}}
-    with Timer(container=stats['prepare']):
-        cmake_configure( config )
+    timer = Timer() 
+    with timer:
+        result = cmake_configure( config )
+        if result['returncode']:
+            timer.status = 'Failed'
+    stats['prepare'] = timer.get_dict()
 
 #[=================================[ Build ]=================================]
 if config['build']:
-    stats['build'] = {{'name':'build'}}
+    {{'duration':'dnf'}}
     console.set_window_title('Build - {name}')
-    with Timer(container=stats['build']):
-        cmake_build( config )
+    timer = Timer()
+    with timer:
+        result = cmake_build( config )
+        if result['returncode']:
+            timer.status = 'Failed'
+    stats['build'] = timer.get_dict()
 
 #[==================================[ Test ]==================================]
 
 
 #[=================================[ Stats ]=================================]
-h3( 'build_config stats' )
-pp( stats, indent=4 )
+from rich.table import Table
+table = Table(highlight=True, min_width=80)
+
+table.add_column("Section",no_wrap=True)
+table.add_column("Status")
+table.add_column("Duration")
+
+for cmd_name, cmd_stats in stats.items():
+    table.add_row( cmd_name, f'{{cmd_stats['status']}}', f'{{cmd_stats['duration']}}', style='red')
+
+print( table )
 """
 msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
 

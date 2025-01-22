@@ -7,33 +7,27 @@ from pathlib import Path
 from share.format import *
 
 class Timer(ContextDecorator):
-    def __init__(self, container:dict ):
-        if not container:
-            self.stats = {'name':'timer'}
-        else:
-            self.stats = container
-
-        self.stats.update(**{
-            'status': 'Pending',
-            'duration': 'dnf'
-        })
-        # FIXME print( f"scrape_this|build_config.stats['{self.stats['name']}']='started'")
+    def __init__(self):
+        self.duration = 'dnf'
+        self.status = 'pending'
 
     def __enter__(self):
-        stats = self.stats
-        h3(f'Starting {stats['name']}')
         self.start_time = datetime.now()
-        self.stats['status'] = 'Started'
+        self.status = 'Started'
         return self
 
     def __exit__(self, *exc):
-        stats = self.stats
         self.end_time = datetime.now()
-        stats['duration'] = self.end_time - self.start_time
-        stats['status'] = 'Completed'
-        h4(f"Finished {stats['name']} - Duration: {stats['duration']}")
-        # FIXME  print( f"scrape_this|build_config.stats['{self.stats['name']}']={repr(stats['duration'])}")
+        self.duration = self.end_time - self.start_time
+        if self.status == 'Started':
+            self.status = 'Completed'
         return False
+
+    def get_dict(self) -> dict:
+        return {
+            'status':self.status,
+            'duration':self.duration
+        }
 
 # MARK: Git Fetch
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
@@ -43,7 +37,8 @@ class Timer(ContextDecorator):
 # ║          ██    ██ ██    ██        ██      ██         ██    ██      ██   ██             ║
 # ║           ██████  ██    ██        ██      ███████    ██     ██████ ██   ██             ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
-def git_fetch( config:dict ):
+def git_fetch( config:dict ) -> dict:
+    print( figlet( 'Git Fetch', {'font': 'small'}) )
     # Create worktree is missing
     if not pathlib.Path(config['source_dir']).exists():
         h4("Create WorkTree")
@@ -56,6 +51,10 @@ def git_fetch( config:dict ):
     print_eval( f'git checkout --force -d { config['gitHash'] }', dry=config['dry'] )
     print_eval( 'git log -1', dry=config['dry'] )
 
+    print( centre( ' Git Fetch finished ', fill('- ') ) )
+
+    return {'returncode':0}
+
 
 # MARK: SCons Build
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
@@ -66,8 +65,9 @@ def git_fetch( config:dict ):
 # ║ ███████  ██████  ██████  ██   ████ ███████     ██████   ██████  ██ ███████ ██████      ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 def scons_build( config:dict ):
-    scons:dict = config['scons']
+    print( figlet( 'SCons Build', {'font': 'small'}) )
 
+    scons:dict = config['scons']
     jobs = config['jobs']
     returncode:int=0
 
@@ -91,15 +91,13 @@ def scons_build( config:dict ):
         cmd_chunks += scons['build_vars']
 
     for target in scons['targets']:
+        h3(f'Building {target}')
         build_command:str = ' '.join(filter(None, cmd_chunks))
         build_command += f' target={target}'
 
-        print( figlet( 'SCons Build', {'font': 'small'}) )
-        returncode = print_eval( build_command, dry=config['dry'] )
+        returncode |= print_eval( build_command, dry=config['dry'] )
 
-    h3('BuildScons Completed')
-
-    fill('-')
+    print( centre( ' SCons build finished ', fill('- ') ) )
     return {'returncode':returncode}
 
 
@@ -153,9 +151,7 @@ def cmake_configure( config:dict ) -> dict:
 
     returncode = print_eval( ' '.join(filter(None, config_command)), dry=config['dry'] )
 
-    h3('CMake Configure Completed')
-
-    fill('-')
+    print( centre( ' CMake Configure Completed ', fill('- ') ) )
     return {'returncode':returncode}
 
 # MARK: CMake Build
@@ -197,7 +193,5 @@ def cmake_build( config:dict ) -> dict:
         print( figlet( 'CMake Build', {'font': 'small'}) )
         returncode = print_eval( build_command, dry=config['dry'] )
 
-    h3('CMake Build Completed')
-
-    fill('-')
+    print( centre( ' CMake Build Completed ', fill('- ') ) )
     return {'returncode':returncode}

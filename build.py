@@ -9,12 +9,11 @@ from datetime import datetime
 from typing import IO
 
 import rich
-from rich import print
 from rich.console import Console
+from rich.table import Table
 
 # Local Imports
 from share.ConsoleMultiplex import ConsoleMultiplex
-from share.format import *
 from share.env_commands import *
 
 console = ConsoleMultiplex()
@@ -246,13 +245,13 @@ for project_name, project_config in project_configs.items():
 
         build_config.stats = {'start_time': datetime.now()}
         with subprocess.Popen( env_command,
+                               encoding='utf-8',
                                stderr=subprocess.STDOUT,
                                stdout=subprocess.PIPE) as proc:
             # FIXME pretty sure this evaluates after the command is completed
             #   It would be nicer if this was evaluated in realtime
-            for line_bytes in proc.stdout:
-                line = line_bytes.decode('utf8').rstrip()
-                print(line)
+            for line in proc.stdout:
+                print(line.rstrip())
                 # TODO I can watch for print statements here which assign statistics.
                 # FIXME if line.startswith('scrape_this|'):
                 #     eval(line.split('|')[1], globals(), locals() )
@@ -262,20 +261,21 @@ for project_name, project_config in project_configs.items():
         #   this should be defined in the build config as the largest possible build time that is expected.
         #   that way it can trigger a check of the system if it is failing this test.
 
-        build_config.stats['status'] = 'Completed'
-        build_config.stats['end_time'] = datetime.now()
-        build_config.stats['duration'] = build_config.stats['end_time'] - build_config.stats['start_time']
+        stats = build_config.stats
+        stats['status'] = 'Completed'
+        stats['end_time'] = datetime.now()
+        stats['duration'] = stats['end_time'] - stats['start_time']
 
-        h3(f'{build_config.project_name}/{build_config.name} - Statistics')
-        for k, v in build_config.stats.items():
-            print(f"  {k:14} = {v}")
+        table = Table(highlight=True, min_width=80, show_header=False)
+        table.add_row(build_config.name, f'{stats['status']}', f'{stats['duration']}')
+        print( table )
 
         console.pop(build_config.name)
 
         h3("Post Run Actions")
         h4('Clean Log')
         cleanlog_path = build_config.project_root / f"logs-clean/{build_config.name}.txt"
-        with open(log_path, 'r') as log_raw, open(cleanlog_path, 'w') as log_clean:
+        with open(log_path, 'r', encoding='utf-8') as log_raw, open(cleanlog_path, 'w') as log_clean:
             clean_log(log_raw, log_clean)
 
         print(centre( f'Completed: {build_config.name}', fill(' -', 80)))
@@ -291,11 +291,17 @@ for project_name, project_config in project_configs.items():
 # ║                          ██      ██    ██      ██    ██                                ║
 # ║                          ██       ██████  ███████    ██                                ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
-h3("Final Stats")
-print(f'  {"original_command":14} = {bargs.command}')
+table = Table(title="Stats", highlight=True, min_width=80)
+
+table.add_column("Project/Config", style="cyan", no_wrap=True)
+table.add_column("Time", style="magenta")
+
 for project_name, project_config in project_configs.items():
-    print(f'  {project_name}')
     for build_name, build_config in project_config.build_configs.items():
-        print(f'    {build_name:60s} - {build_config.stats['duration']}')
+        table.add_row(
+            f'{project_name}/{build_name}', f'{build_config.stats['duration']}',
+            style='red')
+
+print( table )
 
 console.pop('build_log')
