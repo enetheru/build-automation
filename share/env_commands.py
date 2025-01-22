@@ -37,12 +37,12 @@ shells = {
     # Default Windows
     'pwsh':['pwsh', '-Command' ],
     # MSYS2 GCC
-    'msys2.mingw32': ['C:/msys64/msys2_shell.cmd', '-mingw32', '-defterm', '-no-start', '-c' ],
-    'msys2.mingw64': ['C:/msys64/msys2_shell.cmd', '-mingw64', '-defterm', '-no-start', '-c' ],
-    'msys2.ucrt64': ['C:/msys64/msys2_shell.cmd', '-ucrt64', '-defterm', '-no-start', '-c' ],
+    'msys2-mingw32': ['C:/msys64/msys2_shell.cmd', '-mingw32', '-defterm', '-no-start', '-c' ],
+    'msys2-mingw64': ['C:/msys64/msys2_shell.cmd', '-mingw64', '-defterm', '-no-start', '-c' ],
+    'msys2-ucrt64': ['C:/msys64/msys2_shell.cmd', '-ucrt64', '-defterm', '-no-start', '-c' ],
     # MSYS2 Clang
-    'msys2.clang64': ['C:/msys64/msys2_shell.cmd', '-clang64', '-defterm', '-no-start', '-c' ],
-    'msys2.clangarm64': ['C:/msys64/msys2_shell.cmd', '-clangarm64', '-defterm', '-no-start', '-c' ],
+    'msys2-clang64': ['C:/msys64/msys2_shell.cmd', '-clang64', '-defterm', '-no-start', '-c' ],
+    'msys2-clangarm64': ['C:/msys64/msys2_shell.cmd', '-clangarm64', '-defterm', '-no-start', '-c' ],
     # MSYS2 default, doesnt really have a utility, ust here for completion
     'msys2': ['C:/msys64/msys2_shell.cmd', '-msys', '-defterm', '-no-start', '-c' ],
 

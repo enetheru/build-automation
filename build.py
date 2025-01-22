@@ -136,7 +136,8 @@ if bargs.list:
 def clean_log(raw_file: IO, clean_file: IO):
     clean_file.write("Dummy clean function copies first 10 lines")
     for i in range(10):
-        clean_file.write(raw_file.readline())
+        line = raw_file.readline()
+        clean_file.write( line )
 
 # MARK: pProject
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -275,7 +276,7 @@ for project_name, project_config in project_configs.items():
         h3("Post Run Actions")
         h4('Clean Log')
         cleanlog_path = build_config.project_root / f"logs-clean/{build_config.name}.txt"
-        with open(log_path, 'r', encoding='utf-8') as log_raw, open(cleanlog_path, 'w') as log_clean:
+        with open(log_path, 'r', encoding='utf-8') as log_raw, open(cleanlog_path, 'w', encoding='utf-8') as log_clean:
             clean_log(log_raw, log_clean)
 
         print(centre( f'Completed: {build_config.name}', fill(' -', 80)))
@@ -298,9 +299,7 @@ table.add_column("Time", style="magenta")
 
 for project_name, project_config in project_configs.items():
     for build_name, build_config in project_config.build_configs.items():
-        table.add_row(
-            f'{project_name}/{build_name}', f'{build_config.stats['duration']}',
-            style='red')
+        table.add_row(f'{project_name}/{build_name}', f'{build_config.stats['duration']}' )
 
 print( table )
 

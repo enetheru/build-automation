@@ -200,12 +200,12 @@ toolchains = ['msvc',               # Microsoft Visual Studio
                                     #   This is also the default toolchain for clion.
               'android',            # https://developer.android.com/tools/sdkmanager
               'emscripten',         # https://emscripten.org/
-              'mingw32-gcc',        # i686      gcc linking against msvcrt
-              'mingw64-gcc',        # x86_64    gcc linking against msvcrt
-              'ucrt64-gcc',         # x86_64    gcc linking against ucrt
-              'clang32-clang',      # i686      clang linking against ucrt
-              'clang64-clang',      # x86_64    clang linking against ucrt
-              'clangarm64-clang']   # aarch64   clang linking against ucrt
+              'msys2-mingw32',      # i686      gcc linking against msvcrt
+              'msys2-mingw64',      # x86_64    gcc linking against msvcrt
+              'msys2-ucrt64',       # x86_64    gcc linking against ucrt
+              'msys2-clang32',      # i686      clang linking against ucrt
+              'msys2-clang64',      # x86_64    clang linking against ucrt
+              'msys2-clangarm64']   # aarch64   clang linking against ucrt
 
 build_tool = ['scons','cmake']
 
@@ -231,11 +231,20 @@ for toolchain, build_tool in itertools.product( toolchains, build_tool):
         },
     })
 
-    match build_tool, toolchain:
-        case 'cmake', 'msvc':
+    match toolchain:
+        case 'msys2*':
+            cfg.shell = toolchain
+
+    match build_tool:
+        case 'cmake':
             cfg.script = cmake_script
-        case 'scons', 'msvc':
+        case 'scons':
             cfg.script = scons_script
+
+
+    match build_tool, toolchain:
+        case 'cmake' | 'scons', 'msvc' | 'msys2-ucrt64':
+            pass
         case _:
             continue
 
@@ -251,10 +260,12 @@ for toolchain, build_tool in itertools.product( toolchains, build_tool):
                     cfg.name = original.name + '.ninja-multi'
                     cfg.cmake['build_vars'].append('--config Release')
                 case 'Visual Studio 17 2022':
+                    if not toolchain == 'msvc':
+                        cfg.name = original.name + '.msvc'
                     cfg.cmake['build_vars'].append('--config Release')
                     cfg.cmake['tool_vars'] = msbuild_extras
                 case _:
-                    raise "Invalid Generator"
+                    continue
 
             cfg.cmake['config_vars'] = [f'-G"{gen}"'] + original.cmake['config_vars']
             project_config.build_configs[cfg.name] = cfg
