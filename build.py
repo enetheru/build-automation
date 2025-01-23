@@ -244,11 +244,13 @@ for project_name, project_config in project_configs.items():
         h3("Run")
         print( ' '.join( env_command ) )
 
-        build_config.stats = {'start_time': datetime.now()}
-        with subprocess.Popen( env_command,
-                               encoding='utf-8',
-                               stderr=subprocess.STDOUT,
-                               stdout=subprocess.PIPE) as proc:
+        stats = {'start_time': datetime.now()}
+        build_config.stats = stats
+        proc = subprocess.Popen( env_command,
+                                 encoding='utf-8',
+                                 stderr=subprocess.STDOUT,
+                                 stdout=subprocess.PIPE)
+        with proc:
             # FIXME pretty sure this evaluates after the command is completed
             #   It would be nicer if this was evaluated in realtime
             for line in proc.stdout:
@@ -262,13 +264,13 @@ for project_name, project_config in project_configs.items():
         #   this should be defined in the build config as the largest possible build time that is expected.
         #   that way it can trigger a check of the system if it is failing this test.
 
-        stats = build_config.stats
-        stats['status'] = 'Completed'
+        stats['status'] = 'Completed' if not proc.returncode else 'Failed'
         stats['end_time'] = datetime.now()
         stats['duration'] = stats['end_time'] - stats['start_time']
 
         table = Table(highlight=True, min_width=80, show_header=False)
-        table.add_row(build_config.name, f'{stats['status']}', f'{stats['duration']}')
+        table.add_row(build_config.name, f'{stats['status']}', f'{stats['duration']}',
+                      style='red' if stats['status'] == 'Failed' else 'green' )
         print( table )
 
         console.pop(build_config.name)
@@ -295,11 +297,16 @@ for project_name, project_config in project_configs.items():
 table = Table(title="Stats", highlight=True, min_width=80)
 
 table.add_column("Project/Config", style="cyan", no_wrap=True)
-table.add_column("Time", style="magenta")
+table.add_column("Status")
+table.add_column("Time")
 
 for project_name, project_config in project_configs.items():
     for build_name, build_config in project_config.build_configs.items():
-        table.add_row(f'{project_name}/{build_name}', f'{build_config.stats['duration']}' )
+        table.add_row(
+            f'{project_name}/{build_name}',
+            f'{build_config.stats['status']}',
+            f'{build_config.stats['duration']}',
+        style='red' if build_config.stats['status'] == 'Failed' else 'green')
 
 print( table )
 

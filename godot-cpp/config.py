@@ -23,26 +23,17 @@ from pprint import pp
 from actions import *
 
 stats:dict = dict()
+timer = Timer()
 
 #[=================================[ Fetch ]=================================]
 if config['fetch']:
     console.set_window_title('Fetch - {name}')
-    timer = Timer()
-    with timer:
-        result = git_fetch( config )
-        if result['returncode']:
-            timer.status = 'Failed'
-    stats['fetch'] = timer.get_dict()
+    stats['fetch'] = timer.time_function( config, func=git_fetch )
 
 #[=================================[ Build ]=================================]
-if config['build']:
+if config['build'] and timer.ok():
     console.set_window_title('Build - {name}')
-    timer = Timer()
-    with timer:
-        result = scons_build( config )
-        if result['returncode']:
-            timer.status = 'Failed'
-    stats['build'] = timer.get_dict()
+    stats['build'] = timer.time_function( config, func=scons_build )
 
 #[=================================[ Stats ]=================================]
 from rich.table import Table
@@ -56,6 +47,8 @@ for cmd_name, cmd_stats in stats.items():
     table.add_row( cmd_name, f'{{cmd_stats['status']}}', f'{{cmd_stats['duration']}}')
 
 print( table )
+if not timer.ok():
+    exit(1)
 """
 
 cmake_script = """
@@ -63,16 +56,12 @@ from actions import *
 
 stats:dict = dict()
 cmake = config['cmake']
+timer = Timer()
 
 #[=================================[ Fetch ]=================================]
 if config['fetch']:
     console.set_window_title('Fetch - {name}')
-    timer = Timer()
-    with timer:
-        result = git_fetch( config )
-        if result['returncode']:
-            timer.status = 'Failed'
-    stats['fetch'] = timer.get_dict()
+    stats['fetch'] = timer.time_function( config, func=git_fetch )
 
 #[===============================[ Configure ]===============================]
 if 'godot_build_profile' in cmake:
@@ -82,28 +71,18 @@ if 'godot_build_profile' in cmake:
     h4(f'using build profile: "{{profile_path}}"')
     cmake['config_vars'].append(f'-DGODOT_BUILD_PROFILE="{{os.fspath(profile_path)}}"')
 
-if config['prepare']:
+if config['prepare'] and timer.ok():
     console.set_window_title('Prepare - {name}')
-    timer = Timer() 
-    with timer:
-        result = cmake_configure( config )
-        if result['returncode']:
-            timer.status = 'Failed'
-    stats['prepare'] = timer.get_dict()
+    stats['prepare'] = timer.time_function( config, func=cmake_configure )
 
 #[=================================[ Build ]=================================]
-if config['build']:
-    {{'duration':'dnf'}}
+if config['build'] and and timer.ok():
     console.set_window_title('Build - {name}')
-    timer = Timer()
-    with timer:
-        result = cmake_build( config )
-        if result['returncode']:
-            timer.status = 'Failed'
-    stats['build'] = timer.get_dict()
+    stats['build'] = timer.time_function( config, func=cmake_build )
 
 #[==================================[ Test ]==================================]
-
+if config['test'] and and timer.ok():
+    pass
 
 #[=================================[ Stats ]=================================]
 from rich.table import Table
@@ -117,6 +96,8 @@ for cmd_name, cmd_stats in stats.items():
     table.add_row( cmd_name, f'{{cmd_stats['status']}}', f'{{cmd_stats['duration']}}', style='red')
 
 print( table )
+if not timer.ok():
+    exit(1)
 """
 msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
 
@@ -211,7 +192,7 @@ build_tool = ['scons','cmake']
 
 generators = ['Visual Studio 17 2022', 'Ninja', 'Ninja Multi-Config']
 
-for toolchain, build_tool in itertools.product( toolchains, build_tool):
+for build_tool, toolchain in itertools.product( build_tool, toolchains):
     cfg = SimpleNamespace(**{
         'name' : f'w64.{build_tool}.{toolchain}',
         'shell':'pwsh',
@@ -231,9 +212,8 @@ for toolchain, build_tool in itertools.product( toolchains, build_tool):
         },
     })
 
-    match toolchain:
-        case 'msys2*':
-            cfg.shell = toolchain
+    if toolchain.startswith('msys2'):
+        cfg.shell = toolchain
 
     match build_tool:
         case 'cmake':
@@ -245,7 +225,12 @@ for toolchain, build_tool in itertools.product( toolchains, build_tool):
     match build_tool, toolchain:
         case 'cmake' | 'scons', 'msvc' | 'msys2-ucrt64':
             pass
+        case 'scons','msys2-ucrt64':
+            cfg.scons['build_vars'] += ['use_mingw=yes']
+        case 'scons','msys2-clang64':
+            cfg.scons['build_vars'] += ['use_mingw=yes', 'use_llvm=yes']
         case _:
+            print( f'ignoring combination: {build_tool} - {toolchain}')
             continue
 
     # Add the generator variations.

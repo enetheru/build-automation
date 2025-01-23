@@ -1,33 +1,56 @@
 import os
 import time
+import types
 from datetime import datetime
 from contextlib import ContextDecorator
+from enum import Enum
 from pathlib import Path
 
 from share.format import *
+class TaskStatus(Enum):
+    PENDING = 1
+    STARTED = 2
+    COMPLETED = 3
+    FAILED = 4
 
 class Timer(ContextDecorator):
     def __init__(self):
+        self.status = TaskStatus.PENDING
+        self.start_time = None
+        self.end_time = None
         self.duration = 'dnf'
-        self.status = 'pending'
 
     def __enter__(self):
+        self.status = TaskStatus.STARTED
         self.start_time = datetime.now()
-        self.status = 'Started'
+        self.end_time = None
+        self.duration = 'dnf'
         return self
 
     def __exit__(self, *exc):
         self.end_time = datetime.now()
         self.duration = self.end_time - self.start_time
-        if self.status == 'Started':
-            self.status = 'Completed'
+        if self.status == TaskStatus.STARTED:
+            self.status = TaskStatus.COMPLETED
         return False
 
     def get_dict(self) -> dict:
         return {
-            'status':self.status,
+            'status':self.status.name.capitalize(),
             'duration':self.duration
         }
+    def time_function(self, *args, func:types.FunctionType) -> dict:
+        with self:
+            try:
+                func( *args )
+            except subprocess.CalledProcessError as e:
+                self.status = TaskStatus.FAILED
+        return self.get_dict()
+
+    def ok(self) -> bool:
+        return False if self.status == TaskStatus.FAILED else True
+
+
 
 # MARK: Git Fetch
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
@@ -37,8 +60,11 @@ class Timer(ContextDecorator):
 # ║          ██    ██ ██    ██        ██      ██         ██    ██      ██   ██             ║
 # ║           ██████  ██    ██        ██      ███████    ██     ██████ ██   ██             ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
-def git_fetch( config:dict ) -> dict:
+def git_fetch( config:dict ):
     print( figlet( 'Git Fetch', {'font': 'small'}) )
+    print(f'  gitURL={config['gitUrl']}')
+    print(f'  gitHash={config['gitHash']}')
+
     # Create worktree is missing
     if not pathlib.Path(config['source_dir']).exists():
         h4("Create WorkTree")
@@ -52,8 +78,6 @@ def git_fetch( config:dict ) -> dict:
     print_eval( 'git log -1', dry=config['dry'] )
 
     print( centre( ' Git Fetch finished ', fill('- ') ) )
-
-    return {'returncode':0}
 
 
 # MARK: SCons Build
@@ -96,6 +120,7 @@ def scons_build( config:dict ):
         build_command += f' target={target}'
 
         returncode |= print_eval( build_command, dry=config['dry'] )
+        if returncode: break
 
     print( centre( ' SCons build finished ', fill('- ') ) )
     return {'returncode':returncode}

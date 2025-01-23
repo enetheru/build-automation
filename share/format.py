@@ -176,12 +176,11 @@ def h4(msg:str = 'heading 4', file:typing.IO=None):
 # https://www.devgem.io/posts/capturing-realtime-output-from-a-subprocess-in-python
 # https://stackoverflow.com/questions/54091396/live-output-stream-from-python-subprocess
 # https://docs.python.org/3.12/library/shlex.html#shlex.split
-def print_eval( command:str, dry:bool=False ) -> int:
+def print_eval( command:str, dry:bool=False, noexcept=False ) -> int:
     print(f"""
   CWD: {os.getcwd()}
      $ {command}""")
     if dry: return 0
-    returncode:int
     proc = subprocess.Popen( shlex.split(command),
                              encoding='utf-8',
                              stderr=subprocess.STDOUT,
@@ -189,7 +188,13 @@ def print_eval( command:str, dry:bool=False ) -> int:
     with proc:
         for line in proc.stdout:
             print(line.rstrip())
-    return proc.returncode
+
+    if noexcept:
+        return proc.returncode
+    elif proc.returncode:
+        raise subprocess.CalledProcessError( returncode=proc.returncode, cmd=command )
+    else:
+        return 0
 
 # function Print-Last-Error {
 #     H4 "last exit?     = $LASTEXITCODE"
