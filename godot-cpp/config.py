@@ -76,12 +76,12 @@ if config['prepare'] and timer.ok():
     stats['prepare'] = timer.time_function( config, func=cmake_configure )
 
 #[=================================[ Build ]=================================]
-if config['build'] and and timer.ok():
+if config['build'] and timer.ok():
     console.set_window_title('Build - {name}')
     stats['build'] = timer.time_function( config, func=cmake_build )
 
 #[==================================[ Test ]==================================]
-if config['test'] and and timer.ok():
+if config['test'] and timer.ok():
     pass
 
 #[=================================[ Stats ]=================================]
@@ -226,8 +226,10 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
         case 'cmake' | 'scons', 'msvc' | 'msys2-ucrt64':
             pass
         case 'scons','msys2-ucrt64':
+            cfg.gitHash = 'df2f263531d0e26fb6d60aa66de3e84165e27788'
             cfg.scons['build_vars'] += ['use_mingw=yes']
         case 'scons','msys2-clang64':
+            cfg.gitHash = 'df2f263531d0e26fb6d60aa66de3e84165e27788'
             cfg.scons['build_vars'] += ['use_mingw=yes', 'use_llvm=yes']
         case _:
             print( f'ignoring combination: {build_tool} - {toolchain}')
