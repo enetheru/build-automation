@@ -243,6 +243,12 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
             project_config.build_configs[cfg.name] = cfg
             continue
 
+        case 'scons', 'emsdk':
+            cfg.scons['build_vars'] += ['platform=web']
+            cfg.shell = 'emsdk'
+            project_config.build_configs[cfg.name] = cfg
+            continue
+
         case 'cmake', 'msvc':
             cfg.cmake['config_vars'] += [
                 f'-G"Visual Studio 17 2022"',
@@ -330,6 +336,17 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
             cfg.cmake['toolchain_file'] = 'C:/androidsdk/ndk/23.2.8568313/build/cmake/android.toolchain.cmake'
             project_config.build_configs[cfg.name] = cfg
             continue
+
+        case 'cmake', 'emsdk':
+            # FIXME, investigate the rest of the emcmake pyhton script for any other options.
+            cfg.cmake['config_vars'] =[
+                '-G"Ninja"',
+                '-DCMAKE_BUILD_TYPE=Release',
+                '-DGODOT_ENABLE_TESTING=ON']
+            cfg.cmake['toolchain_file'] = 'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
+            project_config.build_configs[cfg.name] = cfg
+            continue
+
 
         case _:
             print( f'ignoring combination: {build_tool} - {toolchain}')

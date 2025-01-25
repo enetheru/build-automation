@@ -48,6 +48,7 @@ shells = {
     'msys2-clangarm64': ['C:/msys64/msys2_shell.cmd', '-clangarm64', '-defterm', '-no-start', '-c' ],
     # MSYS2 default, doesnt really have a utility, ust here for completion
     'msys2': ['C:/msys64/msys2_shell.cmd', '-msys', '-defterm', '-no-start', '-c' ],
+    'emsdk': ['pwsh', '-Command','C:/emsdk/emsdk_env.ps1;' ],
 
     # TODO Emscripten
 }
@@ -78,7 +79,7 @@ toolchains = ['msvc',               # Microsoft Visual Studio
               'msys2-clang64',      # x86_64    clang linking against ucrt
               'msys2-clangarm64',   # aarch64   clang linking against ucrt
               'android',            # https://developer.android.com/tools/sdkmanager
-              'emscripten',         # https://emscripten.org/
+              'emsdk',              # https://emscripten.org/
               ]
 
 # MARK: Toolchain Scripts
@@ -139,54 +140,34 @@ if config['update']:
 
 # Emscripten
     'emscripten':"""
-#     param(
-#         $emsdk = "C:\emsdk",
-#         $version = "latest"
-#     )
-#     H3 "Update Emscripten SDK"
-#     
-#     if( -Not (Test-Path -Path "$emsdk" -PathType Container) ) {
-#         Write-Error "Missing emsdk Path: '$emsdk'"
-#         return 1
-#     }
-#     if( -Not (Test-Path -Path "$emsdk\emsdk.ps1" -PathType Leaf) ) {
-#         Write-Error "Missing Script: '$emsdk\emsdk.ps1'"
-#         return 1
-#     }
-#     
-#     if( $version -match "latest" ){
-#         # scons: *** [bin\.web_zip\godot.editor.worker.js] The system cannot find the file specified
-#         # https://forum.godotengine.org/t/error-while-building-godot-4-3-web-template/86368
-#         
-#         Write-Warning "Latest Emscripten version is not oficially supported"
-#         Write-Output @"
-#     # Official Requirements:
-#     # godotengine - 4.0+     | Emscripten 1.39.9
-#     # godotengine - 4.2+     | Emscripten 3.1.39
-#     # godotengine - master  | Emscripten 3.1.62
-#     #
-#     # But in the github action runner, it's 3.1.64
-#     # And all of the issues related show 3.1.64
-# "@
-#     }
-#     
-#     Set-Location $emsdk
-#     Format-Eval git pull
-#     
-#     Format-Eval $emsdk\emsdk.ps1 install $version
+import os
+from share.format import *
 
-# Activate Escripten
-    # param(
-    #     $emsdk = "C:\emsdk",
-    #     $version = "latest"
-    # )
-    # if( $emsdk_activated -eq $True ){
-    #     H4 "Emscripten SDK is already activated."
-    #     return
-    # }
-    # H4 "Activate Emscripten SDK"
-    # Format-Eval "$emsdk\emsdk.ps1" activate $version
-    # $emsdk_activated = $True
+emsdk_path = Path( 'C:/emsdk' )
+emsdk_version = '3.1.64'
+
+if config['update']:
+    console.set_window_title('Updating Emscripten SDK')
+    h3("Update Emscripten SDK")
+    
+    # if( $version -match "latest" ){
+    #     # scons: *** [bin\.web_zip\godot.editor.worker.js] The system cannot find the file specified
+    #     # https://forum.godotengine.org/t/error-while-building-godot-4-3-web-template/86368
+    # 
+    #     Write-Warning "Latest Emscripten version is not oficially supported"
+    #     Write-Output @"
+    
+    # Official Requirements:
+    # godotengine - 4.0+     | Emscripten 1.39.9
+    # godotengine - 4.2+     | Emscripten 3.1.39
+    # godotengine - master   | Emscripten 3.1.62
+
+    # But in the github action runner, it's 3.1.64
+    # And all of the issues related show 3.1.64
+    
+    os.chdir(emsdk_path)
+    print_eval( 'git pull', dry=config['dry'] )
+    print_eval( f'pwsh emsdk.ps1 install {emsdk_version}', dry=config['dry'] )
 """
 }
 
