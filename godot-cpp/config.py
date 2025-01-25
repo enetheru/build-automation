@@ -210,13 +210,19 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
         case 'scons':
             cfg.script = scons_script
 
-
     match build_tool, toolchain:
         case 'scons', 'msvc':
+            cfg.shell = 'pwsh-dev'
             project_config.build_configs[cfg.name] = cfg
             continue
 
         case 'scons', 'llvm':
+            cfg.scons['build_vars'].append('use_llvm=yes')
+            project_config.build_configs[cfg.name] = cfg
+            continue
+
+        case 'scons', 'llvm-mingw':
+            cfg.scons['build_vars'].append('use_mingw=yes')
             cfg.scons['build_vars'].append('use_llvm=yes')
             project_config.build_configs[cfg.name] = cfg
             continue
@@ -250,12 +256,34 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
             continue
 
         case 'cmake', 'msvc':
-            cfg.cmake['config_vars'] += [
+            cfg.shell = 'pwsh-dev'
+
+            # MSVC
+            alt = copy.deepcopy( cfg )
+            alt.cmake['config_vars'] = [
                 f'-G"Visual Studio 17 2022"',
                 '-DGODOT_ENABLE_TESTING=ON']
-            cfg.cmake['build_vars'].append('--config Release')
-            cfg.cmake['tool_vars'] = msbuild_extras
-            project_config.build_configs[cfg.name] = cfg
+            alt.cmake['build_vars'].append('--config Release')
+            alt.cmake['tool_vars'] = msbuild_extras
+            project_config.build_configs[alt.name] = alt
+
+            # Ninja
+            alt = copy.deepcopy( cfg )
+            alt.name += '.ninja'
+            alt.cmake['config_vars'] = [
+                '-G"Ninja"',
+                '-DCMAKE_BUILD_TYPE=Release',
+                '-DGODOT_ENABLE_TESTING=ON']
+            project_config.build_configs[alt.name] = alt
+
+            # Ninja Multi-Config
+            alt = copy.deepcopy( cfg )
+            alt.name += '.ninja-multi'
+            alt.cmake['config_vars'] = [
+                '-G"Ninja Multi-Config"',
+                '-DGODOT_ENABLE_TESTING=ON']
+            alt.cmake['build_vars'].append('--config Release')
+            project_config.build_configs[alt.name] = alt
             continue
 
         case 'cmake', 'llvm':
@@ -277,6 +305,15 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
                 '-DGODOT_ENABLE_TESTING=ON']
             alt.cmake['build_vars'].append('--config Release')
             project_config.build_configs[alt.name] = alt
+            continue
+
+        case 'cmake', 'llvm-mingw':
+            cfg.cmake['config_vars'] = [
+                '-G"Ninja"',
+                '-DCMAKE_BUILD_TYPE=Release',
+                '-DGODOT_ENABLE_TESTING=ON']
+            project_config.build_configs[cfg.name] = cfg
+            continue
 
         case 'cmake', 'msys2-ucrt64':
             # Ninja
@@ -318,11 +355,11 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
             continue
 
         case 'cmake', 'mingw64':
+            cfg.gitHash = '537b787f2dc73d097a0cba7963f2e24b82ce6076'
             cfg.cmake['config_vars'] = [
                 '-G"MinGW Makefiles"',
                 '-DCMAKE_BUILD_TYPE=Release',
                 '-DGODOT_ENABLE_TESTING=ON']
-            cfg.cmake['toolchain_file'] = 'toolchains/w64-mingw-w64.cmake'
             project_config.build_configs[cfg.name] = cfg
             continue
 

@@ -39,6 +39,8 @@ MacOS Host
 shells = {
     # Default Windows
     'pwsh':['pwsh', '-Command' ],
+    # Developer Powershell for VS2022
+    'pwsh-dev':['pwsh', '-Command', """&{Import-Module "C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Community\\\\Common7\\\\Tools\\\\Microsoft.VisualStudio.DevShell.dll"; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64"};""" ],
     # MSYS2 GCC
     'msys2-mingw32': ['C:/msys64/msys2_shell.cmd', '-mingw32', '-defterm', '-no-start', '-c' ],
     'msys2-mingw64': ['C:/msys64/msys2_shell.cmd', '-mingw64', '-defterm', '-no-start', '-c' ],
@@ -49,13 +51,7 @@ shells = {
     # MSYS2 default, doesnt really have a utility, ust here for completion
     'msys2': ['C:/msys64/msys2_shell.cmd', '-msys', '-defterm', '-no-start', '-c' ],
     'emsdk': ['pwsh', '-Command','C:/emsdk/emsdk_env.ps1;' ],
-
-    # TODO Emscripten
 }
-
-# TODO add Developer Powershell for VS2022
-# Developer Powershell for VS2022 lists this for command line
-# powershell.exe -NoExit -Command "&{Import-Module """C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"""; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments """-arch=x64 -host_arch=x64"""}"
 
 # MARK: Toolchains
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -112,6 +108,17 @@ llvm_path = Path("C:/Program Files/LLVM/bin" )
 
 h4( f'prepending "{llvm_path}" to PATH' )
 os.environ['PATH'] = f'{llvm_path};{os.environ.get('PATH')}'
+""",
+
+# LLVM-mingw
+    'llvm-mingw':"""
+import os
+from share.format import *
+
+llvm_mingw_path = Path("C:/llvm-mingw/bin" )
+
+h4( f'prepending "{llvm_mingw_path}" to PATH' )
+os.environ['PATH'] = f'{llvm_mingw_path};{os.environ.get('PATH')}'
 """,
 
 # Android
