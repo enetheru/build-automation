@@ -15,6 +15,7 @@ from rich.table import Table
 # Local Imports
 from share.ConsoleMultiplex import ConsoleMultiplex
 from share.env_commands import *
+from share.env_commands import python_toolchain
 
 console = ConsoleMultiplex()
 rich._console = console
@@ -219,7 +220,9 @@ for project_name, project_config in project_configs.items():
 
         #[======================[ Format and Save Build Script ]======================]
         h4('Processing Build Script')
-        script = python_preamble( build_config ) + build_config.script.format(**get_interior_dict(build_config))
+        script = (python_preamble( build_config )
+                  + python_toolchain(build_config)
+                  + build_config.script.format(**get_interior_dict(build_config)))
         with open( script_path, 'w') as file:
             file.write( script )
 

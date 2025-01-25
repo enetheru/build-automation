@@ -3,6 +3,8 @@ import copy
 from types import SimpleNamespace
 import itertools
 
+from share.env_commands import toolchains
+
 project_config = SimpleNamespace(**{
     'gitUrl'  : "http://github.com/enetheru/godot-cpp.git",
     'build_configs' : {}
@@ -18,8 +20,6 @@ project_config = SimpleNamespace(**{
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
 scons_script = """
-#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-from pprint import pp
 from actions import *
 
 stats:dict = dict()
@@ -70,6 +70,13 @@ if 'godot_build_profile' in cmake:
         profile_path = config['source_dir'] / profile_path
     h4(f'using build profile: "{{profile_path}}"')
     cmake['config_vars'].append(f'-DGODOT_BUILD_PROFILE="{{os.fspath(profile_path)}}"')
+
+if 'toolchain_file' in cmake:
+    toolchain_path = Path(cmake['toolchain_file'])
+    if not toolchain_path.is_absolute():
+        toolchain_path = config['root_dir'] / toolchain_path
+    h4(f'using toolchain file: "{{toolchain_path}}"')
+    cmake['config_vars'].append(f'--toolchain "{{os.fspath(toolchain_path)}}"')
 
 if config['prepare'] and timer.ok():
     console.set_window_title('Prepare - {name}')
@@ -169,25 +176,6 @@ msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"
 #   host.env.build_tool.compiler.options
 # Where any of the above are omitted it obvious
 
-# The variations of toolchains for mingw are listed here: https://www.mingw-w64.org/downloads/
-toolchains = ['msvc',               # Microsoft Visual Studio
-              'llvm-clang',         # clang from llvm.org
-              'llvm-clang-cl',      # clang-cl from llvm.org
-              'llvm-mingw-i686',    # llvm based mingw-w64 toolchain.
-              'llvm-mingw-x86_64',  #   https://github.com/mstorsjo/llvm-mingw
-              'llvm-mingw-aarch64', #
-              'llvm-mingw-armv7',   #
-              'mingw64',            # mingw from https://github.com/niXman/mingw-builds-binaries/releases,
-                                    #   This is also the default toolchain for clion.
-              'android',            # https://developer.android.com/tools/sdkmanager
-              'emscripten',         # https://emscripten.org/
-              'msys2-mingw32',      # i686      gcc linking against msvcrt
-              'msys2-mingw64',      # x86_64    gcc linking against msvcrt
-              'msys2-ucrt64',       # x86_64    gcc linking against ucrt
-              'msys2-clang32',      # i686      clang linking against ucrt
-              'msys2-clang64',      # x86_64    clang linking against ucrt
-              'msys2-clangarm64']   # aarch64   clang linking against ucrt
-
 build_tool = ['scons','cmake']
 
 generators = ['Visual Studio 17 2022', 'Ninja', 'Ninja Multi-Config']
@@ -197,11 +185,12 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
         'name' : f'w64.{build_tool}.{toolchain}',
         'shell':'pwsh',
         'build_tool':build_tool,
+        'toolchain':toolchain,
         'script': None,
         'cmake':{
             'build_dir':'build-cmake',
             'godot_build_profile':'test/build_profile.json',
-            'config_vars':['-DGODOT_ENABLE_TESTING=ON'],
+            'config_vars':[],
             'build_vars':[],
             'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
         },
@@ -223,41 +212,128 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
 
 
     match build_tool, toolchain:
-        case 'cmake' | 'scons', 'msvc' | 'msys2-ucrt64':
-            pass
+        case 'scons', 'msvc':
+            project_config.build_configs[cfg.name] = cfg
+            continue
+
+        case 'scons', 'llvm':
+            cfg.scons['build_vars'].append('use_llvm=yes')
+            project_config.build_configs[cfg.name] = cfg
+            continue
+
         case 'scons','msys2-ucrt64':
             cfg.gitHash = 'df2f263531d0e26fb6d60aa66de3e84165e27788'
-            cfg.scons['build_vars'] += ['use_mingw=yes']
+            cfg.scons['build_vars'].append('use_mingw=yes')
+            project_config.build_configs[cfg.name] = cfg
+            continue
+
         case 'scons','msys2-clang64':
             cfg.gitHash = 'df2f263531d0e26fb6d60aa66de3e84165e27788'
             cfg.scons['build_vars'] += ['use_mingw=yes', 'use_llvm=yes']
+            project_config.build_configs[cfg.name] = cfg
+            continue
+
+        case 'scons','mingw64':
+            cfg.scons['build_vars'] += ['use_mingw=yes']
+            project_config.build_configs[cfg.name] = cfg
+            continue
+
+        case 'scons', 'android':
+            cfg.scons['build_vars'] += ['platform=android']
+            project_config.build_configs[cfg.name] = cfg
+            continue
+
+        case 'cmake', 'msvc':
+            cfg.cmake['config_vars'] += [
+                f'-G"Visual Studio 17 2022"',
+                '-DGODOT_ENABLE_TESTING=ON']
+            cfg.cmake['build_vars'].append('--config Release')
+            cfg.cmake['tool_vars'] = msbuild_extras
+            project_config.build_configs[cfg.name] = cfg
+            continue
+
+        case 'cmake', 'llvm':
+            cfg.cmake['toolchain_file'] = "toolchains/w64-llvm.cmake"
+            # Ninja
+            alt = copy.deepcopy( cfg )
+            alt.name += '.ninja'
+            alt.cmake['config_vars'] = [
+                '-G"Ninja"',
+                '-DCMAKE_BUILD_TYPE=Release',
+                '-DGODOT_ENABLE_TESTING=ON']
+            project_config.build_configs[alt.name] = alt
+
+            # Ninja Multi-Config
+            alt = copy.deepcopy( cfg )
+            alt.name += '.ninja-multi'
+            alt.cmake['config_vars'] = [
+                '-G"Ninja Multi-Config"',
+                '-DGODOT_ENABLE_TESTING=ON']
+            alt.cmake['build_vars'].append('--config Release')
+            project_config.build_configs[alt.name] = alt
+
+        case 'cmake', 'msys2-ucrt64':
+            # Ninja
+            alt = copy.deepcopy( cfg )
+            alt.name += '.ninja'
+            alt.cmake['config_vars'] = [
+                '-G"Ninja"',
+                '-DCMAKE_BUILD_TYPE=Release',
+                '-DGODOT_ENABLE_TESTING=ON']
+            project_config.build_configs[alt.name] = alt
+
+            # Ninja Multi-Config
+            alt = copy.deepcopy( cfg )
+            alt.name += '.ninja-multi'
+            alt.cmake['config_vars'] = [
+                '-G"Ninja Multi-Config"',
+                '-DGODOT_ENABLE_TESTING=ON']
+            alt.cmake['build_vars'].append('--config Release')
+            project_config.build_configs[alt.name] = alt
+            continue
+
+        case 'cmake', 'msys2-clang64':
+            alt = copy.deepcopy( cfg )
+            alt.name += '.ninja'
+            alt.cmake['config_vars'] = [
+                '-G"Ninja"',
+                '-DCMAKE_BUILD_TYPE=Release',
+                '-DGODOT_ENABLE_TESTING=ON']
+            project_config.build_configs[alt.name] = alt
+
+            # Ninja Multi-Config
+            alt = copy.deepcopy( cfg )
+            alt.name += '.ninja-multi'
+            alt.cmake['config_vars'] = [
+                '-G"Ninja Multi-Config"',
+                '-DGODOT_ENABLE_TESTING=ON']
+            alt.cmake['build_vars'].append('--config Release')
+            project_config.build_configs[alt.name] = alt
+            continue
+
+        case 'cmake', 'mingw64':
+            cfg.cmake['config_vars'] = [
+                '-G"MinGW Makefiles"',
+                '-DCMAKE_BUILD_TYPE=Release',
+                '-DGODOT_ENABLE_TESTING=ON']
+            cfg.cmake['toolchain_file'] = 'toolchains/w64-mingw-w64.cmake'
+            project_config.build_configs[cfg.name] = cfg
+            continue
+
+        case 'cmake', 'android':
+            cfg.cmake['config_vars'] =[
+                '-G"Ninja"',
+                '-DCMAKE_BUILD_TYPE=Release',
+                "-DANDROID_PLATFORM=latest",
+                "-DANDROID_ABI=x86_64",
+                '-DGODOT_ENABLE_TESTING=ON']
+            cfg.cmake['toolchain_file'] = 'C:/androidsdk/ndk/23.2.8568313/build/cmake/android.toolchain.cmake'
+            project_config.build_configs[cfg.name] = cfg
+            continue
+
         case _:
             print( f'ignoring combination: {build_tool} - {toolchain}')
             continue
-
-    # Add the generator variations.
-    original = cfg
-    if build_tool == 'cmake':
-        for gen in generators:
-            cfg = copy.deepcopy( original )
-            match gen:
-                case 'Ninja':
-                    cfg.name = original.name + '.ninja'
-                case 'Ninja Multi-Config':
-                    cfg.name = original.name + '.ninja-multi'
-                    cfg.cmake['build_vars'].append('--config Release')
-                case 'Visual Studio 17 2022':
-                    if not toolchain == 'msvc':
-                        cfg.name = original.name + '.msvc'
-                    cfg.cmake['build_vars'].append('--config Release')
-                    cfg.cmake['tool_vars'] = msbuild_extras
-                case _:
-                    continue
-
-            cfg.cmake['config_vars'] = [f'-G"{gen}"'] + original.cmake['config_vars']
-            project_config.build_configs[cfg.name] = cfg
-    else:
-        project_config.build_configs[cfg.name] = cfg
 
 # ╒════════════════════════════════════════════════════════════════════════════╕
 # │                 ███    ███  ██████  ██████  ██ ██      ███████             │
