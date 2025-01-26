@@ -69,6 +69,15 @@ mono_crash.*.json
 # Build Folders
 /*/*/
 
+# Build Configurations
+/*/*.py
+!/*/config.py
+!/*/actions.py
+
+#re-include shared scripts and toolchains
+!/share/*
+!/toolchains/*
+
 #Build Logs
 /*/*.txt
 /*/*.txt.md

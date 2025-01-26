@@ -130,10 +130,6 @@ if bargs.list:
 
 # MARK: Defaults
 # ====================[ Default Commands ]=====================-
-# FIXME There really are only two commands, the environment one and the clean one.
-#   I need for these to be set
-# TODO set the default platform environment command
-
 def clean_log(raw_file: IO, clean_file: IO):
     clean_file.write("Dummy clean function copies first 10 lines")
     for i in range(10):
@@ -215,6 +211,7 @@ for project_name, project_config in project_configs.items():
 
         # additional overrides
         build_config.config_name = build_config.name
+        # TODO Allow specification of the working tree in the config.
         build_config.source_dir = build_config.project_root / build_config.name
         script_path = build_config.project_root / f'{build_config.name}.py'
 
@@ -254,18 +251,16 @@ for project_name, project_config in project_configs.items():
                                  stderr=subprocess.STDOUT,
                                  stdout=subprocess.PIPE)
         with proc:
-            # FIXME pretty sure this evaluates after the command is completed
-            #   It would be nicer if this was evaluated in realtime
+            # TODO The evaluation of the output appears delayed, research a lower latency solution
             for line in proc.stdout:
                 print(line.rstrip())
                 # TODO I can watch for print statements here which assign statistics.
-                # FIXME if line.startswith('scrape_this|'):
+                #   if line.startswith('scrape_this|'):
                 #     eval(line.split('|')[1], globals(), locals() )
 
-
-        # TODO create a timeout for the processing, something reasonable.
-        #   this should be defined in the build config as the largest possible build time that is expected.
-        #   that way it can trigger a check of the system if it is failing this test.
+            # TODO create a timeout for the processing, something reasonable.
+            #   this should be defined in the build config as the largest possible build time that is expected.
+            #   that way it can trigger a check of the system if it is failing this test.
 
         stats['status'] = 'Completed' if not proc.returncode else 'Failed'
         stats['end_time'] = datetime.now()
