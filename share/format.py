@@ -2,11 +2,11 @@ import itertools
 import math
 import os
 import pathlib
+import re
 import shlex
 import shutil
 import subprocess
 import typing
-import re
 
 from rich import print
 

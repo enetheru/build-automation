@@ -1,6 +1,6 @@
 import copy
-from types import SimpleNamespace
 import itertools
+from types import SimpleNamespace
 
 from share.env_commands import toolchains
 

@@ -1,6 +1,9 @@
-import rich
 from pathlib import Path
+
+import rich
+
 from share.format import *
+
 
 # MARK: Testing
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -16,6 +19,7 @@ def godotcpp_test( config:dict ) -> bool:
 
     # FIXME use fresh to delete the .godot folder
     godot_editor = Path(config['godot_e'])
+    godot_release_template = Path(config['godot_tr'])
 
     test_project_dir = Path(config['source_dir']) / 'test/project'
     dot_godot_dir = test_project_dir / '.godot'
@@ -32,14 +36,13 @@ def godotcpp_test( config:dict ) -> bool:
         try:
             print_eval(' '.join(cmd_chunks), dry=config['dry'], quiet=True)
         except subprocess.SubprocessError as e:
-            print( 'Godot exited abnormally during .godot folder creation')
+            print( '[red]Godot exited abnormally during .godot folder creation')
 
     if not dot_godot_dir.exists():
         print('Error: Creating .godot folder')
         return True
 
     h4("Run the test project")
-    godot_release_template = Path(config['godot_tr'])
     cmd_chunks = [
         f'"{godot_release_template}"',
         f'--path "{test_project_dir}"',

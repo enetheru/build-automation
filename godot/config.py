@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from types import SimpleNamespace
+
 from share.env_commands import toolchains
 
 # Build Targets
@@ -27,10 +28,9 @@ from share.env_commands import toolchains
 # Option Variations
 # TODO List off the variations
 
-project_config = SimpleNamespace(**{
-    'gitUrl'  : "https://github.com/godotengine/godot.git",
-    'build_configs' : {}
-})
+project_config = SimpleNamespace(
+    **{"gitUrl": "https://github.com/godotengine/godot.git", "build_configs": {}}
+)
 
 # MARK: Scripts
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
@@ -114,71 +114,73 @@ if not timer.ok():
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 for toolchain in toolchains:
-    cfg = SimpleNamespace(**{
-        'name' : f'w64.{toolchain}',
-        'shell':'pwsh',
-        'build_tool':'scons',
-        'toolchain':toolchain,
-        'script': scons_script,
-        'scons':{
-            'build_vars':[],
-            'targets':['template_release','template_debug','editor'],
-        },
-        'godot_tr':'bin/godot.windows.template_release.x86_64.exe',
-        'godot_td':'bin/godot.windows.template_debug.x86_64.exe',
-        'godot_e':'bin/godot.windows.editor.x86_64.exe',
-    })
+    cfg = SimpleNamespace(
+        **{
+            "name": f"w64.{toolchain}",
+            "shell": "pwsh",
+            "build_tool": "scons",
+            "toolchain": toolchain,
+            "script": scons_script,
+            "scons": {
+                "build_vars": [],
+                "targets": ["template_release", "template_debug", "editor"],
+            },
+            "godot_tr": "bin/godot.windows.template_release.x86_64.exe",
+            "godot_td": "bin/godot.windows.template_debug.x86_64.exe",
+            "godot_e": "bin/godot.windows.editor.x86_64.exe",
+        }
+    )
 
-    if toolchain.startswith('msys2'):
+    if toolchain.startswith("msys2"):
         cfg.shell = toolchain
 
     match toolchain:
-        case 'msvc':
-            cfg.shell = 'pwsh-dev'
+        case "msvc":
+            cfg.shell = "pwsh-dev"
             project_config.build_configs[cfg.name] = cfg
             continue
 
-        case 'llvm':
-            cfg.scons['build_vars'].append('use_llvm=yes')
+        case "llvm":
+            cfg.scons["build_vars"].append("use_llvm=yes")
             project_config.build_configs[cfg.name] = cfg
             continue
 
-        case 'llvm-mingw':
-            cfg.scons['build_vars'].append('use_mingw=yes')
-            cfg.scons['build_vars'].append('use_llvm=yes')
+        case "llvm-mingw":
+            cfg.scons["build_vars"].append("use_mingw=yes")
+            cfg.scons["build_vars"].append("use_llvm=yes")
             project_config.build_configs[cfg.name] = cfg
             continue
 
-        case 'msys2-ucrt64':
+        case "msys2-ucrt64":
             # cfg.gitHash = 'df2f263531d0e26fb6d60aa66de3e84165e27788'
-            cfg.scons['build_vars'].append('use_mingw=yes')
+            cfg.scons["build_vars"].append("use_mingw=yes")
             project_config.build_configs[cfg.name] = cfg
             continue
 
-        case 'msys2-clang64':
+        case "msys2-clang64":
             # cfg.gitHash = 'df2f263531d0e26fb6d60aa66de3e84165e27788'
-            cfg.scons['build_vars'] += ['use_mingw=yes', 'use_llvm=yes']
+            cfg.scons["build_vars"] += ["use_mingw=yes", "use_llvm=yes"]
             project_config.build_configs[cfg.name] = cfg
             continue
 
-        case 'mingw64':
-            cfg.scons['build_vars'] += ['use_mingw=yes']
+        case "mingw64":
+            cfg.scons["build_vars"] += ["use_mingw=yes"]
             project_config.build_configs[cfg.name] = cfg
             continue
 
-        case 'android':
-            cfg.scons['build_vars'] += ['platform=android']
+        case "android":
+            cfg.scons["build_vars"] += ["platform=android"]
             project_config.build_configs[cfg.name] = cfg
             continue
 
-        case 'emsdk':
-            cfg.scons['build_vars'] += ['platform=web']
-            cfg.shell = 'emsdk'
+        case "emsdk":
+            cfg.scons["build_vars"] += ["platform=web"]
+            cfg.shell = "emsdk"
             project_config.build_configs[cfg.name] = cfg
             continue
 
         case _:
-            print( f'ignoring toolchain: {toolchain}')
+            print(f"ignoring toolchain: {toolchain}")
             continue
 
 # ╒════════════════════════════════════════════════════════════════════════════╕
@@ -215,7 +217,7 @@ for toolchain in toolchains:
 # ╘════════════════════════════════════════════════════════════════════════════╛
 
 
-#{cmake,meson}
-#{make,ninja,scons,msvc,autotools,gradle,etc}
-#{gcc,clang,msvc,appleclang,ibm,etc}
-#{ld,lld,gold,mold,appleld,msvc}
+# {cmake,meson}
+# {make,ninja,scons,msvc,autotools,gradle,etc}
+# {gcc,clang,msvc,appleclang,ibm,etc}
+# {ld,lld,gold,mold,appleld,msvc}

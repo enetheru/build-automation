@@ -1,9 +1,9 @@
 import subprocess
 import types
-from datetime import datetime
 from contextlib import ContextDecorator
+from datetime import datetime
 from enum import Enum
-import rich
+
 
 class TaskStatus(Enum):
     PENDING = 1
