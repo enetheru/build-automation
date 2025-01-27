@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from share.format import *
+from share.run import stream_command
 
 
 # MARK: Git Fetch
@@ -26,14 +27,14 @@ def git_fetch(config: dict):
             "add",
             f'-d "{config['source_dir']}"',
         ]
-        print_eval(" ".join(cmd_chunks), dry=config["dry"])
+        stream_command(" ".join(cmd_chunks), dry=config["dry"])
     else:
         h4("Update WorkTree")
 
     # Update worktree
     os.chdir(config["source_dir"])
-    print_eval(f"git checkout --force -d { config['gitHash'] }", dry=config["dry"])
-    print_eval("git log -1", dry=config["dry"])
+    stream_command(f"git checkout --force -d { config['gitHash'] }", dry=config["dry"])
+    stream_command("git log -1", dry=config["dry"])
 
     print(centre(" Git Fetch finished ", fill("- ")))
 
@@ -78,8 +79,9 @@ def scons_build(config: dict):
         h3(f"Building {target}")
         build_command: str = " ".join(filter(None, cmd_chunks))
         build_command += f" target={target}"
+        print( build_command )
 
-        print_eval(build_command, dry=config["dry"])
+        stream_command(build_command, dry=config["dry"])
 
     print(centre(" SCons build finished ", fill("- ")))
 
@@ -134,7 +136,7 @@ def cmake_configure(config: dict):
 
     print(figlet("CMake Configure", {"font": "small"}))
 
-    print_eval(" ".join(filter(None, config_command)), dry=config["dry"])
+    stream_command(" ".join(filter(None, config_command)), dry=config["dry"])
 
     print(centre(" CMake Configure Completed ", fill("- ")))
 
@@ -176,6 +178,6 @@ def cmake_build(config: dict):
             build_command += " " + " ".join(filter(None, cmake["tool_vars"]))
 
         print(figlet("CMake Build", {"font": "small"}))
-        print_eval(build_command, dry=config["dry"])
+        stream_command(build_command, dry=config["dry"])
 
     print(centre(" CMake Build Completed ", fill("- ")))

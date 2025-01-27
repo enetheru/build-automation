@@ -15,12 +15,25 @@ from rich.table import Table
 # Local Imports
 from share.ConsoleMultiplex import ConsoleMultiplex
 from share.env_commands import *
-from share.env_commands import python_toolchain
+from share.run import stream_command
 
+sys.stdout.reconfigure(encoding='utf-8')
+
+
+def get_interior_dict( subject ) -> dict:
+    return {k: v for k, v in subject.__dict__.items()}
+
+
+# noinspection PyUnusedLocal
+def process_log_null( raw_file: IO, clean_file: IO ):
+    clean_file.write( "Dummy clean function copies first 10 lines" )
+
+# ================[ Setup Multiplexed Console ]================-
 console = ConsoleMultiplex()
 rich._console = console
 
-# MARK: Options
+# MARK: ArgParse
+# ====================[ Setup ArgParser ]======================-
 parser = argparse.ArgumentParser(
     prog="Build-Automation", description="Builds Things", epilog="Build All The Things!!", )
 
@@ -67,25 +80,12 @@ bargs.command = " ".join( sys.argv )
 bargs.platform = platform.system()
 bargs.root_dir = Path( __file__ ).parent
 
-# re-define print_eval to take the global dry command.
-from share.format import print_eval as print_eval_base
-
-
-def print_eval( command ):
-    print_eval_base( command, dry=project_config.dry )
-
-
 # Log everything to a file
 log_path = bargs.root_dir / "build_log.txt"
-console.tee( Console( file=open( log_path, "w" ), force_terminal=True ), "build_log" )
+console.tee( Console( file=open( log_path, "w", encoding='utf-8' ), force_terminal=True ), "build_log" )
 
 # Add all the things from the command line
 parser.parse_args( namespace=bargs )
-
-
-def get_interior_dict( subject ) -> dict:
-    return {k: v for k, v in subject.__dict__.items()}
-
 
 # ================[ Main Heading and Options ]=================-
 console.set_window_title( "AutoBuild" )
@@ -141,16 +141,6 @@ for project_name, project_config in project_configs.items():
 if bargs.list:
     exit()
 
-
-# MARK: Defaults
-# ====================[ Default Commands ]=====================-
-def clean_log( raw_file: IO, clean_file: IO ):
-    clean_file.write( "Dummy clean function copies first 10 lines" )
-    for i in range( 10 ):
-        line = raw_file.readline()
-        clean_file.write( line )
-
-
 # MARK: pProject
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  ___                         ___          _        _                       │
@@ -186,24 +176,23 @@ for project_name, project_config in project_configs.items():
     h2( project_name )
     print( figlet( project_name, {"font": "standard"} ) )
     for k, v in get_interior_dict( project_config ).items():
-        if k == "build_configs":
-            print( f"  {k:14s}=" )
-            for s in v.keys():
-                print( f"    {s}" )
-            continue
+        if k in ['build_configs']: continue
         print( f"  {k:14s}= {v}" )
+    print( f"  {'build_configs':14s}=" )
+    for k in project_config.build_configs.keys():
+        print( f"    {k}" )
 
     # ====================[ Git Clone/Update ]=====================-
     if project_config.fetch:
         h3( "Git Update/Clone Bare Repository" )
         bare_git_path = project_config.project_root / "git"
         if not bare_git_path.exists():
-            print_eval( f'git clone --bare "{project_config.gitUrl}" "{bare_git_path}"' )
+            stream_command( f'git clone --bare "{project_config.gitUrl}" "{bare_git_path}"', dry=bargs.dry )
         else:
-            print_eval( f'git --git-dir="{bare_git_path}" fetch --force origin *:*' )
-            print_eval( f'git --git-dir="{bare_git_path}" log -1 --pretty=%B' )
-            print_eval( f'git --git-dir="{bare_git_path}" worktree list' )
-            print_eval( f'git --git-dir="{bare_git_path}" worktree prune' )
+            stream_command( f'git --git-dir="{bare_git_path}" fetch --force origin *:*' , dry=bargs.dry )
+            stream_command( f'git --git-dir="{bare_git_path}" log -1 --pretty=%B' , dry=bargs.dry )
+            stream_command( f'git --git-dir="{bare_git_path}" worktree list' , dry=bargs.dry )
+            stream_command( f'git --git-dir="{bare_git_path}" worktree prune' , dry=bargs.dry )
 
     # MARK: pBuildConfig
     # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -240,8 +229,18 @@ for project_name, project_config in project_configs.items():
                 + build_config.script
                 # + build_config.script.format(**get_interior_dict( build_config ))
         # script = config_imports[project_name].process_script( script )
-        with open( script_path, "w" ) as file:
+        with open( script_path, "w", encoding='utf-8' ) as file:
             file.write( script )
+
+        # Early out if there are no actions to perform.
+        if (build_config.update
+                | build_config.fetch
+                | build_config.clean
+                | build_config.prepare
+                | build_config.build
+                | build_config.test):
+            setattr( bargs, 'actions', True )
+        else: continue
 
         # [==========================[ Shell / Environment ]==========================]
         h4( "Determine Shell Environment" )
@@ -260,9 +259,9 @@ for project_name, project_config in project_configs.items():
         log_file = open(
             log_path, "a" if build_config.append else "w", buffering=1, encoding="utf-8"
         )
-        console.tee( Console( file=log_file, force_terminal=True ), build_config.name )
 
         # ====================[ Run Build Script ]=====================-
+        console.tee( Console( file=log_file, force_terminal=True ), build_config.name )
         h3( "Run" )
         print( " ".join( env_command ) )
 
@@ -291,12 +290,16 @@ for project_name, project_config in project_configs.items():
 
         console.pop( build_config.name )
 
+        # ==================[ Output Log Processing ]==================-
         h3( "Post Run Actions" )
         h4( "Clean Log" )
         cleanlog_path = (build_config.project_root / f"logs-clean/{build_config.name}.txt")
-        with open( log_path, "r", encoding="utf-8" ) as log_raw, open(
-                cleanlog_path, "w", encoding="utf-8"
-        ) as log_clean:
+        if 'clean_log' in  get_interior_dict(build_config).keys():
+            clean_log = build_config.clean_log
+        else: clean_log = process_log_null
+
+        with (open( log_path, "r", encoding="utf-8" ) as log_raw,
+              open( cleanlog_path, "w", encoding="utf-8" ) as log_clean):
             clean_log( log_raw, log_clean )
 
         print( centre( f"Completed: {build_config.name}", fill( " -", 80 ) ) )
@@ -312,18 +315,20 @@ for project_name, project_config in project_configs.items():
 # ║                          ██      ██    ██      ██    ██                                ║
 # ║                          ██       ██████  ███████    ██                                ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
-table = Table( title="Stats", highlight=True, min_width=80 )
 
-table.add_column( "Project/Config", style="cyan", no_wrap=True )
-table.add_column( "Status" )
-table.add_column( "Time" )
+if bargs.actions:
+    table = Table( title="Stats", highlight=True, min_width=80 )
 
-for project_name, project_config in project_configs.items():
-    for build_name, build_config in project_config.build_configs.items():
-        table.add_row(
-            f"{project_name}/{build_name}", f"{build_config.stats['status']}", f"{build_config.stats['duration']}",
-            style="red" if build_config.stats["status"] == "Failed" else "green", )
+    table.add_column( "Project/Config", style="cyan", no_wrap=True )
+    table.add_column( "Status" )
+    table.add_column( "Time" )
 
-print( table )
+    for project_name, project_config in project_configs.items():
+        for build_name, build_config in project_config.build_configs.items():
+            table.add_row(
+                f"{project_name}/{build_name}", f"{build_config.stats['status']}", f"{build_config.stats['duration']}",
+                style="red" if build_config.stats["status"] == "Failed" else "green", )
+
+    print( table )
 
 console.pop( "build_log" )

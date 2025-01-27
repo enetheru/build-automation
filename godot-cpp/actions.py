@@ -1,8 +1,7 @@
 from pathlib import Path
 
-import rich
-
 from share.format import *
+from share.run import stream_command
 
 
 # MARK: Testing
@@ -34,7 +33,7 @@ def godotcpp_test( config:dict ) -> bool:
         ]
         # TODO redirect stdout to null
         try:
-            print_eval(' '.join(cmd_chunks), dry=config['dry'], quiet=True)
+            stream_command(' '.join(cmd_chunks), dry=config['dry'], stderr=None, stdout=None)
         except subprocess.SubprocessError as e:
             print( '[red]Godot exited abnormally during .godot folder creation')
 
@@ -50,18 +49,29 @@ def godotcpp_test( config:dict ) -> bool:
         '--headless'
     ]
     output = ['']
+    def handle_stdout( msg ):
+        output.append( f'{msg}' )
+        # print( msg )
+    def handle_stderr( msg ):
+        output.append( f'[red]{msg}[/red]' )
+        # print( msg )
     try:
-        print_eval(' '.join(cmd_chunks), dry=config['dry'], output=output, quiet=True )
+        result = stream_command(
+            ' '.join(cmd_chunks),
+            dry=config['dry'],
+            stdout_handler=handle_stdout,
+            stderr_handler=handle_stderr )
     except subprocess.SubprocessError as e:
+        result = e
         # FIXME Godot seems to exit with an error code for some reason on cmake builds only.
         #   I have to investigate why that might be.
         print( '[red]Error: Godot exited abnormally when running the test project')
         print( '    This requires investigation as it appears to only happen in cmake builds')
 
     from rich.panel import Panel
-    rich.print(
+    print(
         '',
-        Panel( ''.join( output ),  expand=False, title='Test Execution', title_align='left' ),
+        Panel( '\n'.join( output ),  expand=False, title='Test Execution', title_align='left', width=120 ),
         '')
 
     for line in output:

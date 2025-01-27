@@ -1,6 +1,10 @@
 #!/usr/bin/env pwsh
 #Requires -Version 7.4
 
+# Incase I forget here is the command for these banners:
+# CodeBox -border "╭─╮│ │╰─╯" -compact -align left -font 'small' Message
+# Fill '=' 64 | Left '# ' | Right '-' | Center "[ Message ]"
+
 # Powershell execution options
 Set-StrictMode -Version Latest
 

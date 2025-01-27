@@ -1,9 +1,7 @@
-import itertools
 import math
 import os
 import pathlib
 import re
-import shlex
 import shutil
 import subprocess
 import typing
@@ -138,63 +136,3 @@ def h4(msg:str = 'heading 4', file:typing.IO=None):
     if file: file.write(string)
     else: print( string )
     return string
-
-# MARK: COMMAND
-##################################- Command -###################################
-#                                                                              #
-#        ██████  ██████  ███    ███ ███    ███  █████  ███    ██ ██████        #
-#       ██      ██    ██ ████  ████ ████  ████ ██   ██ ████   ██ ██   ██       #
-#       ██      ██    ██ ██ ████ ██ ██ ████ ██ ███████ ██ ██  ██ ██   ██       #
-#       ██      ██    ██ ██  ██  ██ ██  ██  ██ ██   ██ ██  ██ ██ ██   ██       #
-#        ██████  ██████  ██      ██ ██      ██ ██   ██ ██   ████ ██████        #
-#                                                                              #
-################################################################################
-
-# function Format-Command {
-#     param(
-#         [Parameter( ValueFromRemainingArguments = $true )]$args
-#     )
-#     Write-Output ""
-#     Write-Output "  󰝰:$((get-location).Path)"
-#     Write-Output "  󰞷 $args"
-# }
-#
-
-# https://www.devgem.io/posts/capturing-realtime-output-from-a-subprocess-in-python
-# https://stackoverflow.com/questions/54091396/live-output-stream-from-python-subprocess
-# https://docs.python.org/3.12/library/shlex.html#shlex.split
-def print_eval( command:str,
-                dry:bool=False,
-                noexcept=False,
-                quiet=False,
-                output:list=None,
-                outerr:list=None) -> int:
-    print(f"""
-  CWD: {os.getcwd()}
-     $ {command}""")
-    if dry: return 0
-
-    if not output: output = []
-    if not outerr: outerr = []
-    proc = subprocess.Popen( shlex.split(command),
-                             encoding='utf-8',
-                             stderr=subprocess.PIPE,
-                             stdout=subprocess.PIPE )
-    with proc:
-        for (line_out, line_err) in itertools.zip_longest(proc.stdout, proc.stderr, fillvalue=''):
-            output.append( line_out )
-            outerr.append( line_err )
-            if not quiet:
-                if line_out: print( line_out.rstrip() )
-                if line_err: print(f'[color=red]{line_err.rstrip()}[/color]' )
-
-    if noexcept:
-        return proc.returncode
-    elif proc.returncode:
-        raise subprocess.CalledProcessError(
-            returncode=proc.returncode,
-            cmd=command,
-            output=''.join(output),
-            stderr=''.join(outerr))
-    else:
-        return 0

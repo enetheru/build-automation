@@ -2,9 +2,6 @@ from types import SimpleNamespace
 
 from share.format import *
 
-# Incase I forget here is the command for these banners:
-# CodeBox -border "╭─╮│ │╰─╯" -compact -align left -font 'small' Shell Commands
-
 # MARK: Shells
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  ___ _        _ _    ___                              _                    │
@@ -245,6 +242,7 @@ def python_preamble(config: SimpleNamespace) -> str:
 import sys
 from pathlib import Path
 import rich
+from rich import print
 from rich.console import Console
 
 rich._console = console = Console(soft_wrap=False, width=9000)
@@ -254,7 +252,7 @@ sys.path.append({repr(str(config.root_dir))})
     chunk = ["config = {"]
     for k, v in config.__dict__.items():
         # Skip items that we dont want
-        if k in ["script"]:
+        if k in ["script", "clean_log"]:
             continue
         if isinstance(v, WindowsPath):
             chunk.append(f"\t{repr(k)}:Path({repr(str(v))}),")

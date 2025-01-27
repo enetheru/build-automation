@@ -2,6 +2,7 @@ import copy
 import inspect
 import itertools
 from types import SimpleNamespace
+from typing import IO
 
 import rich
 
@@ -134,6 +135,12 @@ def process_script( script:str ) -> str:
     print( 'processing script' )
     return script.replace('%replaceme%', inspect.getsource(git_fetch))
 
+def clean_log( raw_file: IO, clean_file: IO ):
+    clean_file.write( "godot-cpp clean_log function" )
+    for i in range( 10 ):
+        line = raw_file.readline()
+        clean_file.write( line )
+
 # ╒════════════════════════════════════════════════════════════════════════════╕
 # │            ██████  ███████ ███████ ██   ██ ████████  ██████  ██████        │
 # │            ██   ██ ██      ██      ██  ██     ██    ██    ██ ██   ██       │
@@ -227,9 +234,12 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
             'build_vars':['build_profile=build_profile.json'],
             'targets':['template_release','template_debug','editor'],
         },
+        # Variables for testing
         'godot_tr':'C:/build/godot/w64.msvc/bin/godot.windows.template_release.x86_64.console.exe',
         'godot_td':'C:/build/godot/w64.msvc/bin/godot.windows.template_debug.x86_64.console.exe',
         'godot_e':'C:/build/godot/w64.msvc/bin/godot.windows.editor.x86_64.console.exe',
+        # Variables to clean the logs
+        'clean_log':clean_log
     })
 
     if toolchain.startswith('msys2'):
@@ -237,7 +247,7 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
 
     match build_tool:
         case 'cmake':
-            cfg.script = cmake_script
+            cfg.script = func_as_script( cmake_script )
         case 'scons':
             cfg.script = func_as_script( scons_script )
 
@@ -277,12 +287,14 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
 
         case 'scons', 'android':
             cfg.scons['build_vars'] += ['platform=android']
+            setattr(cfg, 'test', False)
             project_config.build_configs[cfg.name] = cfg
             continue
 
         case 'scons', 'emsdk':
             cfg.scons['build_vars'] += ['platform=web']
             cfg.shell = 'emsdk'
+            setattr(cfg, 'test', False)
             project_config.build_configs[cfg.name] = cfg
             continue
 
@@ -413,6 +425,7 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
             alt.cmake['config_vars'] = ['-G"Ninja Multi-Config"'] + cfg.cmake['config_vars']
             alt.cmake['build_vars'].append('--config Release')
             project_config.build_configs[alt.name] = alt
+            setattr(cfg, 'test', False)
             continue
 
         case 'cmake', 'emsdk':
@@ -422,6 +435,7 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
                 '-DCMAKE_BUILD_TYPE=Release',
                 '-DGODOT_ENABLE_TESTING=ON']
             cfg.cmake['toolchain_file'] = 'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
+            setattr(cfg, 'test', False)
             project_config.build_configs[cfg.name] = cfg
             continue
 

@@ -51,8 +51,6 @@ class Timer(ContextDecorator):
             # FIXME should this be more generic and handled elsewhere?
             print( '[red]subprocess error')
             print( f'[red]{e}' )
-            print( f'{e.output}' )
-            print( f'{e.stderr}' )
             self.status = TaskStatus.FAILED
         return self.get_dict()
 
