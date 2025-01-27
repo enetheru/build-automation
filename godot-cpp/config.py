@@ -1,7 +1,11 @@
 import copy
+import inspect
 import itertools
 from types import SimpleNamespace
 
+import rich
+
+from share.actions import git_fetch
 from share.env_commands import toolchains
 
 project_config = SimpleNamespace(**{
@@ -18,105 +22,117 @@ project_config = SimpleNamespace(**{
 # ║                 ███████  ██████ ██   ██ ██ ██         ██    ███████                    ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
-scons_script = """
-from share.Timer import Timer
-from share.actions import *
-from actions import *
+def func_as_script( func ) -> str:
+    src=inspect.getsource( func ).splitlines()[1:]
+    for n in range(len(src)):
+        line = src[n]
+        if line.startswith('    '):
+            src[n] = line[4:]
+    return '\n'.join(src)
 
-stats:dict = dict()
-timer = Timer()
+def scons_script( config:SimpleNamespace, console:rich.console.Console ):
+    from share.Timer import Timer
+    from share.actions import git_fetch, scons_build
+    from actions import godotcpp_test
 
-#[=================================[ Fetch ]=================================]
-if config['fetch']:
-    console.set_window_title('Fetch - {name}')
-    stats['fetch'] = timer.time_function( config, func=git_fetch )
+    stats:dict = dict()
+    timer = Timer()
+    name = config['name']
 
-#[=================================[ Build ]=================================]
-if config['build'] and timer.ok():
-    console.set_window_title('Build - {name}')
-    stats['build'] = timer.time_function( config, func=scons_build )
+    #[=================================[ Fetch ]=================================]
+    if config['fetch']:
+        console.set_window_title(f'Fetch - {name}')
+        stats['fetch'] = timer.time_function( config, func=git_fetch )
 
-#[==================================[ Test ]==================================]
-if config['test'] and timer.ok():
-    console.set_window_title('Test - {name}')
-    stats['test'] = timer.time_function( config, func=godotcpp_test )
+    #[=================================[ Build ]=================================]
+    if config['build'] and timer.ok():
+        console.set_window_title(f'Build - {name}')
+        stats['build'] = timer.time_function( config, func=scons_build )
 
-#[=================================[ Stats ]=================================]
-from rich.table import Table
-table = Table(title="Stats", highlight=True, min_width=80)
+    #[==================================[ Test ]==================================]
+    if config['test'] and timer.ok():
+        console.set_window_title(f'Test - {name}')
+        stats['test'] = timer.time_function( config, func=godotcpp_test )
 
-table.add_column("Section", style="cyan", no_wrap=True)
-table.add_column("Status", style="magenta")
-table.add_column("Duration", style="green")
+    #[=================================[ Stats ]=================================]
+    from rich.table import Table
+    table = Table(title="Stats", highlight=True, min_width=80)
 
-for cmd_name, cmd_stats in stats.items():
-    table.add_row( cmd_name, f'{{cmd_stats['status']}}', f'{{cmd_stats['duration']}}')
+    table.add_column("Section", style="cyan", no_wrap=True)
+    table.add_column("Status", style="magenta")
+    table.add_column("Duration", style="green")
 
-print( table )
-if not timer.ok():
-    exit(1)
-"""
+    for cmd_name, cmd_stats in stats.items():
+        table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}')
 
-cmake_script = """
-from share.Timer import Timer
-from share.actions import *
-from actions import *
+    print( table )
+    if not timer.ok():
+        exit(1)
 
-stats:dict = dict()
-cmake = config['cmake']
-timer = Timer()
+def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
+    from share.Timer import Timer
+    from pathlib import Path
+    from share.actions import git_fetch, cmake_configure, cmake_build
+    from actions import godotcpp_test
+    from share.format import h4
 
-#[=================================[ Fetch ]=================================]
-if config['fetch']:
-    console.set_window_title('Fetch - {name}')
-    stats['fetch'] = timer.time_function( config, func=git_fetch )
+    stats:dict = dict()
+    cmake = config['cmake']
+    timer = Timer()
 
-#[===============================[ Configure ]===============================]
-if 'godot_build_profile' in cmake:
-    profile_path = Path(cmake['godot_build_profile'])
-    if not profile_path.is_absolute():
-        profile_path = config['source_dir'] / profile_path
-    h4(f'using build profile: "{{profile_path}}"')
-    cmake['config_vars'].append(f'-DGODOT_BUILD_PROFILE="{{os.fspath(profile_path)}}"')
+    #[=================================[ Fetch ]=================================]
+    if config['fetch']:
+        console.set_window_title('Fetch - {name}')
+        stats['fetch'] = timer.time_function( config, func=git_fetch )
 
-if 'toolchain_file' in cmake:
-    toolchain_path = Path(cmake['toolchain_file'])
-    if not toolchain_path.is_absolute():
-        toolchain_path = config['root_dir'] / toolchain_path
-    h4(f'using toolchain file: "{{toolchain_path}}"')
-    cmake['config_vars'].append(f'--toolchain "{{os.fspath(toolchain_path)}}"')
+    #[===============================[ Configure ]===============================]
+    if 'godot_build_profile' in cmake:
+        profile_path = Path(cmake['godot_build_profile'])
+        if not profile_path.is_absolute():
+            profile_path = config['source_dir'] / profile_path
+        h4(f'using build profile: "{{profile_path}}"')
+        cmake['config_vars'].append(f'-DGODOT_BUILD_PROFILE="{{os.fspath(profile_path)}}"')
 
-if config['prepare'] and timer.ok():
-    console.set_window_title('Prepare - {name}')
-    stats['prepare'] = timer.time_function( config, func=cmake_configure )
+    if 'toolchain_file' in cmake:
+        toolchain_path = Path(cmake['toolchain_file'])
+        if not toolchain_path.is_absolute():
+            toolchain_path = config['root_dir'] / toolchain_path
+        h4(f'using toolchain file: "{{toolchain_path}}"')
+        cmake['config_vars'].append(f'--toolchain "{{os.fspath(toolchain_path)}}"')
 
-#[=================================[ Build ]=================================]
-if config['build'] and timer.ok():
-    console.set_window_title('Build - {name}')
-    stats['build'] = timer.time_function( config, func=cmake_build )
+    if config['prepare'] and timer.ok():
+        console.set_window_title('Prepare - {name}')
+        stats['prepare'] = timer.time_function( config, func=cmake_configure )
 
-#[==================================[ Test ]==================================]
-if config['test'] and timer.ok():
-    console.set_window_title('Test - {name}')
-    stats['test'] = timer.time_function( config, func=godotcpp_test )
-    
+    #[=================================[ Build ]=================================]
+    if config['build'] and timer.ok():
+        console.set_window_title('Build - {name}')
+        stats['build'] = timer.time_function( config, func=cmake_build )
 
-#[=================================[ Stats ]=================================]
-from rich.table import Table
-table = Table(highlight=True, min_width=80)
+    #[==================================[ Test ]==================================]
+    if config['test'] and timer.ok():
+        console.set_window_title('Test - {name}')
+        stats['test'] = timer.time_function( config, func=godotcpp_test )
 
-table.add_column("Section",no_wrap=True)
-table.add_column("Status")
-table.add_column("Duration")
 
-for cmd_name, cmd_stats in stats.items():
-    table.add_row( cmd_name, f'{{cmd_stats['status']}}', f'{{cmd_stats['duration']}}', style='red')
+    #[=================================[ Stats ]=================================]
+    from rich.table import Table
+    table = Table(highlight=True, min_width=80)
 
-print( table )
-if not timer.ok():
-    exit(1)
-"""
-msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
+    table.add_column("Section",no_wrap=True)
+    table.add_column("Status")
+    table.add_column("Duration")
+
+    for cmd_name, cmd_stats in stats.items():
+        table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}', style='red')
+
+    print( table )
+    if not timer.ok():
+        exit(1)
+
+def process_script( script:str ) -> str:
+    print( 'processing script' )
+    return script.replace('%replaceme%', inspect.getsource(git_fetch))
 
 # ╒════════════════════════════════════════════════════════════════════════════╕
 # │            ██████  ███████ ███████ ██   ██ ████████  ██████  ██████        │
@@ -190,6 +206,8 @@ build_tool = ['scons','cmake']
 
 generators = ['Visual Studio 17 2022', 'Ninja', 'Ninja Multi-Config']
 
+msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
+
 for build_tool, toolchain in itertools.product( build_tool, toolchains):
     cfg = SimpleNamespace(**{
         'name' : f'w64.{build_tool}.{toolchain}',
@@ -221,7 +239,7 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
         case 'cmake':
             cfg.script = cmake_script
         case 'scons':
-            cfg.script = scons_script
+            cfg.script = func_as_script( scons_script )
 
     match build_tool, toolchain:
         case 'scons', 'msvc':

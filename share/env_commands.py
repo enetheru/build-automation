@@ -211,13 +211,12 @@ if config['update']:
 
 
 def python_toolchain(config: SimpleNamespace):
-    env_mod = "# No Environment Modifications"
     if config.toolchain in toolchain_scripts.keys():
-        env_mod = toolchain_scripts[config.toolchain]
-
-    return env_mod + centre(
-        " End of Toolchain Modifications ", left("\n#", fill("- ", 80))
-    )
+        chunks = [toolchain_scripts[config.toolchain]]
+    else: chunks = ["# No Environment Modifications"]
+    chunks.append( centre(" End of Toolchain Modifications ", left("#", fill("- ", 80))))
+    chunks.append('')
+    return '\n'.join( chunks )
 
 
 # MARK: Preamble
@@ -234,6 +233,7 @@ def pwsh_preamble(defs: dict, command: str) -> str:
     for k, v in defs.items():
         mini_script += f'${k}="{v}"\n'
     mini_script += command
+    mini_script += "\n"
     return mini_script
 
 

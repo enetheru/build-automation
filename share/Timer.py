@@ -1,5 +1,4 @@
 import subprocess
-import types
 from contextlib import ContextDecorator
 from datetime import datetime
 from enum import Enum
@@ -41,7 +40,7 @@ class Timer(ContextDecorator):
         if self.returnvalue: results['returnvalue'] = self.returnvalue
         return results
 
-    def time_function(self, *args, func:types.FunctionType) -> dict:
+    def time_function(self, *args, func) -> dict:
         try:
             with self:
                 self.returnvalue = func( *args )
