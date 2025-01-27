@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+import itertools
 import math
 import os
 import pathlib
@@ -9,19 +9,6 @@ import typing
 import re
 
 from rich import print
-
-# # Update output buffer size to prevent clipping in Visual Studio output window.
-# if( $Host -and $Host.UI -and $Host.UI.RawUI ) {
-#     $rawUI = $Host.UI.RawUI
-#     #    $bufSize = $rawUI.BufferSize
-#     [int]$columns = $rawUI.BufferSize.Width
-#     #    $rows = $rawUI.BufferSize.height
-#     #    $typeName = $bufSize.GetType( ).FullName
-#     #    $newSize = New-Object $typeName (120, $rows)
-#     #    $rawUI.BufferSize = $newSize
-# } else {
-#     [int]$columns = 120
-# }
 
 # MARK: FORMAT
 ###################################- Format -###################################
@@ -176,57 +163,38 @@ def h4(msg:str = 'heading 4', file:typing.IO=None):
 # https://www.devgem.io/posts/capturing-realtime-output-from-a-subprocess-in-python
 # https://stackoverflow.com/questions/54091396/live-output-stream-from-python-subprocess
 # https://docs.python.org/3.12/library/shlex.html#shlex.split
-def print_eval( command:str, dry:bool=False, noexcept=False ) -> int:
+def print_eval( command:str,
+                dry:bool=False,
+                noexcept=False,
+                quiet=False,
+                output:list=None,
+                outerr:list=None) -> int:
     print(f"""
   CWD: {os.getcwd()}
      $ {command}""")
     if dry: return 0
+
+    if not output: output = []
+    if not outerr: outerr = []
     proc = subprocess.Popen( shlex.split(command),
                              encoding='utf-8',
-                             stderr=subprocess.STDOUT,
+                             stderr=subprocess.PIPE,
                              stdout=subprocess.PIPE )
     with proc:
-        for line in proc.stdout:
-            print(line.rstrip())
+        for (line_out, line_err) in itertools.zip_longest(proc.stdout, proc.stderr, fillvalue=''):
+            output.append( line_out )
+            outerr.append( line_err )
+            if not quiet:
+                if line_out: print( line_out.rstrip() )
+                if line_err: print(f'[color=red]{line_err.rstrip()}[/color]' )
 
     if noexcept:
         return proc.returncode
     elif proc.returncode:
-        raise subprocess.CalledProcessError( returncode=proc.returncode, cmd=command )
+        raise subprocess.CalledProcessError(
+            returncode=proc.returncode,
+            cmd=command,
+            output=''.join(output),
+            stderr=''.join(outerr))
     else:
         return 0
-
-# function Print-Last-Error {
-#     H4 "last exit?     = $LASTEXITCODE"
-#     H4 "auto var `$?   = $?"
-#     H4 "Error?         = $Error"
-# }
-
-# MARK: AGGREGATE
-##################################- Aggregate -#################################
-#                                                                              #
-#  █████   ██████   ██████  ██████  ███████  ██████   █████  ████████ ███████  #
-# ██   ██ ██       ██       ██   ██ ██      ██       ██   ██    ██    ██       #
-# ███████ ██   ███ ██   ███ ██████  █████   ██   ███ ███████    ██    █████    #
-# ██   ██ ██    ██ ██    ██ ██   ██ ██      ██    ██ ██   ██    ██    ██       #
-# ██   ██  ██████   ██████  ██   ██ ███████  ██████  ██   ██    ██    ███████  #
-#                                                                              #
-################################################################################
-#
-# function BigBox {
-#     Fill '#' | Center "- $args -"
-#     Right '#' | Left ' #'
-#     figlet -l -f "ANSI Regular" "$args" | ForEach-Object {
-#         Fill | Center $_ | Left ' #' | Right '#'
-#     }
-#     Right '#' | Left ' #'
-#     Fill '#'
-# }
-#
-# function CMakeH1 {
-#     $width=80
-#     if( ("$args".length % 2) -eq 1 ){
-#         $width = 79
-#     }
-#     Fill '=' $width | Left '#[' | Center "[ $args ]" | Right '] '
-# }

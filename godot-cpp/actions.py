@@ -1,3 +1,4 @@
+import rich
 from pathlib import Path
 from share.format import *
 
@@ -14,50 +15,55 @@ def godotcpp_test( config:dict ) -> bool:
     print( figlet( 'Testing', {'font': 'small'}) )
 
     # FIXME use fresh to delete the .godot folder
+    godot_editor = Path(config['godot_e'])
 
     test_project_dir = Path(config['source_dir']) / 'test/project'
     dot_godot_dir = test_project_dir / '.godot'
     if not dot_godot_dir.exists():
         h4('Generating the .godot folder')
         cmd_chunks = [
-            config['godot_e'],
+            f'"{godot_editor}"',
             '-e',
             f'--path "{test_project_dir}"',
             '--quit',
             '--headless'
         ]
         # TODO redirect stdout to null
-        print_eval(' '.join(cmd_chunks), dry=config['dry'])
+        try:
+            print_eval(' '.join(cmd_chunks), dry=config['dry'], quiet=True)
+        except subprocess.SubprocessError as e:
+            print( 'Godot exited abnormally during .godot folder creation')
 
     if not dot_godot_dir.exists():
         print('Error: Creating .godot folder')
         return True
 
     h4("Run the test project")
+    godot_release_template = Path(config['godot_tr'])
     cmd_chunks = [
-        config['godot_tr'],
+        f'"{godot_release_template}"',
         f'--path "{test_project_dir}"',
         '--quit',
         '--headless'
     ]
-    # TODO Capture the output of the command
-    print_eval(' '.join(cmd_chunks), dry=config['dry'])
+    output = ['']
+    try:
+        print_eval(' '.join(cmd_chunks), dry=config['dry'], output=output, quiet=True )
+    except subprocess.SubprocessError as e:
+        # FIXME Godot seems to exit with an error code for some reason on cmake builds only.
+        #   I have to investigate why that might be.
+        print( '[red]Error: Godot exited abnormally when running the test project')
+        print( '    This requires investigation as it appears to only happen in cmake builds')
 
-    # Because of the capture of stdout for the variable, we need to tee it to a
-    # custom file descriptor which is being piped to stdout elsewhere.
-    # result="$($godot_tr --path "$buildRoot/test/project/" --quit --headless 2>&1 \
-    #         | tee >(cat >&5))"
+    from rich.panel import Panel
+    rich.print(
+        '',
+        Panel( ''.join( output ),  expand=False, title='Test Execution', title_align='left' ),
+        '')
 
-    # Split the result into lines, skip the empty ones.
-    # declare -a lines=()
-    # while IFS=$'\n' read -ra line; do
-    # if [ -n "${line//[[:space:]]/}" ]; then
-    # lines+=("$line")
-    # fi
-    # done <<< "$result"
+    for line in output:
+        if line.find( 'PASSED' ) > 0:
+            h4( 'Test Succeeded' )
+            return False
 
-    # printf "%s\n" "${lines[@]}" >> "$targetRoot/summary.log"
-
-    # returns true if the last line includes PASSED
-    # [[ "${lines[-1]}" == *"PASSED"* ]]
-    return False
+    return True

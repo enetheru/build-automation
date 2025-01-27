@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 import copy
 from types import SimpleNamespace
 import itertools
@@ -210,9 +209,9 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
             'build_vars':['build_profile=build_profile.json'],
             'targets':['template_release','template_debug','editor'],
         },
-        'godot_tr':'C:/build/godot/Windows-windows-msvc/bin/godot.windows.template_release.x86_64.exe',
-        'godot_td':'C:/build/godot/Windows-windows-msvc/bin/godot.windows.template_debug.x86_64.exe',
-        'godot_e':'C:/build/godot/Windows-windows-msvc/bin/godot.windows.editor.x86_64.exe',
+        'godot_tr':'C:/build/godot/w64.msvc/bin/godot.windows.template_release.x86_64.console.exe',
+        'godot_td':'C:/build/godot/w64.msvc/bin/godot.windows.template_debug.x86_64.console.exe',
+        'godot_e':'C:/build/godot/w64.msvc/bin/godot.windows.editor.x86_64.console.exe',
     })
 
     if toolchain.startswith('msys2'):

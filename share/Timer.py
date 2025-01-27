@@ -3,6 +3,7 @@ import types
 from datetime import datetime
 from contextlib import ContextDecorator
 from enum import Enum
+import rich
 
 class TaskStatus(Enum):
     PENDING = 1
@@ -49,6 +50,10 @@ class Timer(ContextDecorator):
             self.status = TaskStatus.FAILED if self.returnvalue else TaskStatus.COMPLETED
         except subprocess.CalledProcessError as e:
             # FIXME should this be more generic and handled elsewhere?
+            print( '[red]subprocess error')
+            print( f'[red]{e}' )
+            print( f'{e.output}' )
+            print( f'{e.stderr}' )
             self.status = TaskStatus.FAILED
         return self.get_dict()
 
