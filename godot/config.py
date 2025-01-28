@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 from types import SimpleNamespace
 
+import rich
+
+from share.actions import func_as_script
 from share.env_commands import toolchains
 
 # Build Targets
@@ -29,7 +32,7 @@ from share.env_commands import toolchains
 # TODO List off the variations
 
 project_config = SimpleNamespace(
-    **{"gitUrl": "https://github.com/godotengine/godot.git", "build_configs": {}}
+    **{"gitUrl": "https://github.com/godotengine/godot.git/", "build_configs": {}}
 )
 
 # MARK: Scripts
@@ -41,43 +44,44 @@ project_config = SimpleNamespace(
 # ║                 ███████  ██████ ██   ██ ██ ██         ██    ███████                    ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
-scons_script = """
-from share.Timer import Timer
-from share.actions import *
+def scons_script( config:dict, console:rich.console.Console ):
+    from share.Timer import Timer
+    from share.actions import git_checkout, scons_build
 
-stats:dict = dict()
-timer = Timer()
+    stats:dict = dict()
+    timer = Timer()
 
-#[=================================[ Fetch ]=================================]
-if config['fetch']:
-    console.set_window_title('Fetch - {name}')
-    stats['fetch'] = timer.time_function( config, func=git_fetch )
+    #[=================================[ Fetch ]=================================]
+    if config['fetch']:
+        console.set_window_title('Fetch - {name}')
 
-#[=================================[ Build ]=================================]
-if config['build'] and timer.ok():
-    console.set_window_title('Build - {name}')
-    stats['build'] = timer.time_function( config, func=scons_build )
+        stats['fetch'] = timer.time_function( config, func=git_checkout )
 
-#[==================================[ Test ]==================================]
-if config['test'] and timer.ok():
-    console.set_window_title('Test - {name}')
-    # stats['test'] = timer.time_function( config, func=godotcpp_test )
+    #[=================================[ Build ]=================================]
+    if config['build'] and timer.ok():
+        console.set_window_title('Build - {name}')
 
-#[=================================[ Stats ]=================================]
-from rich.table import Table
-table = Table(title="Stats", highlight=True, min_width=80)
+        stats['build'] = timer.time_function( config, func=scons_build )
 
-table.add_column("Section", style="cyan", no_wrap=True)
-table.add_column("Status", style="magenta")
-table.add_column("Duration", style="green")
+    #[==================================[ Test ]==================================]
+    if config['test'] and timer.ok():
+        console.set_window_title('Test - {name}')
+        # stats['test'] = timer.time_function( config, func=godotcpp_test )
 
-for cmd_name, cmd_stats in stats.items():
-    table.add_row( cmd_name, f'{{cmd_stats['status']}}', f'{{cmd_stats['duration']}}')
+    #[=================================[ Stats ]=================================]
+    from rich.table import Table
+    table = Table(title="Stats", highlight=True, min_width=80)
 
-print( table )
-if not timer.ok():
-    exit(1)
-"""
+    table.add_column("Section", style="cyan", no_wrap=True)
+    table.add_column("Status", style="magenta")
+    table.add_column("Duration", style="green")
+
+    for cmd_name, cmd_stats in stats.items():
+        table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}')
+
+    print( table )
+    if not timer.ok():
+        exit(1)
 
 # msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
 
@@ -120,7 +124,7 @@ for toolchain in toolchains:
             "shell": "pwsh",
             "build_tool": "scons",
             "toolchain": toolchain,
-            "script": scons_script,
+            "script": func_as_script( scons_script ),
             "scons": {
                 "build_vars": [],
                 "targets": ["template_release", "template_debug", "editor"],

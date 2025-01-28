@@ -1,19 +1,27 @@
+import inspect
 from pathlib import Path
 
 from share.format import *
 from share.run import stream_command
 
 
-# MARK: Git Fetch
-# ╓────────────────────────────────────────────────────────────────────────────────────────╖
-# ║           ██████  ██ ████████     ███████ ███████ ████████  ██████ ██   ██             ║
-# ║          ██       ██    ██        ██      ██         ██    ██      ██   ██             ║
-# ║          ██   ███ ██    ██        █████   █████      ██    ██      ███████             ║
-# ║          ██    ██ ██    ██        ██      ██         ██    ██      ██   ██             ║
-# ║           ██████  ██    ██        ██      ███████    ██     ██████ ██   ██             ║
-# ╙────────────────────────────────────────────────────────────────────────────────────────╜
-def git_fetch(config: dict):
-    print(figlet("Git Fetch", {"font": "small"}))
+def func_as_script( func ) -> str:
+    src=inspect.getsource( func ).splitlines()[1:]
+    for n in range(len(src)):
+        line = src[n]
+        if line.startswith('    '):
+            src[n] = line[4:]
+    return '\n'.join(src)
+
+# MARK: Git Checkout
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │   ___ _ _      ___ _           _            _                              │
+# │  / __(_) |_   / __| |_  ___ __| |_____ _  _| |_                            │
+# │ | (_ | |  _| | (__| ' \/ -_) _| / / _ \ || |  _|                           │
+# │  \___|_|\__|  \___|_||_\___\__|_\_\___/\_,_|\__|                           │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+def git_checkout(config: dict):
+    print(figlet("Git Checkout", {"font": "small"}))
     print(f"  gitURL={config['gitUrl']}")
     print(f"  gitHash={config['gitHash']}")
 

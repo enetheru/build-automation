@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import copy
 import importlib.util
 import multiprocessing
 import platform
@@ -10,6 +11,7 @@ from typing import IO
 
 import rich
 from rich.console import Console
+from rich.pretty import pprint
 from rich.table import Table
 
 # Local Imports
@@ -26,9 +28,12 @@ def get_interior_dict( subject ) -> dict:
 
 # noinspection PyUnusedLocal
 def process_log_null( raw_file: IO, clean_file: IO ):
-    clean_file.write( "Dummy clean function copies first 10 lines" )
+    regex = re.compile(r'(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]')
 
-# ================[ Setup Multiplexed Console ]================-
+    for line in raw_file:
+        clean_file.write( regex.sub('', line ) )
+
+            # ================[ Setup Multiplexed Console ]================-
 console = ConsoleMultiplex()
 rich._console = console
 
@@ -53,25 +58,48 @@ parser_filter.add_argument( "--project", default="*" )
 parser_filter.add_argument( "--filter", default=".*" )
 
 # Process actions
-parser_actions = parser.add_argument_group( "actions" )
-parser_actions.add_argument( "-u", "--update", action="store_true" )  # Update tools
-parser_actions.add_argument( "-f", "--fetch", action="store_true" )  # Fetch latest source
-parser_actions.add_argument(
-    "-c", "--clean", action="store_true"
-)  # clean the build directory
-parser_actions.add_argument( "-p", "--prepare", action="store_true" )  # prepare the build
-parser_actions.add_argument( "-b", "--build", action="store_true" )  # build the source
-parser_actions.add_argument( "-t", "--test", action="store_true" )  # test
+toolchain_group = parser.add_argument_group( "Toolchain Actions" )
+project_group = parser.add_argument_group( "Project Actions" )
+build_group = parser.add_argument_group( "Build Actions" )
+toolchain_actions = {
+    'update':'u',
+}
+project_actions = {
+    'fetch':'f',
+}
+build_actions = {
+    'source':'s',
+    'reset':'r',
+    'clean':'c',
+    'prepare':'p',
+    'build':'b',
+    'test':'t',
+}
+for long,short in toolchain_actions.items():
+    toolchain_group.add_argument(
+        f'-{short}', f'--{long}',
+        action=argparse.BooleanOptionalAction )
+
+for long,short in project_actions.items():
+    project_group.add_argument(
+        f'-{short}', f'--{long}',
+        action=argparse.BooleanOptionalAction )
+
+for long,short in build_actions.items():
+    build_group.add_argument(
+        f'-{short}', f'--{long}',
+        action=argparse.BooleanOptionalAction )
 
 # Options for actions, but I want to split this up into per action options
 parser_opts = parser.add_argument_group( "action options" )
-parser_opts.add_argument( "--dry", action="store_true" )
-parser_opts.add_argument( "--fresh", action="store_true" )  # re-fresh the configuration
-parser_opts.add_argument(
-    "-j", "--jobs", type=int, default=(multiprocessing.cpu_count() - 1) or 1
-)
-parser_opts.add_argument( "--gitUrl", default="" )  # The Url to clone from
-parser_opts.add_argument( "--gitHash", default="" )  # the Commit to checkout
+parser_opts.add_argument( "--dry",
+    action=argparse.BooleanOptionalAction )
+parser_opts.add_argument( "--fresh",
+    action=argparse.BooleanOptionalAction )
+parser_opts.add_argument("-j", "--jobs",
+    type=int, default=(multiprocessing.cpu_count() - 1) or 1)
+parser_opts.add_argument( "--gitUrl" )  # The Url to clone from
+parser_opts.add_argument( "--gitHash" )  # the Commit to checkout
 
 # Create the namespace before parsing, so we can add derived options from the system
 bargs = argparse.Namespace()
@@ -87,20 +115,26 @@ console.tee( Console( file=open( log_path, "w", encoding='utf-8' ), force_termin
 # Add all the things from the command line
 parser.parse_args( namespace=bargs )
 
-# ================[ Main Heading and Options ]=================-
-console.set_window_title( "AutoBuild" )
-h1( "AutoBuild" )
-h3( "Options", newline=False )
+# re-structure actions into their own dictionary as an attribute
+for action in toolchain_actions.keys():
+    toolchain_actions[action] =  bargs.__dict__[action]
+    delattr( bargs, action )
+setattr(bargs, 'toolchain_actions', toolchain_actions )
 
-for k, v in get_interior_dict( bargs ).items():
-    print( f"  {k:14s}= {v}" )
+for action in project_actions.keys():
+    project_actions[action] =  bargs.__dict__[action]
+    delattr( bargs, action )
+setattr(bargs, 'project_actions', project_actions )
+
+for action in build_actions.keys():
+    build_actions[action] =  bargs.__dict__[action]
+    delattr( bargs, action )
+setattr(bargs, 'build_actions', build_actions )
 
 # MARK: Configs
 # ==================[ Import Configurations ]==================-
 project_glob = f"{bargs.project}/config.py"
-
-print()
-h4( f"Load Config Files using file glob: {project_glob}" )
+h4( f"Loading Configs from files using glob: {project_glob}" )
 
 # Import project_config files.
 config_imports: dict = {}
@@ -114,17 +148,26 @@ for config_file in bargs.root_dir.glob( project_glob ):
     config = importlib.util.module_from_spec( spec )
     # load module
     spec.loader.exec_module( config )
-    # add to config dictionary
-    config_imports[f"{project_name}"] = config
-    project_configs[f"{project_name}"] = config.project_config
+    # add to module to import dictionary
+    config_imports[project_name] = config
+    # Add project to project dictionary
+    project = config.project_config
+    setattr(project, 'name', project_name )
+    project_configs[project_name] = project
 
+# Filter the configs in the project to match the filter criteria
 for project_name, project_config in project_configs.items():
     build_configs: dict = project_config.build_configs
-    # Filter the configs in the project to match the filter criteria
     project_config.build_configs = {k: v for k, v in build_configs.items() if re.search( bargs.filter, v.name )}
 
 # keep only projects which have a build config.
 project_configs = {k: v for k, v in project_configs.items() if len( v.build_configs )}
+
+# ================[ Main Heading and Options ]=================-
+console.set_window_title( "AutoBuild" )
+h1( "AutoBuild" )
+h3( "Options", newline=False )
+pprint( bargs.__dict__, expand_all=True )
 
 h3( "projects and Configs" )
 if not len( project_configs ):
@@ -134,14 +177,108 @@ if not len( project_configs ):
 for project_name, project_config in project_configs.items():
     build_configs: dict = project_config.build_configs
     print( "  - ", project_name )
-    for build_name, build_config in build_configs.items():
-        print( "    - ", build_name )
+    for build in build_configs.values():
+        print( "    - ", build.name )
 
 # List only.
 if bargs.list:
     exit()
 
-# MARK: pProject
+# Remove the project filter attributes from the args as we no longer need them.
+delattr(bargs, 'project')
+delattr(bargs, 'filter')
+
+# MARK: Update Configs
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  _   _          _      _          ___           __ _                       │
+# │ | | | |_ __  __| |__ _| |_ ___   / __|___ _ _  / _(_)__ _ ___              │
+# │ | |_| | '_ \/ _` / _` |  _/ -_) | (__/ _ \ ' \|  _| / _` (_-<              │
+# │  \___/| .__/\__,_\__,_|\__\___|  \___\___/_||_|_| |_\__, /__/              │
+# │       |_|                                           |___/                  │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+h4( "Collating Configs" )
+for project in project_configs.values():
+    for k, v in get_interior_dict( bargs ).items():
+        if v is None: continue
+        if k in ['toolchain_actions', 'project_actions', 'build_actions']: continue
+        if getattr( project, k, None ) is None:
+            setattr( project, k, v )
+
+    setattr( project, 'actions', copy.deepcopy(bargs.project_actions ))
+    setattr( project, 'project_root', project.root_dir / project.name )
+
+    for build in project.build_configs.values():
+        for k, v in get_interior_dict( project ).items():
+            if v is None: continue
+            if k in ["build_configs"]: continue
+            if getattr( build, k, None ) is None:
+                setattr( build, k, copy.deepcopy(v) )
+
+        # additional overrides
+        # TODO Allow specification of the working tree in the config.
+        setattr( build, 'source_dir', build.project_root / build.name )
+        setattr( build, 'script_path', build.project_root / f"{build.name}.py" )
+        setattr( build, 'actions', copy.deepcopy(bargs.build_actions ))
+
+        # [==========================[ Shell / Environment ]==========================]
+        if "shell" in build.__dict__.keys() and build.shell in shells.keys():
+            env_command = shells[build.shell].copy()
+            env_command += [f'python "{build.script_path}"']
+            setattr( build, 'env_command', env_command )
+        else:
+            print( f"    config missing key: shell, bailing on config." )
+            setattr( build, 'invalid', True )
+            continue
+
+# MARK: Generate Scripts
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │   ___                       _         ___         _      _                 │
+# │  / __|___ _ _  ___ _ _ __ _| |_ ___  / __| __ _ _(_)_ __| |_ ___           │
+# │ | (_ / -_) ' \/ -_) '_/ _` |  _/ -_) \__ \/ _| '_| | '_ \  _(_-<           │
+# │  \___\___|_||_\___|_| \__,_|\__\___| |___/\__|_| |_| .__/\__/__/           │
+# │                                                    |_|                     │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+h4( "Generating Build Scripts" )
+for project in project_configs.values():
+    for build in project.build_configs.values():
+
+        script = python_preamble( build ) \
+                 + python_toolchain( build ) \
+                 + build.script
+        # + build.script.format(**get_interior_dict( build ))
+        # script = config_imports[project_name].process_script( script )
+        with open( build.script_path, "w", encoding='utf-8' ) as file:
+            file.write( script )
+
+# MARK: Git Fetch Projects
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │   ___ _ _     ___    _      _      ___          _        _                 │
+# │  / __(_) |_  | __|__| |_ __| |_   | _ \_ _ ___ (_)___ __| |_ ___           │
+# │ | (_ | |  _| | _/ -_)  _/ _| ' \  |  _/ '_/ _ \| / -_) _|  _(_-<           │
+# │  \___|_|\__| |_|\___|\__\__|_||_| |_| |_| \___// \___\__|\__/__/           │
+# │                                              |__/                          │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
+if bargs.project_actions['fetch']:
+    print(figlet("Git Fetch", {"font": "small"}))
+
+for project in project_configs.values():
+    os.chdir( project.project_root )
+    if project.actions['fetch']:
+        h3( project.name )
+        print(f"  gitURL={project.gitUrl}")
+
+        bare_git_path = project.project_root / "git"
+        if not bare_git_path.exists():
+            stream_command( f'git clone --bare "{project.gitUrl}" "{bare_git_path}"', dry=bargs.dry )
+        else:
+            stream_command( f'git --git-dir="{bare_git_path}" fetch --force origin *:*' , dry=bargs.dry )
+            stream_command( f'git --git-dir="{bare_git_path}" log -1 --pretty=%B' , dry=bargs.dry )
+            stream_command( f'git --git-dir="{bare_git_path}" worktree list' , dry=bargs.dry )
+            stream_command( f'git --git-dir="{bare_git_path}" worktree prune' , dry=bargs.dry )
+
+
+# MARK: Project
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  ___                         ___          _        _                       │
 # │ | _ \_ _ ___  __ ___ ______ | _ \_ _ ___ (_)___ __| |_                     │
@@ -150,125 +287,88 @@ if bargs.list:
 # │                                        |__/                                │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 # TODO Setup a keyboard interrupt to cancel a job and exit the loop, rather than quit the whole script.
-for project_name, project_config in project_configs.items():
-    # ================[ project Config Overrides ]==================-
-    for k, v in get_interior_dict( bargs ).items():
-        if not getattr( project_config, k, False ):
-            setattr( project_config, k, v )
-
-    project_config.project_name = project_name
-
-    project_config.project_root = project_config.root_dir / f"{project_name}"
-    os.chdir( project_config.project_root )
+for project in project_configs.values():
+    os.chdir( project.project_root )
 
     # =====================[ stdout Logging ]======================-
-    os.makedirs( project_config.project_root.joinpath( f"logs-raw" ), exist_ok=True )
-    os.makedirs( project_config.project_root.joinpath( f"logs-clean" ), exist_ok=True )
+    os.makedirs( project.project_root.joinpath( f"logs-raw" ), exist_ok=True )
+    os.makedirs( project.project_root.joinpath( f"logs-clean" ), exist_ok=True )
 
     # Tee stdout to log file.
-    log_path = project_config.project_root / f"logs-raw/{project_name}.txt"
-    log_file = open(
-        log_path, "a" if project_config.append else "w", buffering=1, encoding="utf-8"
-    )
-    console.tee( Console( file=log_file, force_terminal=True ), project_name )
+    log_path = project.project_root / f"logs-raw/{project.name}.txt"
+    log_mode = "a" if project.append else "w"
+    log_file = open( file=log_path, mode=log_mode, buffering=1, encoding="utf-8" )
+    project_console = Console( file=log_file, force_terminal=True )
+    console.tee( project_console , project.name )
 
     # ================[ project Heading / Config ]==================-
-    h2( project_name )
-    print( figlet( project_name, {"font": "standard"} ) )
-    for k, v in get_interior_dict( project_config ).items():
-        if k in ['build_configs']: continue
-        print( f"  {k:14s}= {v}" )
-    print( f"  {'build_configs':14s}=" )
-    for k in project_config.build_configs.keys():
-        print( f"    {k}" )
+    h2( project.name )
+    print( figlet( project.name, {"font": "standard"} ) )
 
-    # ====================[ Git Clone/Update ]=====================-
-    if project_config.fetch:
-        h3( "Git Update/Clone Bare Repository" )
-        bare_git_path = project_config.project_root / "git"
-        if not bare_git_path.exists():
-            stream_command( f'git clone --bare "{project_config.gitUrl}" "{bare_git_path}"', dry=bargs.dry )
-        else:
-            stream_command( f'git --git-dir="{bare_git_path}" fetch --force origin *:*' , dry=bargs.dry )
-            stream_command( f'git --git-dir="{bare_git_path}" log -1 --pretty=%B' , dry=bargs.dry )
-            stream_command( f'git --git-dir="{bare_git_path}" worktree list' , dry=bargs.dry )
-            stream_command( f'git --git-dir="{bare_git_path}" worktree prune' , dry=bargs.dry )
+    print( f"  {'options':14s}= ", end='' )
+    pprint( { k:v for k,v in project.__dict__.items()
+        if k not in ['build_configs']
+    }, expand_all=True )
+    print( f"  {'build_configs':14s}= ", end='' )
+    pprint( [k for k in project.build_configs.keys()], expand_all=True)
 
-    # MARK: pBuildConfig
+    # MARK: Build
     # ╭────────────────────────────────────────────────────────────────────────────╮
-    # │  ___                          ___           __ _                           │
-    # │ | _ \_ _ ___  __ ___ ______  / __|___ _ _  / _(_)__ _                      │
-    # │ |  _/ '_/ _ \/ _/ -_|_-<_-< | (__/ _ \ ' \|  _| / _` |                     │
-    # │ |_| |_| \___/\__\___/__/__/  \___\___/_||_|_| |_\__, |                     │
-    # │                                                 |___/                      │
+    # │  ___                         ___      _ _    _                             │
+    # │ | _ \_ _ ___  __ ___ ______ | _ )_  _(_) |__| |                            │
+    # │ |  _/ '_/ _ \/ _/ -_|_-<_-< | _ \ || | | / _` |                            │
+    # │ |_| |_| \___/\__\___/__/__/ |___/\_,_|_|_\__,_|                            │
     # ╰────────────────────────────────────────────────────────────────────────────╯
-    for build_name, build_config in project_config.build_configs.items():
-        # =================[ Build Heading / Config ]==================-
-        console.set_window_title( f"{project_name} - {build_name}" )
-        print( "\n", centre( f"- Started: {build_name} -", fill( "=", 80 ) ) )
-
-        # =================[ Build Config Overrides ]==================-
-        # update from project config
-        h4( "Update Configuration" )
-        for k, v in get_interior_dict( project_config ).items():
-            if k in ["build_configs"]:
-                continue  # Dont copy the list of build configs.
-            if v or k not in get_interior_dict( build_config ).keys():
-                setattr( build_config, k, v )
-
-        # additional overrides
-        build_config.config_name = build_config.name
-        # TODO Allow specification of the working tree in the config.
-        build_config.source_dir = build_config.project_root / build_config.name
-        script_path = build_config.project_root / f"{build_config.name}.py"
-
-        # [======================[ Format and Save Build Script ]======================]
-        h4( "Processing Build Script" )
-        script = python_preamble( build_config ) \
-                + python_toolchain( build_config ) \
-                + build_config.script
-                # + build_config.script.format(**get_interior_dict( build_config ))
-        # script = config_imports[project_name].process_script( script )
-        with open( script_path, "w", encoding='utf-8' ) as file:
-            file.write( script )
-
-        # Early out if there are no actions to perform.
-        if (build_config.update
-                | build_config.fetch
-                | build_config.clean
-                | build_config.prepare
-                | build_config.build
-                | build_config.test):
-            setattr( bargs, 'actions', True )
-        else: continue
-
-        # [==========================[ Shell / Environment ]==========================]
-        h4( "Determine Shell Environment" )
-        env_command: list = list()  # reset variable from previous loop
-        if "shell" in get_interior_dict( build_config ).keys() and build_config.shell in shells.keys():
-            print( f"    Using: {build_config.shell}" )
-            env_command = shells[build_config.shell].copy()
-            env_command += [f'python "{script_path}"']
-        else:
-            print( f"    config missing key: shell, bailing on config." )
+    for build in project.build_configs.values():
+        # Skip the build config if there are no actions to perform
+        if not True in build.actions.values():
+            h4( f'No actions specified for "{build.name}"')
             continue
+
+        console.set_window_title( f"{project.name} - {build.name}" )
 
         # =====================[ stdout Logging ]======================-
         h4( "Configure Logging" )
-        log_path = build_config.project_root / f"logs-raw/{build_config.name}.txt"
-        log_file = open(
-            log_path, "a" if build_config.append else "w", buffering=1, encoding="utf-8"
-        )
+        log_path = build.project_root / f"logs-raw/{build.name}.txt"
+        log_mode = "a" if build.append else "w"
+        build_log = open( file=log_path, mode=log_mode, buffering=1, encoding="utf-8" )
+        build_console = Console( file=build_log, force_terminal=True )
+        console.tee( name=build.name, new_console=build_console )
+
+        # =================[ Build Heading / Config ]==================-
+        print()
+        print( centre( f"- Starting: {build.name} -", fill( "=", 120 ) ) )
+        print()
+
+        # ==================[ Print Configuration ]====================-
+        from rich.panel import Panel
+        from rich.syntax import Syntax
+
+        with open(build.script_path, "rt") as code_file:
+            syntax = Syntax(code_file.read(),
+                lexer="python",
+                code_width=110,
+                line_numbers=True,
+                tab_size=2,
+                dedent=True,
+                word_wrap=True
+            )
+        print( " ".join( build.env_command ) )
+        panel = Panel( syntax,
+            title=str(build.script_path),
+            title_align='left',
+            expand=False,
+            width=120 )
+        print(panel)
 
         # ====================[ Run Build Script ]=====================-
-        console.tee( Console( file=log_file, force_terminal=True ), build_config.name )
         h3( "Run" )
-        print( " ".join( env_command ) )
 
         stats = {"start_time": datetime.now()}
-        build_config.stats = stats
+        build.stats = stats
+
         proc = subprocess.Popen(
-            env_command, encoding="utf-8", stderr=subprocess.STDOUT, stdout=subprocess.PIPE, )
+            build.env_command, encoding="utf-8", stderr=subprocess.STDOUT, stdout=subprocess.PIPE, )
         with proc:
             # TODO The evaluation of the output appears delayed, research a lower latency solution
             for line in proc.stdout:
@@ -284,28 +384,33 @@ for project_name, project_config in project_configs.items():
 
         table = Table( highlight=True, min_width=80, show_header=False )
         table.add_row(
-            build_config.name, f"{stats['status']}", f"{stats['duration']}",
+            build.name, f"{stats['status']}", f"{stats['duration']}",
             style="red" if stats["status"] == "Failed" else "green", )
         print( table )
 
-        console.pop( build_config.name )
+        console.pop( build.name )
 
         # ==================[ Output Log Processing ]==================-
         h3( "Post Run Actions" )
         h4( "Clean Log" )
-        cleanlog_path = (build_config.project_root / f"logs-clean/{build_config.name}.txt")
-        if 'clean_log' in  get_interior_dict(build_config).keys():
-            clean_log = build_config.clean_log
+        cleanlog_path = (build.project_root / f"logs-clean/{build.name}.txt")
+        if 'clean_log' in  get_interior_dict(build).keys():
+            clean_log = build.clean_log
         else: clean_log = process_log_null
 
-        with (open( log_path, "r", encoding="utf-8" ) as log_raw,
-              open( cleanlog_path, "w", encoding="utf-8" ) as log_clean):
+        with (open( log_path, "r", encoding='utf-8' ) as log_raw,
+              open( cleanlog_path, "w", encoding='utf-8' ) as log_clean):
             clean_log( log_raw, log_clean )
 
-        print( centre( f"Completed: {build_config.name}", fill( " -", 80 ) ) )
+        chunks = [
+            'pwsh',
+            f'-Command "cat" {log_path}'
+        ]
+
+    print( centre( f"Completed: {build.name}", fill( " -", 120 ) ) )
 
     # remove the project output log.
-    console.pop( project_name )
+    console.pop( project.name )
 
 # MARK: Post
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
@@ -316,19 +421,20 @@ for project_name, project_config in project_configs.items():
 # ║                          ██       ██████  ███████    ██                                ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
-if bargs.actions:
-    table = Table( title="Stats", highlight=True, min_width=80 )
 
-    table.add_column( "Project/Config", style="cyan", no_wrap=True )
-    table.add_column( "Status" )
-    table.add_column( "Time" )
+table = Table( title="Stats", highlight=True, min_width=80 )
 
-    for project_name, project_config in project_configs.items():
-        for build_name, build_config in project_config.build_configs.items():
+table.add_column( "Project/Config", style="cyan", no_wrap=True )
+table.add_column( "Status" )
+table.add_column( "Time" )
+
+for project in project_configs.values():
+    for build in project.build_configs.values():
+        if 'stats' in build.__dict__:
             table.add_row(
-                f"{project_name}/{build_name}", f"{build_config.stats['status']}", f"{build_config.stats['duration']}",
-                style="red" if build_config.stats["status"] == "Failed" else "green", )
+            f"{project.name}/{build.name}", f"{build.stats['status']}", f"{build.stats['duration']}",
+            style="red" if build.stats["status"] == "Failed" else "green", )
 
-    print( table )
+print( table )
 
 console.pop( "build_log" )

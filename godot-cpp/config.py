@@ -2,15 +2,14 @@ import copy
 import inspect
 import itertools
 from types import SimpleNamespace
-from typing import IO
 
 import rich
 
-from share.actions import git_fetch
+from share.actions import git_checkout, func_as_script
 from share.env_commands import toolchains
 
 project_config = SimpleNamespace(**{
-    'gitUrl'  : "https://github.com/enetheru/godot-cpp.git",
+    'gitUrl'  : "https://github.com/enetheru/godot-cpp.git/",
     'build_configs' : {}
 })
 
@@ -23,27 +22,20 @@ project_config = SimpleNamespace(**{
 # ║                 ███████  ██████ ██   ██ ██ ██         ██    ███████                    ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
-def func_as_script( func ) -> str:
-    src=inspect.getsource( func ).splitlines()[1:]
-    for n in range(len(src)):
-        line = src[n]
-        if line.startswith('    '):
-            src[n] = line[4:]
-    return '\n'.join(src)
-
 def scons_script( config:SimpleNamespace, console:rich.console.Console ):
     from share.Timer import Timer
-    from share.actions import git_fetch, scons_build
+    from share.actions import git_checkout, scons_build
     from actions import godotcpp_test
 
     stats:dict = dict()
     timer = Timer()
     name = config['name']
+    actions = config['actions']
 
     #[=================================[ Fetch ]=================================]
-    if config['fetch']:
-        console.set_window_title(f'Fetch - {name}')
-        stats['fetch'] = timer.time_function( config, func=git_fetch )
+    if actions['source']:
+        console.set_window_title(f'Source - {name}')
+        stats['source'] = timer.time_function( config, func=git_checkout )
 
     #[=================================[ Build ]=================================]
     if config['build'] and timer.ok():
@@ -73,7 +65,7 @@ def scons_script( config:SimpleNamespace, console:rich.console.Console ):
 def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
     from share.Timer import Timer
     from pathlib import Path
-    from share.actions import git_fetch, cmake_configure, cmake_build
+    from share.actions import git_checkout, cmake_configure, cmake_build
     from actions import godotcpp_test
     from share.format import h4
 
@@ -84,7 +76,7 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
     #[=================================[ Fetch ]=================================]
     if config['fetch']:
         console.set_window_title('Fetch - {name}')
-        stats['fetch'] = timer.time_function( config, func=git_fetch )
+        stats['fetch'] = timer.time_function( config, func=git_checkout )
 
     #[===============================[ Configure ]===============================]
     if 'godot_build_profile' in cmake:
@@ -133,13 +125,13 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
 
 def process_script( script:str ) -> str:
     print( 'processing script' )
-    return script.replace('%replaceme%', inspect.getsource(git_fetch))
+    return script.replace('%replaceme%', inspect.getsource(git_checkout))
 
-def clean_log( raw_file: IO, clean_file: IO ):
-    clean_file.write( "godot-cpp clean_log function" )
-    for i in range( 10 ):
-        line = raw_file.readline()
-        clean_file.write( line )
+# def clean_log( raw_file: IO, clean_file: IO ):
+#     clean_file.write( "godot-cpp clean_log function" )
+#     for i in range( 10 ):
+#         line = raw_file.readline()
+#         clean_file.write( line )
 
 # ╒════════════════════════════════════════════════════════════════════════════╕
 # │            ██████  ███████ ███████ ██   ██ ████████  ██████  ██████        │
@@ -239,7 +231,7 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
         'godot_td':'C:/build/godot/w64.msvc/bin/godot.windows.template_debug.x86_64.console.exe',
         'godot_e':'C:/build/godot/w64.msvc/bin/godot.windows.editor.x86_64.console.exe',
         # Variables to clean the logs
-        'clean_log':clean_log
+        # 'clean_log':clean_log
     })
 
     if toolchain.startswith('msys2'):
@@ -248,8 +240,10 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
     match build_tool:
         case 'cmake':
             cfg.script = func_as_script( cmake_script )
+            delattr( cfg, 'scons')
         case 'scons':
             cfg.script = func_as_script( scons_script )
+            delattr( cfg, 'cmake')
 
     match build_tool, toolchain:
         case 'scons', 'msvc':
