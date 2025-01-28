@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 
+from rich.console import Console
+
+from share.actions import func_as_script
 from share.format import *
+from share.run import stream_command
 
 # MARK: Shells
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -119,91 +123,92 @@ toolchains = [
 # │                                                     |_|                    │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
+def env_mingw64_script(config:dict, console:Console):
+    import os
+    from pathlib import Path
+
+    mingw_path = Path("C:/mingw64/bin" )
+
+    h4(f'prepending {mingw_path} PATH')
+    os.environ['PATH'] = f'{mingw_path};{os.environ.get('PATH')}'
+
+def env_llvm_script(config:dict, console:Console):
+    import os
+    from pathlib import Path
+
+    llvm_path = Path("C:/Program Files/LLVM/bin" )
+
+    h4( f'prepending "{llvm_path}" to PATH' )
+    os.environ['PATH'] = f'{llvm_path};{os.environ.get('PATH')}'
+
+def env_llvm_mingw_script(config:dict, console:Console):
+    import os
+    from pathlib import Path
+
+    llvm_mingw_path = Path("C:/llvm-mingw/bin" )
+
+    h4( f'prepending "{llvm_mingw_path}" to PATH' )
+    os.environ['PATH'] = f'{llvm_mingw_path};{os.environ.get('PATH')}'
+
+def env_android_script(config:dict, console:Console):
+    import os
+    from pathlib import Path
+
+    cmdlineTools = Path("C:/androidsdk/cmdline-tools/latest/bin")
+
+    h4( f'prepending "{cmdlineTools}" to PATH' )
+    os.environ['PATH'] = f'{cmdlineTools};{os.environ.get('PATH')}'
+
+    if 'update' in config['actions']:
+        console.set_window_title('Updating Android SDK')
+        h3("Update Android SDK")
+
+        cmd_chunks = [
+            'sdkmanager.bat',
+            '--update',
+            '--verbose' if config['quiet'] is False else None,
+        ]
+        stream_command( ' '.join(filter(None, cmd_chunks)), dry=config['dry'] )
+
+def env_emsdk_script(config:dict, console:Console):
+    import os
+    from pathlib import Path
+
+    emsdk_path = Path( 'C:/emsdk' )
+    emsdk_version = '3.1.64'
+
+    if 'update' in config['actions']:
+        console.set_window_title('Updating Emscripten SDK')
+        h3("Update Emscripten SDK")
+
+        # if( $version -match "latest" ){
+        #     # scons: *** [bin\.web_zip\godot.editor.worker.js] The system cannot find the file specified
+        #     # https://forum.godotengine.org/t/error-while-building-godot-4-3-web-template/86368
+        #
+        #     Write-Warning "Latest Emscripten version is not oficially supported"
+        #     Write-Output @"
+
+        # Official Requirements:
+        # godotengine - 4.0+     | Emscripten 1.39.9
+        # godotengine - 4.2+     | Emscripten 3.1.39
+        # godotengine - master   | Emscripten 3.1.62
+
+        # But in the github action runner, it's 3.1.64
+        # And all of the issues related show 3.1.64
+
+        os.chdir(emsdk_path)
+        stream_command( 'git pull', dry=config['dry'] )
+        stream_command( f'pwsh emsdk.ps1 install {emsdk_version}', dry=config['dry'] )
+
 toolchain_scripts = {
-    # Mingw64
-    "mingw64": """
-import os
-from share.format import *
-
-mingw_path = Path("C:/mingw64/bin" )
-
-h4(f'prepending {mingw_path} PATH')
-os.environ['PATH'] = f'{mingw_path};{os.environ.get('PATH')}' 
-""",
-    # LLVM
-    "llvm": """
-import os
-from share.format import *
-
-llvm_path = Path("C:/Program Files/LLVM/bin" )
-
-h4( f'prepending "{llvm_path}" to PATH' )
-os.environ['PATH'] = f'{llvm_path};{os.environ.get('PATH')}'
-""",
+    "mingw64": func_as_script(env_mingw64_script),
+    "llvm": func_as_script( env_llvm_script ),
     # LLVM-mingw
-    "llvm-mingw": """
-import os
-from share.format import *
-
-llvm_mingw_path = Path("C:/llvm-mingw/bin" )
-
-h4( f'prepending "{llvm_mingw_path}" to PATH' )
-os.environ['PATH'] = f'{llvm_mingw_path};{os.environ.get('PATH')}'
-""",
+    "llvm-mingw":  func_as_script( env_llvm_mingw_script ),
     # Android
-    "android": """
-import os
-from share.format import *
-
-cmdlineTools = Path("C:/androidsdk/cmdline-tools/latest/bin")
-
-h4( f'prepending "{cmdlineTools}" to PATH' )
-os.environ['PATH'] = f'{cmdlineTools};{os.environ.get('PATH')}'
-
-if config['update']:
-    console.set_window_title('Updating Android SDK')
-    h3("Update Android SDK")
-    
-    cmd_chunks = [
-        'sdkmanager.bat',
-        '--update',
-        '--verbose' if config['quiet'] is False else None,
-    ]
-    command = ' '.join(filter(None, cmd_chunks))
-
-    print_eval( command, dry=config['dry'] )
-""",
+    "android":  func_as_script( env_android_script ),
     # Emscripten
-    "emscripten": """
-import os
-from share.format import *
-
-emsdk_path = Path( 'C:/emsdk' )
-emsdk_version = '3.1.64'
-
-if config['update']:
-    console.set_window_title('Updating Emscripten SDK')
-    h3("Update Emscripten SDK")
-    
-    # if( $version -match "latest" ){
-    #     # scons: *** [bin\.web_zip\godot.editor.worker.js] The system cannot find the file specified
-    #     # https://forum.godotengine.org/t/error-while-building-godot-4-3-web-template/86368
-    # 
-    #     Write-Warning "Latest Emscripten version is not oficially supported"
-    #     Write-Output @"
-    
-    # Official Requirements:
-    # godotengine - 4.0+     | Emscripten 1.39.9
-    # godotengine - 4.2+     | Emscripten 3.1.39
-    # godotengine - master   | Emscripten 3.1.62
-
-    # But in the github action runner, it's 3.1.64
-    # And all of the issues related show 3.1.64
-    
-    os.chdir(emsdk_path)
-    print_eval( 'git pull', dry=config['dry'] )
-    print_eval( f'pwsh emsdk.ps1 install {emsdk_version}', dry=config['dry'] )
-""",
+    "emsdk": func_as_script( env_emsdk_script ),
 }
 
 
@@ -240,13 +245,16 @@ def python_preamble(config: SimpleNamespace) -> str:
 
     script = f"""
 import sys
+sys.path.append({repr(str(config.root_dir))})
+
 from pathlib import Path
 import rich
-from rich import print
 from rich.console import Console
 
+from share.format import *
+from share.run import stream_command
+
 rich._console = console = Console(soft_wrap=False, width=9000)
-sys.path.append({repr(str(config.root_dir))})
 
 """
     chunk = ["config = {"]

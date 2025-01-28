@@ -27,10 +27,12 @@ def scons_script( config:SimpleNamespace, console:rich.console.Console ):
     from share.actions import git_checkout, scons_build
     from actions import godotcpp_test
 
-    stats:dict = dict()
-    timer = Timer()
     name = config['name']
     actions = config['actions']
+
+    stats:dict = dict()
+    timer = Timer()
+
 
     #[=================================[ Fetch ]=================================]
     if actions['source']:
@@ -38,12 +40,12 @@ def scons_script( config:SimpleNamespace, console:rich.console.Console ):
         stats['source'] = timer.time_function( config, func=git_checkout )
 
     #[=================================[ Build ]=================================]
-    if config['build'] and timer.ok():
+    if actions['build'] and timer.ok():
         console.set_window_title(f'Build - {name}')
         stats['build'] = timer.time_function( config, func=scons_build )
 
     #[==================================[ Test ]==================================]
-    if config['test'] and timer.ok():
+    if actions['test'] and timer.ok():
         console.set_window_title(f'Test - {name}')
         stats['test'] = timer.time_function( config, func=godotcpp_test )
 
@@ -63,47 +65,51 @@ def scons_script( config:SimpleNamespace, console:rich.console.Console ):
         exit(1)
 
 def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
-    from share.Timer import Timer
+    import os
     from pathlib import Path
-    from share.actions import git_checkout, cmake_configure, cmake_build
-    from actions import godotcpp_test
+
+    from share.Timer import Timer
     from share.format import h4
+    from share.actions import git_checkout, cmake_configure, cmake_build
+
+    from actions import godotcpp_test
 
     stats:dict = dict()
     cmake = config['cmake']
+    actions = config['actions']
     timer = Timer()
 
     #[=================================[ Fetch ]=================================]
-    if config['fetch']:
-        console.set_window_title('Fetch - {name}')
-        stats['fetch'] = timer.time_function( config, func=git_checkout )
+    if actions['source']:
+        console.set_window_title('Source - {name}')
+        stats['source'] = timer.time_function( config, func=git_checkout )
 
     #[===============================[ Configure ]===============================]
     if 'godot_build_profile' in cmake:
         profile_path = Path(cmake['godot_build_profile'])
         if not profile_path.is_absolute():
             profile_path = config['source_dir'] / profile_path
-        h4(f'using build profile: "{{profile_path}}"')
-        cmake['config_vars'].append(f'-DGODOT_BUILD_PROFILE="{{os.fspath(profile_path)}}"')
+        h4(f'using build profile: "{profile_path}"')
+        cmake['config_vars'].append(f'-DGODOT_BUILD_PROFILE="{os.fspath(profile_path)}"')
 
     if 'toolchain_file' in cmake:
         toolchain_path = Path(cmake['toolchain_file'])
         if not toolchain_path.is_absolute():
             toolchain_path = config['root_dir'] / toolchain_path
-        h4(f'using toolchain file: "{{toolchain_path}}"')
-        cmake['config_vars'].append(f'--toolchain "{{os.fspath(toolchain_path)}}"')
+        h4(f'using toolchain file: "{toolchain_path}"')
+        cmake['config_vars'].append(f'--toolchain "{os.fspath(toolchain_path)}"')
 
-    if config['prepare'] and timer.ok():
+    if actions['prepare'] and timer.ok():
         console.set_window_title('Prepare - {name}')
         stats['prepare'] = timer.time_function( config, func=cmake_configure )
 
     #[=================================[ Build ]=================================]
-    if config['build'] and timer.ok():
+    if actions['build'] and timer.ok():
         console.set_window_title('Build - {name}')
         stats['build'] = timer.time_function( config, func=cmake_build )
 
     #[==================================[ Test ]==================================]
-    if config['test'] and timer.ok():
+    if actions['test'] and timer.ok():
         console.set_window_title('Test - {name}')
         stats['test'] = timer.time_function( config, func=godotcpp_test )
 
@@ -212,6 +218,7 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
         'name' : f'w64.{build_tool}.{toolchain}',
         'shell':'pwsh',
         'build_tool':build_tool,
+        'build_verbs':['source', 'build', 'test'],
         'toolchain':toolchain,
         'script': None,
         'cmake':{
@@ -240,6 +247,7 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
     match build_tool:
         case 'cmake':
             cfg.script = func_as_script( cmake_script )
+            cfg.build_verbs += ['configure']
             delattr( cfg, 'scons')
         case 'scons':
             cfg.script = func_as_script( scons_script )
@@ -281,6 +289,7 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
 
         case 'scons', 'android':
             cfg.scons['build_vars'] += ['platform=android']
+            cfg.build_verbs.remove('test')
             setattr(cfg, 'test', False)
             project_config.build_configs[cfg.name] = cfg
             continue
@@ -288,6 +297,7 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
         case 'scons', 'emsdk':
             cfg.scons['build_vars'] += ['platform=web']
             cfg.shell = 'emsdk'
+            cfg.build_verbs.remove('test')
             setattr(cfg, 'test', False)
             project_config.build_configs[cfg.name] = cfg
             continue
@@ -401,6 +411,7 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
             continue
 
         case 'cmake', 'android':
+            cfg.build_verbs.remove('test')
             cfg.cmake['config_vars'] =[
                 '-DCMAKE_BUILD_TYPE=Release',
                 "-DANDROID_PLATFORM=latest",
@@ -423,6 +434,7 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
             continue
 
         case 'cmake', 'emsdk':
+            cfg.build_verbs.remove('test')
             # FIXME, investigate the rest of the emcmake pyhton script for any other options.
             cfg.cmake['config_vars'] =[
                 '-G"Ninja"',

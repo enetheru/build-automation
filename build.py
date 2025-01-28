@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import IO
 
 import rich
-from rich.console import Console
 from rich.pretty import pprint
 from rich.table import Table
 
@@ -42,18 +41,19 @@ rich._console = console
 parser = argparse.ArgumentParser(
     prog="Build-Automation", description="Builds Things", epilog="Build All The Things!!", )
 
-parser_io = parser.add_argument_group( "io" )
+parser_io = parser.add_argument_group( "IO" )
 parser_io.add_argument( "-q", "--quiet", action="store_true" )  # Supress output
-parser_io.add_argument(
-    "--list", action="store_true"
-)  # only list configs do not process
-# Text Logger Option
-parser_io.add_argument(
-    "--append", action="store_true"
-)  # Append to the logs rather than clobber
+parser_io.add_argument( "-v", "--verbose", action="store_true" )  # extra output
+
+# General or Global Options
+parser_opts = parser.add_argument_group( "Options" )
+parser_opts.add_argument( "--dry",action='store_true' )
+parser_opts.add_argument( "--list", action="store_true" )
+parser_opts.add_argument("-j", "--jobs", type=int,
+    default=(multiprocessing.cpu_count() - 1) or 1)
 
 # Filter which project/configurations get built.
-parser_filter = parser.add_argument_group( "project filter" )
+parser_filter = parser.add_argument_group( "Project Selection" )
 parser_filter.add_argument( "--project", default="*" )
 parser_filter.add_argument( "--filter", default=".*" )
 
@@ -91,13 +91,9 @@ for long,short in build_actions.items():
         action=argparse.BooleanOptionalAction )
 
 # Options for actions, but I want to split this up into per action options
-parser_opts = parser.add_argument_group( "action options" )
-parser_opts.add_argument( "--dry",
-    action=argparse.BooleanOptionalAction )
 parser_opts.add_argument( "--fresh",
     action=argparse.BooleanOptionalAction )
-parser_opts.add_argument("-j", "--jobs",
-    type=int, default=(multiprocessing.cpu_count() - 1) or 1)
+
 parser_opts.add_argument( "--gitUrl" )  # The Url to clone from
 parser_opts.add_argument( "--gitHash" )  # the Commit to checkout
 
@@ -296,8 +292,7 @@ for project in project_configs.values():
 
     # Tee stdout to log file.
     log_path = project.project_root / f"logs-raw/{project.name}.txt"
-    log_mode = "a" if project.append else "w"
-    log_file = open( file=log_path, mode=log_mode, buffering=1, encoding="utf-8" )
+    log_file = open( file=log_path, mode='w', buffering=1, encoding="utf-8" )
     project_console = Console( file=log_file, force_terminal=True )
     console.tee( project_console , project.name )
 
@@ -321,8 +316,13 @@ for project in project_configs.values():
     # ╰────────────────────────────────────────────────────────────────────────────╯
     for build in project.build_configs.values():
         # Skip the build config if there are no actions to perform
-        if not True in build.actions.values():
-            h4( f'No actions specified for "{build.name}"')
+        skip = True
+        for k, v in build.actions.items():
+            if v and k in build.build_verbs:
+                skip = False
+
+        if skip:
+            h4( f'No matching build verbs for "{build.name}"')
             continue
 
         console.set_window_title( f"{project.name} - {build.name}" )
@@ -330,8 +330,7 @@ for project in project_configs.values():
         # =====================[ stdout Logging ]======================-
         h4( "Configure Logging" )
         log_path = build.project_root / f"logs-raw/{build.name}.txt"
-        log_mode = "a" if build.append else "w"
-        build_log = open( file=log_path, mode=log_mode, buffering=1, encoding="utf-8" )
+        build_log = open( file=log_path, mode='w', buffering=1, encoding="utf-8" )
         build_console = Console( file=build_log, force_terminal=True )
         console.tee( name=build.name, new_console=build_console )
 
@@ -359,7 +358,7 @@ for project in project_configs.values():
             title_align='left',
             expand=False,
             width=120 )
-        print(panel)
+        if bargs.verbose: print(panel)
 
         # ====================[ Run Build Script ]=====================-
         h3( "Run" )
@@ -407,8 +406,9 @@ for project in project_configs.values():
             f'-Command "cat" {log_path}'
         ]
 
-    print( centre( f"Completed: {build.name}", fill( " -", 120 ) ) )
+        print( centre( f"[ Completed:{project.name} / {build.name} ]", fill( " -", 120 ) ) )
 
+    print( centre( f"[ Completed:{project.name} ]", fill( " -" ) ) )
     # remove the project output log.
     console.pop( project.name )
 

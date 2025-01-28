@@ -23,7 +23,8 @@ def func_as_script( func ) -> str:
 def git_checkout(config: dict):
     print(figlet("Git Checkout", {"font": "small"}))
     print(f"  gitURL={config['gitUrl']}")
-    print(f"  gitHash={config['gitHash']}")
+    if 'githash' in config:
+        print(f"  gitHash={config['gitHash']}")
 
     # Create worktree is missing
     if not pathlib.Path(config["source_dir"]).exists():
@@ -35,14 +36,16 @@ def git_checkout(config: dict):
             "add",
             f'-d "{config['source_dir']}"',
         ]
-        stream_command(" ".join(cmd_chunks), dry=config["dry"])
+        stream_command(" ".join(cmd_chunks), dry=config['dry'])
     else:
         h4("Update WorkTree")
 
     # Update worktree
     os.chdir(config["source_dir"])
-    stream_command(f"git checkout --force -d { config['gitHash'] }", dry=config["dry"])
-    stream_command("git log -1", dry=config["dry"])
+    chunks = ['git', 'checkout', '--force']
+    if 'gitHash' in config: chunks.append(f'-d {config['gitHash']}')
+    stream_command(' '.join( chunks ), dry=config['dry'])
+    stream_command("git log -1", dry=config['dry'])
 
     print(centre(" Git Fetch finished ", fill("- ")))
 
@@ -83,13 +86,15 @@ def scons_build(config: dict):
     if "build_vars" in scons.keys():
         cmd_chunks += scons["build_vars"]
 
+    dry = True if 'dry' in config else False
+
     for target in scons["targets"]:
         h3(f"Building {target}")
         build_command: str = " ".join(filter(None, cmd_chunks))
         build_command += f" target={target}"
         print( build_command )
 
-        stream_command(build_command, dry=config["dry"])
+        stream_command(build_command, dry=config['dry'])
 
     print(centre(" SCons build finished ", fill("- ")))
 
@@ -133,18 +138,19 @@ def cmake_configure(config: dict):
 
     config_command = [
         "cmake",
-        "--fresh" if config["fresh"] else None,
+        "--fresh" if 'fresh' in config else None,
         "--log-level=VERBOSE" if not config["quiet"] else None,
         f'-S "{source_dir}"',
         f'-B "{build_dir}"',
     ]
+    dry = True if 'dry' in config else False
 
     if "config_vars" in cmake.keys():
         config_command += cmake["config_vars"]
 
     print(figlet("CMake Configure", {"font": "small"}))
 
-    stream_command(" ".join(filter(None, config_command)), dry=config["dry"])
+    stream_command(" ".join(filter(None, config_command)), dry=config['dry'])
 
     print(centre(" CMake Configure Completed ", fill("- ")))
 

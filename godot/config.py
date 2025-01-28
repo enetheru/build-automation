@@ -48,23 +48,24 @@ def scons_script( config:dict, console:rich.console.Console ):
     from share.Timer import Timer
     from share.actions import git_checkout, scons_build
 
+    actions = config['actions']
     stats:dict = dict()
     timer = Timer()
 
     #[=================================[ Fetch ]=================================]
-    if config['fetch']:
-        console.set_window_title('Fetch - {name}')
+    if actions['source']:
+        console.set_window_title('Source - {name}')
 
-        stats['fetch'] = timer.time_function( config, func=git_checkout )
+        stats['source'] = timer.time_function( config, func=git_checkout )
 
     #[=================================[ Build ]=================================]
-    if config['build'] and timer.ok():
+    if actions['build'] and timer.ok():
         console.set_window_title('Build - {name}')
 
         stats['build'] = timer.time_function( config, func=scons_build )
 
     #[==================================[ Test ]==================================]
-    if config['test'] and timer.ok():
+    if actions['test'] and timer.ok():
         console.set_window_title('Test - {name}')
         # stats['test'] = timer.time_function( config, func=godotcpp_test )
 
@@ -123,6 +124,7 @@ for toolchain in toolchains:
             "name": f"w64.{toolchain}",
             "shell": "pwsh",
             "build_tool": "scons",
+            'build_verbs':['source', 'build'],
             "toolchain": toolchain,
             "script": func_as_script( scons_script ),
             "scons": {
