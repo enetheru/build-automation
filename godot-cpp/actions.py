@@ -33,7 +33,7 @@ def godotcpp_test( config:dict ) -> bool:
         ]
         # TODO redirect stdout to null
         try:
-            stream_command(' '.join(cmd_chunks), dry=config['dry'], stderr=None, stdout=None)
+            stream_command(' '.join(cmd_chunks), dry=config['dry'])
         except subprocess.SubprocessError as e:
             print( '[red]Godot exited abnormally during .godot folder creation')
 

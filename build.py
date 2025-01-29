@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 import argparse
-import copy
 import importlib.util
 import multiprocessing
-import pathlib
 import platform
 import sys
 from datetime import datetime
+from subprocess import CalledProcessError
 from typing import IO
 
 import rich
@@ -242,8 +241,9 @@ def update_configs():
             setattr( build, 'script_path', build.project_root / f"{build.name}.py" )
             setattr( build, 'actions', copy.deepcopy(bargs.build_actions ))
 
-            # print( Path( build.script_path ).as_posix() )
-            run_cmd = ' '.join(build.toolchain.shell + [f'"python {Path( build.script_path ).as_posix()}"'] )
+            shell = getattr(build.toolchain, 'shell', False)
+            if shell: run_cmd = ' '.join(build.toolchain.shell + [f'"python {Path( build.script_path ).as_posix()}"'] )
+            else: run_cmd = f'python {Path( build.script_path ).as_posix()}'
             setattr( build, 'run_cmd', run_cmd )
 
 update_configs()
@@ -325,16 +325,15 @@ def process_build( build:SimpleNamespace ):
     stats = {"start_time": datetime.now()}
     build.stats = stats
 
-    proc = stream_command( build.run_cmd )
-    # proc = subprocess.Popen( build.run_cmd, encoding="utf-8", stderr=subprocess.STDOUT, stdout=subprocess.PIPE )
-    # with proc:
-        # TODO The evaluation of the output appears delayed, research a lower latency solution
-        # for line in proc.stdout:
-        #     print(
-        #         line.rstrip()
-        #     )  # TODO I can watch for print statements here which assign statistics.  #   if line.startswith('scrape_this|'):  #     eval(line.split('|')[1], globals(), locals() )
-
-        # TODO create a timeout for the processing, something reasonable.  #   this should be defined in the build config as the largest possible build time that is expected.  #   that way it can trigger a check of the system if it is failing this test.
+    try:
+        env = getattr(build.toolchain, 'env', None )
+        proc = stream_command( build.run_cmd, env=env )
+    except CalledProcessError as e:
+        # TODO Better execution failure handling
+        proc = e
+    # TODO The evaluation of the output appears delayed, research a lower latency solution
+    # TODO I can watch for print statements here which assign statistics.  #   if line.startswith('scrape_this|'):  #     eval(line.split('|')[1], globals(), locals() )
+    # TODO create a timeout for the processing, something reasonable.  #   this should be defined in the build config as the largest possible build time that is expected.  #   that way it can trigger a check of the system if it is failing this test.
 
     stats["status"] = "Completed" if not proc.returncode else "Failed"
     stats["end_time"] = datetime.now()
@@ -431,4 +430,5 @@ def show_statistics():
 
     print( table )
 
+show_statistics()
 console.pop( "build_log" )

@@ -14,6 +14,7 @@ def stream_command(
     *,
     dry=False,
     quiet=False,
+    env=None,
     stdout_handler=print,
     stderr_handler=print,
     check=True,
@@ -29,7 +30,7 @@ def stream_command(
     if dry: return 0
     """Mimic subprocess.run, while processing the command output in real time."""
     with (
-        Popen(args, text=text, stdout=stdout, stderr=stderr, **kwargs, encoding='utf-8') as process,
+        Popen(args, text=text, stdout=stdout, stderr=stderr, **kwargs, encoding='utf-8', env=env) as process,
         ThreadPoolExecutor(2) as pool,  # two threads to handle the (live) streams separately
     ):
         exhaust = partial(deque, maxlen=0)  # collections recipe: exhaust an iterable at C-speed

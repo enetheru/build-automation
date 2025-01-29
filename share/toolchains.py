@@ -1,3 +1,4 @@
+import copy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -93,18 +94,6 @@ toolchains = {
         'shell':[ "pwsh", "-Command",
             """ "&{Import-Module 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'};" """ ]
     }),
-    "llvm": SimpleNamespace(**{
-        'desc':'# Use Clang-Cl from llvm.org',
-        'env_map': {'PATH':"C:/Program Files/LLVM/bin"}
-    }),
-    "llvm-mingw": SimpleNamespace(**{
-        'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
-        'env_map': {'PATH':"C:/llvm-mingw/bin"}
-    }),
-    "mingw64": SimpleNamespace(**{
-        'desc':'[mingw](https://github.com/niXman/mingw-builds-binaries/releases,), This is also the default toolchain for clion',
-        'env_map': {'PATH':"C:/mingw64/bin"}
-    }),
     "msys2-mingw32": SimpleNamespace(**{
         'desc':'i686      gcc linking against msvcrt',
         'shell': [ "C:/msys64/msys2_shell.cmd", "-mingw32", "-defterm", "-no-start", "-c"],
@@ -142,16 +131,33 @@ toolchains = {
     })
 }
 
+env = {k:v for k,v in os.environ.items()}
+env['PATH'] = f'C:/Program Files/LLVM/bin;{os.environ['PATH']}'
+toolchains["llvm"] = SimpleNamespace(**{
+    'desc':'# Use Clang-Cl from llvm.org',
+    'shell':[],
+    'env': env
+})
+
+env = {k:v for k,v in os.environ.items()}
+env['PATH'] = f'C:/llvm-mingw/bin;{os.environ['PATH']}'
+toolchains["llvm-mingw"] = SimpleNamespace(**{
+    'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
+    'env': env
+})
+
+env = {k:v for k,v in os.environ.items()}
+env['PATH'] = f'C:/mingw64/bin;{os.environ['PATH']}'
+toolchains["mingw64"] = SimpleNamespace(**{
+    'desc':'[mingw](https://github.com/niXman/mingw-builds-binaries/releases,), This is also the default toolchain for clion',
+    'env': env
+})
 
 def finalise_toolchains():
     for name, toolchain in toolchains.items():
 
         # set the names
         setattr(toolchain, 'name', name )
-
-        # set the shell if not specified.
-        if not getattr(toolchain, 'shell', False):
-            setattr(toolchain, 'shell', ["pwsh", "-Command"] )
 
 finalise_toolchains()
 

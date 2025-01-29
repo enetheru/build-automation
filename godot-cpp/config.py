@@ -1,12 +1,16 @@
 import copy
 import inspect
 import itertools
+from pathlib import Path
 from types import SimpleNamespace
 
 import rich
 
+from share.Timer import TaskStatus
 from share.actions import git_checkout
+from share.run import stream_command
 from share.toolchains import toolchains
+from share.format import *
 
 project_config = SimpleNamespace(**{
     'gitUrl'  : "https://github.com/enetheru/godot-cpp.git/",
@@ -46,26 +50,63 @@ def scons_script( config:SimpleNamespace, console:rich.console.Console ):
     from share.Timer import Timer
     from share.actions import git_checkout, scons_build
     from actions import godotcpp_test
+    from share.Timer import TaskStatus
+
 
     name = config['name']
     actions = config['actions']
+    scons: dict = config["scons"]
+    jobs = config["jobs"]
 
     stats:dict = dict()
     timer = Timer()
 
-
     #[=================================[ Fetch ]=================================]
-    if actions['source']:
+    if 'source' in config['verbs'] and actions['source']:
         console.set_window_title(f'Source - {name}')
         stats['source'] = timer.time_function( config, func=git_checkout )
 
+
+    # Check whether build path is viable.
+    if "build_dir" in scons.keys():
+        build_dir = Path(scons["build_dir"])
+        if not build_dir.is_absolute():
+            build_dir = Path(config["source_dir"]) / build_dir
+    else:
+        build_dir = Path(config["source_dir"])
+
+    os.chdir(build_dir)
+
+    # requires SConstruct file existing in the current directory.
+    if not (build_dir / "SConstruct").exists():
+        print(f"[red]Missing SConstruct in {build_dir}")
+        raise "Missing SConstruct"
+
+    #[=================================[ Clean ]=================================]
+    if 'clean' in config['verbs'] and actions['clean']:
+        console.set_window_title(f'Clean - {name}')
+        print(figlet("SCons Clean", {"font": "small"}))
+
+        with timer:
+            try:
+                proc = stream_command( "scons --clean" , dry=config['dry'])
+                # Change status depending on the truthiness of returnvalue
+                # where False is Success and True is Failure.
+                timer.status = TaskStatus.FAILED if proc.returncode else TaskStatus.COMPLETED
+            except subprocess.CalledProcessError as e:
+                # FIXME should this be more generic and handled elsewhere?
+                print( '[red]subprocess error')
+                print( f'[red]{e}' )
+                timer.status = TaskStatus.FAILED
+            stats['clean'] = timer.get_dict()
+
     #[=================================[ Build ]=================================]
-    if actions['build'] and timer.ok():
+    if 'build' in config['verbs'] and actions['build'] and timer.ok():
         console.set_window_title(f'Build - {name}')
         stats['build'] = timer.time_function( config, func=scons_build )
 
     #[==================================[ Test ]==================================]
-    if actions['test'] and timer.ok():
+    if 'test' in config['verbs'] and actions['test'] and timer.ok():
         console.set_window_title(f'Test - {name}')
         stats['test'] = timer.time_function( config, func=godotcpp_test )
 
@@ -100,36 +141,36 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
     timer = Timer()
 
     #[=================================[ Fetch ]=================================]
-    if actions['source']:
+    if 'source' in config['verbs'] and actions['source']:
         console.set_window_title('Source - {name}')
         stats['source'] = timer.time_function( config, func=git_checkout )
 
     #[===============================[ Configure ]===============================]
-    if 'godot_build_profile' in cmake:
-        profile_path = Path(cmake['godot_build_profile'])
-        if not profile_path.is_absolute():
-            profile_path = config['source_dir'] / profile_path
-        h4(f'using build profile: "{profile_path}"')
-        cmake['config_vars'].append(f'-DGODOT_BUILD_PROFILE="{os.fspath(profile_path)}"')
+    if 'configure' in config['verbs'] and actions['prepare']:
+        if 'godot_build_profile' in cmake:
+            profile_path = Path(cmake['godot_build_profile'])
+            if not profile_path.is_absolute():
+                profile_path = config['source_dir'] / profile_path
+            h4(f'using build profile: "{profile_path}"')
+            cmake['config_vars'].append(f'-DGODOT_BUILD_PROFILE="{os.fspath(profile_path)}"')
 
-    if 'toolchain_file' in cmake:
-        toolchain_path = Path(cmake['toolchain_file'])
-        if not toolchain_path.is_absolute():
-            toolchain_path = config['root_dir'] / toolchain_path
-        h4(f'using toolchain file: "{toolchain_path}"')
-        cmake['config_vars'].append(f'--toolchain "{os.fspath(toolchain_path)}"')
+        if 'toolchain_file' in cmake:
+            toolchain_path = Path(cmake['toolchain_file'])
+            if not toolchain_path.is_absolute():
+                toolchain_path = config['root_dir'] / toolchain_path
+            h4(f'using toolchain file: "{toolchain_path}"')
+            cmake['config_vars'].append(f'--toolchain "{os.fspath(toolchain_path)}"')
 
-    if actions['prepare'] and timer.ok():
         console.set_window_title('Prepare - {name}')
         stats['prepare'] = timer.time_function( config, func=cmake_configure )
 
     #[=================================[ Build ]=================================]
-    if actions['build'] and timer.ok():
+    if 'build' in config['verbs'] and actions['build'] and timer.ok():
         console.set_window_title('Build - {name}')
         stats['build'] = timer.time_function( config, func=cmake_build )
 
     #[==================================[ Test ]==================================]
-    if actions['test'] and timer.ok():
+    if 'test' in config['verbs'] and actions['test'] and timer.ok():
         console.set_window_title('Test - {name}')
         stats['test'] = timer.time_function( config, func=godotcpp_test )
 
@@ -245,6 +286,7 @@ for bt, tc in itertools.product( build_tool, toolchains.values() ):
             delattr( cfg, 'scons')
         case 'scons':
             cfg.script = scons_script
+            cfg.verbs += ['clean']
             delattr( cfg, 'cmake')
 
     match build_tool, toolchain.name:
