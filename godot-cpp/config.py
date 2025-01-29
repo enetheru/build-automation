@@ -13,6 +13,26 @@ project_config = SimpleNamespace(**{
     'build_configs' : {}
 })
 
+# MARK: Notes
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  _  _     _                                                                │
+# │ | \| |___| |_ ___ ___                                                      │
+# │ | .` / _ \  _/ -_|_-<                                                      │
+# │ |_|\_\___/\__\___/__/                                                      │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+# =======================[ Emscripten ]========================-
+# latest version gives this error
+# scons: *** [bin\.web_zip\godot.editor.worker.js] The system cannot find the file specified
+# https://forum.godotengine.org/t/error-while-building-godot-4-3-web-template/86368
+
+# Official Requirements:
+# godotengine - 4.0+     | Emscripten 1.39.9
+# godotengine - 4.2+     | Emscripten 3.1.39
+# godotengine - master   | Emscripten 3.1.62
+
+# But in the github action runner, it's 3.1.64
+# And all of the issues related show 3.1.64
+
 # MARK: Scripts
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
 # ║                 ███████  ██████ ██████  ██ ██████  ████████ ███████                    ║
@@ -213,13 +233,16 @@ generators = ['Visual Studio 17 2022', 'Ninja', 'Ninja Multi-Config']
 
 msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
 
-for build_tool, toolchain in itertools.product( build_tool, toolchains):
+for bt, tc in itertools.product( build_tool, toolchains.values() ):
+    build_tool:str = bt
+    toolchain:SimpleNamespace = tc
+
     cfg = SimpleNamespace(**{
-        'name' : f'w64.{build_tool}.{toolchain}',
+        'name' : f'w64.{build_tool}.{toolchain.name}',
         'shell':'pwsh',
         'build_tool':build_tool,
         'build_verbs':['source', 'build', 'test'],
-        'toolchain':toolchain,
+        'toolchain':copy.deepcopy(toolchain),
         'script': None,
         'cmake':{
             'build_dir':'build-cmake',
@@ -241,7 +264,7 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
         # 'clean_log':clean_log
     })
 
-    if toolchain.startswith('msys2'):
+    if toolchain.name.startswith('msys2'):
         cfg.shell = toolchain
 
     match build_tool:
@@ -253,7 +276,7 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
             cfg.script = func_as_script( scons_script )
             delattr( cfg, 'cmake')
 
-    match build_tool, toolchain:
+    match build_tool, toolchain.name:
         case 'scons', 'msvc':
             cfg.shell = 'pwsh-dev'
             project_config.build_configs[cfg.name] = cfg
@@ -447,7 +470,7 @@ for build_tool, toolchain in itertools.product( build_tool, toolchains):
 
 
         case _:
-            print( f'ignoring combination: {build_tool} - {toolchain}')
+            print( f'ignoring combination: {build_tool} - {toolchain.name}')
             continue
 
 # ╒════════════════════════════════════════════════════════════════════════════╕

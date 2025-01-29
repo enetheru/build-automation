@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+import copy
+from io import StringIO
 from types import SimpleNamespace
 
 import rich
@@ -84,7 +86,8 @@ def scons_script( config:dict, console:rich.console.Console ):
     if not timer.ok():
         exit(1)
 
-# msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
+def write_script( build:SimpleNamespace, script:StringIO ):
+    script.write( func_as_script( scons_script ) )
 
 # ╒════════════════════════════════════════════════════════════════════════════╕
 # │            ██████  ███████ ███████ ██   ██ ████████  ██████  ██████        │
@@ -118,15 +121,15 @@ def scons_script( config:dict, console:rich.console.Console ):
 # │   \_/\_/ |_|_||_\__,_\___/\_/\_//__/                                       │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-for toolchain in toolchains:
+for toolchain in toolchains.values():
     cfg = SimpleNamespace(
         **{
-            "name": f"w64.{toolchain}",
+            "name": f"w64.{toolchain.name}",
             "shell": "pwsh",
             "build_tool": "scons",
             'build_verbs':['source', 'build'],
-            "toolchain": toolchain,
-            "script": func_as_script( scons_script ),
+            "toolchain": copy.deepcopy(toolchain),
+            'write':write_script,
             "scons": {
                 "build_vars": [],
                 "targets": ["template_release", "template_debug", "editor"],
@@ -137,10 +140,10 @@ for toolchain in toolchains:
         }
     )
 
-    if toolchain.startswith("msys2"):
+    if toolchain.name.startswith("msys2"):
         cfg.shell = toolchain
 
-    match toolchain:
+    match toolchain.name:
         case "msvc":
             cfg.shell = "pwsh-dev"
             project_config.build_configs[cfg.name] = cfg
@@ -186,7 +189,7 @@ for toolchain in toolchains:
             continue
 
         case _:
-            print(f"ignoring toolchain: {toolchain}")
+            print(f"ignoring toolchain: {toolchain.name}")
             continue
 
 # ╒════════════════════════════════════════════════════════════════════════════╕

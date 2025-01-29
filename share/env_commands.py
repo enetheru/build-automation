@@ -1,3 +1,5 @@
+from io import StringIO
+from pathlib import Path, WindowsPath
 from types import SimpleNamespace
 
 from rich.console import Console
@@ -97,22 +99,111 @@ shells = {
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 # The variations of toolchains for mingw are listed here: https://www.mingw-w64.org/downloads/
-toolchains = [
-    "msvc",  # Microsoft Visual Studio
-    "llvm",  # Use Clang-Cl from llvm.org
-    "llvm-mingw",  # llvm based mingw-w64 toolchain.
-    #   https://github.com/mstorsjo/llvm-mingw
-    "mingw64",  # mingw from https://github.com/niXman/mingw-builds-binaries/releases,
-    #   This is also the default toolchain for clion.
-    "msys2-mingw32",  # i686      gcc linking against msvcrt
-    "msys2-mingw64",  # x86_64    gcc linking against msvcrt
-    "msys2-ucrt64",  # x86_64    gcc linking against ucrt
-    "msys2-clang32",  # i686      clang linking against ucrt
-    "msys2-clang64",  # x86_64    clang linking against ucrt
-    "msys2-clangarm64",  # aarch64   clang linking against ucrt
-    "android",  # https://developer.android.com/tools/sdkmanager
-    "emsdk",  # https://emscripten.org/
-]
+def emsdk_update( toolchain, config:SimpleNamespace, console:Console ):
+    import os
+    from pathlib import Path
+
+    emsdk_path = Path( 'C:/emsdk' )
+
+    console.set_window_title('Updating Emscripten SDK')
+    h3("Update Emscripten SDK")
+
+    os.chdir(emsdk_path)
+    stream_command( 'git pull', dry=config.dry )
+
+def emsdk_script( config:dict, console:Console ):
+    import os
+    from pathlib import Path
+
+    def emsdk_check( config:dict, console:Console ):
+        # C:\emsdk\emsdk.ps1 list --help | rg INSTALLED
+        pass
+
+    def emsdk_activate(config:dict, console:Console):
+        toolchain = config['toolchain']
+        chunks = [
+            toolchain['shell'],
+            Path(toolchain['root']) / 'emsdk',
+            'activate',
+            toolchain['version']
+        ]
+        stream_command( ' '.join(chunks), dry=config['dry'] )
+
+    emsdk_path = Path( 'C:/emsdk' )
+    emsdk_version = '3.1.64'
+
+    console.set_window_title('Updating Emscripten SDK')
+    h3("Update Emscripten SDK")
+
+    os.chdir(emsdk_path)
+    stream_command( 'git pull', dry=config.dry )
+
+    # Projects need to activate or install specific versions of the sdk themselves
+    # typucally using some variation of the below command.
+    # stream_command( f'pwsh emsdk.ps1 install {emsdk_version}', dry=config.dry )
+
+def emsdk_write( build:SimpleNamespace, script:StringIO ):
+    script.write( func_as_script(emsdk_script) )
+
+toolchains = {
+    "msvc": SimpleNamespace(**{
+        'desc':'# Microsoft Visual Studio',
+        'shell':[ "pwsh", "-Command", """&{Import-Module "C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Community\\\\Common7\\\\Tools\\\\Microsoft.VisualStudio.DevShell.dll"; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64"};""" ]
+    }),
+    "llvm": SimpleNamespace(**{
+        'desc':'# Use Clang-Cl from llvm.org',
+        'env_map': {'PATH':"C:/Program Files/LLVM/bin"}
+    }),
+    "llvm-mingw": SimpleNamespace(**{
+        'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
+        'env_map': {'PATH':"C:/llvm-mingw/bin"}
+    }),
+    "mingw64": SimpleNamespace(**{
+        'desc':'[mingw](https://github.com/niXman/mingw-builds-binaries/releases,), This is also the default toolchain for clion',
+        'env_map': {'PATH':"C:/mingw64/bin"}
+    }),
+    "msys2-mingw32": SimpleNamespace(**{
+        'desc':'i686      gcc linking against msvcrt',
+        'shell': [ "C:/msys64/msys2_shell.cmd", "-mingw32", "-defterm", "-no-start", "-c"],
+    }),
+    "msys2-mingw64": SimpleNamespace(**{
+        'desc':'x86_64    gcc linking against msvcrt',
+        'shell': ["C:/msys64/msys2_shell.cmd", "-mingw64", "-defterm", "-no-start", "-c"],
+    }),
+    "msys2-ucrt64": SimpleNamespace(**{
+        'desc':'x86_64    gcc linking against ucrt',
+        'shell': ["C:/msys64/msys2_shell.cmd", "-ucrt64", "-defterm", "-no-start", "-c"],
+    }),
+    "msys2-clang32": SimpleNamespace(**{
+        'desc':'i686      clang linking against ucrt',
+        'shell': ["C:/msys64/msys2_shell.cmd", "-clang32", "-defterm", "-no-start", "-c"],
+    }),
+    "msys2-clang64": SimpleNamespace(**{
+        'desc':'x86_64    clang linking against ucrt',
+        'shell': ["C:/msys64/msys2_shell.cmd", "-clang64", "-defterm", "-no-start", "-c"],
+    }),
+    "msys2-clangarm64": SimpleNamespace(**{
+        'desc':'aarch64   clang linking against ucrt',
+        'shell': ["C:/msys64/msys2_shell.cmd", "-clangarm64", "-defterm", "-no-start", "-c"],
+    }),
+    "android": SimpleNamespace(**{
+        'desc':'[Android](https://developer.android.com/tools/sdkmanager)',
+    }),
+    "emsdk": SimpleNamespace(**{
+        'desc':'[Emscripten](https://emscripten.org/)',
+        'root':Path('C:/emsdk'),
+        'verbs':['update', 'write'],
+        'update':emsdk_update,
+        'shell': ["pwsh", "-Command", "C:/emsdk/emsdk_env.ps1;"],
+        'write': emsdk_write
+    })
+}
+
+def finalise_toolchains():
+    for name, toolchain in toolchains.items():
+        setattr(toolchain, 'name', name )
+
+finalise_toolchains()
 
 # MARK: Toolchain Scripts
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -170,57 +261,6 @@ def env_android_script(config:dict, console:Console):
         ]
         stream_command( ' '.join(filter(None, cmd_chunks)), dry=config['dry'] )
 
-def env_emsdk_script(config:dict, console:Console):
-    import os
-    from pathlib import Path
-
-    emsdk_path = Path( 'C:/emsdk' )
-    emsdk_version = '3.1.64'
-
-    if 'update' in config['actions']:
-        console.set_window_title('Updating Emscripten SDK')
-        h3("Update Emscripten SDK")
-
-        # if( $version -match "latest" ){
-        #     # scons: *** [bin\.web_zip\godot.editor.worker.js] The system cannot find the file specified
-        #     # https://forum.godotengine.org/t/error-while-building-godot-4-3-web-template/86368
-        #
-        #     Write-Warning "Latest Emscripten version is not oficially supported"
-        #     Write-Output @"
-
-        # Official Requirements:
-        # godotengine - 4.0+     | Emscripten 1.39.9
-        # godotengine - 4.2+     | Emscripten 3.1.39
-        # godotengine - master   | Emscripten 3.1.62
-
-        # But in the github action runner, it's 3.1.64
-        # And all of the issues related show 3.1.64
-
-        os.chdir(emsdk_path)
-        stream_command( 'git pull', dry=config['dry'] )
-        stream_command( f'pwsh emsdk.ps1 install {emsdk_version}', dry=config['dry'] )
-
-toolchain_scripts = {
-    "mingw64": func_as_script(env_mingw64_script),
-    "llvm": func_as_script( env_llvm_script ),
-    # LLVM-mingw
-    "llvm-mingw":  func_as_script( env_llvm_mingw_script ),
-    # Android
-    "android":  func_as_script( env_android_script ),
-    # Emscripten
-    "emsdk": func_as_script( env_emsdk_script ),
-}
-
-
-def python_toolchain(config: SimpleNamespace):
-    if config.toolchain in toolchain_scripts.keys():
-        chunks = [toolchain_scripts[config.toolchain]]
-    else: chunks = ["# No Environment Modifications"]
-    chunks.append( centre(" End of Toolchain Modifications ", left("#", fill("- ", 80))))
-    chunks.append('')
-    return '\n'.join( chunks )
-
-
 # MARK: Preamble
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  ___         _      _     ___                    _    _                    │
@@ -229,21 +269,34 @@ def python_toolchain(config: SimpleNamespace):
 # │ |___/\__|_| |_| .__/\__| |_| |_| \___\__,_|_|_|_|_.__/_\___|               │
 # │               |_|                                                          │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-# [===============================[ PowerShell ]===============================]
-def pwsh_preamble(defs: dict, command: str) -> str:
-    mini_script = ""
-    for k, v in defs.items():
-        mini_script += f'${k}="{v}"\n'
-    mini_script += command
-    mini_script += "\n"
-    return mini_script
+
+def namespace_to_script( name:str, namespace:SimpleNamespace, script:StringIO ):
+    chunk = [f"{name} = {{"]
+    skip_keys = []
+    if 'skip_keys' in namespace.__dict__.keys():
+        skip_keys = namespace.skip_keys
+
+    for k, v in namespace.__dict__.items():
+        if k in skip_keys: continue
+        # Fix Windows Path Items
+        if isinstance(v, WindowsPath):
+            chunk.append(f"\t{repr(k)}:Path({repr(str(v))}),")
+            continue
+        # Skip Functions
+        if callable(v): continue
+        # recurse over other namespaces
+        if isinstance(v, SimpleNamespace):
+            namespace_to_script( k, v, script )
+            continue
+        # Skip Multi-Line Scripts.
+        if type(v) is str and '\n' in v: continue
+        chunk.append(f"\t{repr(k)}:{repr(v)},")
+    chunk.append("}\n")
+    script.write( "\n".join(chunk) )
 
 
-# [=================================[ Python ]=================================]
-def python_preamble(config: SimpleNamespace) -> str:
-    from pathlib import WindowsPath
-
-    script = f"""
+def write_preamble(config: SimpleNamespace, script:StringIO):
+    script.write( f"""
 import sys
 sys.path.append({repr(str(config.root_dir))})
 
@@ -256,19 +309,5 @@ from share.run import stream_command
 
 rich._console = console = Console(soft_wrap=False, width=9000)
 
-"""
-    chunk = ["config = {"]
-    for k, v in config.__dict__.items():
-        # Skip items that we dont want
-        if k in ["script", "clean_log"]:
-            continue
-        if isinstance(v, WindowsPath):
-            chunk.append(f"\t{repr(k)}:Path({repr(str(v))}),")
-            continue
-        chunk.append(f"\t{repr(k)}:{repr(v)},")
-    chunk.append("}\n")
-    script += "\n".join(chunk)
-
-    script += centre(" End Of Preamble ", left("\n#", fill("- ", 80)))
-    script += "\n"
-    return script
+""")
+    namespace_to_script('config', config, script )
