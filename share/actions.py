@@ -4,14 +4,30 @@ from pathlib import Path
 from share.format import *
 from share.run import stream_command
 
+# MARK: Git Fetch Projects
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │   ___ _ _     ___    _      _      ___          _        _                 │
+# │  / __(_) |_  | __|__| |_ __| |_   | _ \_ _ ___ (_)___ __| |_ ___           │
+# │ | (_ | |  _| | _/ -_)  _/ _| ' \  |  _/ '_/ _ \| / -_) _|  _(_-<           │
+# │  \___|_|\__| |_|\___|\__\__|_||_| |_| |_| \___// \___\__|\__/__/           │
+# │                                              |__/                          │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+def fetch_projects( projects:dict ):
+    print(figlet("Git Fetch", {"font": "small"}))
+    for project in projects.values():
+        os.chdir( project.project_root )
+        if project.actions['fetch']:
+            h3( project.name )
+            print(f"  gitURL={project.gitUrl}")
 
-def func_as_script( func ) -> str:
-    src=inspect.getsource( func ).splitlines()[1:]
-    for n in range(len(src)):
-        line = src[n]
-        if line.startswith('    '):
-            src[n] = line[4:]
-    return '\n'.join(src)
+            bare_git_path = project.project_root / "git"
+            if not bare_git_path.exists():
+                stream_command( f'git clone --bare "{project.gitUrl}" "{bare_git_path}"', dry=project.dry )
+            else:
+                stream_command( f'git --git-dir="{bare_git_path}" fetch --force origin *:*' , dry=project.dry )
+                stream_command( f'git --git-dir="{bare_git_path}" log -1 --pretty=%B' , dry=project.dry )
+                stream_command( f'git --git-dir="{bare_git_path}" worktree list' , dry=project.dry )
+                stream_command( f'git --git-dir="{bare_git_path}" worktree prune' , dry=project.dry )
 
 # MARK: Git Checkout
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -86,8 +102,6 @@ def scons_build(config: dict):
     if "build_vars" in scons.keys():
         cmd_chunks += scons["build_vars"]
 
-    dry = True if 'dry' in config else False
-
     for target in scons["targets"]:
         h3(f"Building {target}")
         build_command: str = " ".join(filter(None, cmd_chunks))
@@ -143,7 +157,6 @@ def cmake_configure(config: dict):
         f'-S "{source_dir}"',
         f'-B "{build_dir}"',
     ]
-    dry = True if 'dry' in config else False
 
     if "config_vars" in cmake.keys():
         config_command += cmake["config_vars"]

@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import rich
 
-from share.actions import func_as_script
 from share.env_commands import toolchains
+from share.generate import func_as_script
 
 # Build Targets
 #   - lib - 'template_release','template_debug','editor'
@@ -46,7 +46,7 @@ project_config = SimpleNamespace(
 # ║                 ███████  ██████ ██   ██ ██ ██         ██    ███████                    ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
-def scons_script( config:dict, console:rich.console.Console ):
+def scons_script( config:dict, toolchain:dict, console:rich.console.Console ):
     from share.Timer import Timer
     from share.actions import git_checkout, scons_build
 
@@ -65,11 +65,6 @@ def scons_script( config:dict, console:rich.console.Console ):
         console.set_window_title('Build - {name}')
 
         stats['build'] = timer.time_function( config, func=scons_build )
-
-    #[==================================[ Test ]==================================]
-    if actions['test'] and timer.ok():
-        console.set_window_title('Test - {name}')
-        # stats['test'] = timer.time_function( config, func=godotcpp_test )
 
     #[=================================[ Stats ]=================================]
     from rich.table import Table

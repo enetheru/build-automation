@@ -5,8 +5,9 @@ from types import SimpleNamespace
 
 import rich
 
-from share.actions import git_checkout, func_as_script
+from share.actions import git_checkout
 from share.env_commands import toolchains
+from share.generate import func_as_script
 
 project_config = SimpleNamespace(**{
     'gitUrl'  : "https://github.com/enetheru/godot-cpp.git/",

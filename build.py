@@ -14,8 +14,9 @@ from rich.table import Table
 
 # Local Imports
 from share.ConsoleMultiplex import ConsoleMultiplex
+from share.actions import fetch_projects
 from share.env_commands import *
-from share.run import stream_command
+from share.generate import generate_build_scripts
 
 sys.stdout.reconfigure(encoding='utf-8')
 
@@ -237,17 +238,8 @@ def update_configs():
             setattr( build, 'script_path', build.project_root / f"{build.name}.py" )
             setattr( build, 'actions', copy.deepcopy(bargs.build_actions ))
 
-            # [==========================[ Shell / Environment ]==========================]
-            if "shell" in build.__dict__.keys() and build.shell in shells.keys():
-                env_command = shells[build.shell].copy()
-                env_command += [f'python "{build.script_path}"']
-                setattr( build, 'env_command', env_command )
-            else:
-                print( f"    config missing key: shell, bailing on config." )
-                setattr( build, 'invalid', True )
-                continue
-
 update_configs()
+
 # MARK: Generate Scripts
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │   ___                       _         ___         _      _                 │
@@ -256,30 +248,7 @@ update_configs()
 # │  \___\___|_||_\___|_| \__,_|\__\___| |___/\__|_| |_| .__/\__/__/           │
 # │                                                    |_|                     │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def generate_build_scripts():
-    h4( "Generating Build Scripts" )
-    for project in projects.values():
-        for build in project.build_configs.values():
-
-            script = StringIO()
-            write_preamble( build, script )
-
-            script.write( centre(" End Of Preamble ", left("\n#", fill("- ", 80))) )
-            script.write('\n')
-
-            toolchain = build.toolchain
-            if 'write' in getattr( toolchain, 'verbs', [] ):
-                toolchain.write( build, script )
-
-            script.write( centre(" End Of Toolchain ", left("\n#", fill("- ", 80))) )
-            script.write('\n')
-
-            build.write( build, script )
-
-            with open( build.script_path, "w", encoding='utf-8' ) as file:
-                file.write( script.getvalue() )
-
-generate_build_scripts()
+generate_build_scripts( projects )
 
 # MARK: Git Fetch Projects
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -289,27 +258,8 @@ generate_build_scripts()
 # │  \___|_|\__| |_|\___|\__\__|_||_| |_| |_| \___// \___\__|\__/__/           │
 # │                                              |__/                          │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-
-def fetch_projects():
-    if bargs.project_actions['fetch']:
-        print(figlet("Git Fetch", {"font": "small"}))
-
-    for project in projects.values():
-        os.chdir( project.project_root )
-        if project.actions['fetch']:
-            h3( project.name )
-            print(f"  gitURL={project.gitUrl}")
-
-            bare_git_path = project.project_root / "git"
-            if not bare_git_path.exists():
-                stream_command( f'git clone --bare "{project.gitUrl}" "{bare_git_path}"', dry=bargs.dry )
-            else:
-                stream_command( f'git --git-dir="{bare_git_path}" fetch --force origin *:*' , dry=bargs.dry )
-                stream_command( f'git --git-dir="{bare_git_path}" log -1 --pretty=%B' , dry=bargs.dry )
-                stream_command( f'git --git-dir="{bare_git_path}" worktree list' , dry=bargs.dry )
-                stream_command( f'git --git-dir="{bare_git_path}" worktree prune' , dry=bargs.dry )
-
-fetch_projects()
+if bargs.project_actions['fetch']:
+    fetch_projects( projects )
 
 # MARK: Build
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -357,7 +307,7 @@ def process_build( build:SimpleNamespace ):
             dedent=True,
             word_wrap=True
         )
-    print( " ".join( build.env_command ) )
+    print( " ".join( build.toolchain.shell ) )
     panel = Panel( syntax,
         title=str(build.script_path),
         title_align='left',
@@ -371,8 +321,9 @@ def process_build( build:SimpleNamespace ):
     stats = {"start_time": datetime.now()}
     build.stats = stats
 
+    command = ' '.join(build.toolchain.shell + [f'python {build.script_path}'])
     proc = subprocess.Popen(
-        build.env_command, encoding="utf-8", stderr=subprocess.STDOUT, stdout=subprocess.PIPE, )
+        command, encoding="utf-8", stderr=subprocess.STDOUT, stdout=subprocess.PIPE )
     with proc:
         # TODO The evaluation of the output appears delayed, research a lower latency solution
         for line in proc.stdout:

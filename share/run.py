@@ -3,6 +3,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from subprocess import PIPE, CalledProcessError, CompletedProcess, Popen
+
 from rich import print
 
 # https://www.devgem.io/posts/capturing-realtime-output-from-a-subprocess-in-python
@@ -12,6 +13,7 @@ def stream_command(
     args,
     *,
     dry=False,
+    quiet=False,
     stdout_handler=print,
     stderr_handler=print,
     check=True,
@@ -20,9 +22,10 @@ def stream_command(
     stderr=PIPE,
     **kwargs,
 ):
-    print(f"""
-  CWD: {os.getcwd()}
-     $ {args}""")
+    if not quiet:
+        print(f"""
+      CWD: {os.getcwd()}
+         $ {args}""")
     if dry: return 0
     """Mimic subprocess.run, while processing the command output in real time."""
     with (

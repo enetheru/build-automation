@@ -1,10 +1,8 @@
-from io import StringIO
-from pathlib import Path, WindowsPath
+from pathlib import Path
 from types import SimpleNamespace
 
 from rich.console import Console
 
-from share.actions import func_as_script
 from share.format import *
 from share.run import stream_command
 
@@ -103,47 +101,49 @@ def emsdk_update( toolchain, config:SimpleNamespace, console:Console ):
     import os
     from pathlib import Path
 
-    emsdk_path = Path( 'C:/emsdk' )
-
     console.set_window_title('Updating Emscripten SDK')
-    h3("Update Emscripten SDK")
+    print(figlet("EMSDK Update", {"font": "small"}))
 
+    emsdk_path = Path( toolchain['path'] )
     os.chdir(emsdk_path)
     stream_command( 'git pull', dry=config.dry )
 
-def emsdk_script( config:dict, console:Console ):
-    import os
+def emsdk_script( config:dict, toolchain:dict ):
     from pathlib import Path
+    from io import StringIO
 
-    def emsdk_check( config:dict, console:Console ):
-        # C:\emsdk\emsdk.ps1 list --help | rg INSTALLED
-        pass
+    emsdk_path = Path(toolchain['path'])
+    emsdk_version = toolchain['version']
 
-    def emsdk_activate(config:dict, console:Console):
-        toolchain = config['toolchain']
-        chunks = [
-            toolchain['shell'],
-            Path(toolchain['root']) / 'emsdk',
-            'activate',
-            toolchain['version']
-        ]
-        stream_command( ' '.join(chunks), dry=config['dry'] )
+    def emsdk_is_active() -> bool:
+        return False
 
-    emsdk_path = Path( 'C:/emsdk' )
-    emsdk_version = '3.1.64'
+    def emsdk_check( sdk_path, sdk_version ) -> bool:
+        # C:\emsdk\emsdk.ps1 list | rg INSTALLED
+        command = ' '.join( toolchain['shell'] + [f'{str(sdk_path / 'emsdk.ps1')} list'])
+        output = StringIO()
+        stream_command( command, quiet=True, dry=config['dry'],
+            stdout_handler=lambda text : output.write(text + '\n') )
+        output.seek(0)
+        for line in output:
+            if sdk_version not in line: continue
+            if 'INSTALLED' in line: return True
+        return False
 
-    console.set_window_title('Updating Emscripten SDK')
-    h3("Update Emscripten SDK")
+    def emsdk_activate( sdk_path, sdk_version ):
+        print(figlet("EMSDK Activate", {"font": "small"}))
+        command = ' '.join( toolchain['shell'] + [f'{str(sdk_path / 'emsdk.ps1')} activate {sdk_version}'])
+        stream_command( command, dry=config['dry'] )
 
-    os.chdir(emsdk_path)
-    stream_command( 'git pull', dry=config.dry )
+    def emsdk_install( sdk_path, sdk_version ):
+        print(figlet("EMSDK Install", {"font": "small"}))
+        command = ' '.join( toolchain['shell'] + [f'{str(sdk_path / 'emsdk.ps1')} install {sdk_version}'])
+        stream_command( command, dry=config['dry'] )
 
-    # Projects need to activate or install specific versions of the sdk themselves
-    # typucally using some variation of the below command.
-    # stream_command( f'pwsh emsdk.ps1 install {emsdk_version}', dry=config.dry )
+    if emsdk_check( emsdk_path, emsdk_version ):
+        emsdk_activate(emsdk_path, emsdk_version )
+    else: emsdk_install(emsdk_path, emsdk_version )
 
-def emsdk_write( build:SimpleNamespace, script:StringIO ):
-    script.write( func_as_script(emsdk_script) )
 
 toolchains = {
     "msvc": SimpleNamespace(**{
@@ -191,13 +191,16 @@ toolchains = {
     }),
     "emsdk": SimpleNamespace(**{
         'desc':'[Emscripten](https://emscripten.org/)',
-        'root':Path('C:/emsdk'),
+        'path':Path('C:/emsdk'),
+        'version':'3.1.64',
+        # 'shell': ["pwsh", "-Command", "C:/emsdk/emsdk_env.ps1;"],
+        'shell': ["pwsh", "-Command"],
         'verbs':['update', 'write'],
         'update':emsdk_update,
-        'shell': ["pwsh", "-Command", "C:/emsdk/emsdk_env.ps1;"],
-        'write': emsdk_write
+        'script':emsdk_script
     })
 }
+
 
 def finalise_toolchains():
     for name, toolchain in toolchains.items():
@@ -261,53 +264,4 @@ def env_android_script(config:dict, console:Console):
         ]
         stream_command( ' '.join(filter(None, cmd_chunks)), dry=config['dry'] )
 
-# MARK: Preamble
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  ___         _      _     ___                    _    _                    │
-# │ / __| __ _ _(_)_ __| |_  | _ \_ _ ___ __ _ _ __ | |__| |___                │
-# │ \__ \/ _| '_| | '_ \  _| |  _/ '_/ -_) _` | '  \| '_ \ / -_)               │
-# │ |___/\__|_| |_| .__/\__| |_| |_| \___\__,_|_|_|_|_.__/_\___|               │
-# │               |_|                                                          │
-# ╰────────────────────────────────────────────────────────────────────────────╯
 
-def namespace_to_script( name:str, namespace:SimpleNamespace, script:StringIO ):
-    chunk = [f"{name} = {{"]
-    skip_keys = []
-    if 'skip_keys' in namespace.__dict__.keys():
-        skip_keys = namespace.skip_keys
-
-    for k, v in namespace.__dict__.items():
-        if k in skip_keys: continue
-        # Fix Windows Path Items
-        if isinstance(v, WindowsPath):
-            chunk.append(f"\t{repr(k)}:Path({repr(str(v))}),")
-            continue
-        # Skip Functions
-        if callable(v): continue
-        # recurse over other namespaces
-        if isinstance(v, SimpleNamespace):
-            namespace_to_script( k, v, script )
-            continue
-        # Skip Multi-Line Scripts.
-        if type(v) is str and '\n' in v: continue
-        chunk.append(f"\t{repr(k)}:{repr(v)},")
-    chunk.append("}\n")
-    script.write( "\n".join(chunk) )
-
-
-def write_preamble(config: SimpleNamespace, script:StringIO):
-    script.write( f"""
-import sys
-sys.path.append({repr(str(config.root_dir))})
-
-from pathlib import Path
-import rich
-from rich.console import Console
-
-from share.format import *
-from share.run import stream_command
-
-rich._console = console = Console(soft_wrap=False, width=9000)
-
-""")
-    namespace_to_script('config', config, script )
