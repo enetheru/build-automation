@@ -6,8 +6,7 @@ from types import SimpleNamespace
 import rich
 
 from share.actions import git_checkout
-from share.env_commands import toolchains
-from share.generate import func_as_script
+from share.toolchains import toolchains
 
 project_config = SimpleNamespace(**{
     'gitUrl'  : "https://github.com/enetheru/godot-cpp.git/",
@@ -154,84 +153,61 @@ def process_script( script:str ) -> str:
     print( 'processing script' )
     return script.replace('%replaceme%', inspect.getsource(git_checkout))
 
-# def clean_log( raw_file: IO, clean_file: IO ):
-#     clean_file.write( "godot-cpp clean_log function" )
-#     for i in range( 10 ):
-#         line = raw_file.readline()
-#         clean_file.write( line )
-
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │            ██████  ███████ ███████ ██   ██ ████████  ██████  ██████        │
-# │            ██   ██ ██      ██      ██  ██     ██    ██    ██ ██   ██       │
-# │            ██   ██ █████   ███████ █████      ██    ██    ██ ██████        │
-# │            ██   ██ ██           ██ ██  ██     ██    ██    ██ ██            │
-# │            ██████  ███████ ███████ ██   ██    ██     ██████  ██            │
-# ╘════════════════════════════════════════════════════════════════════════════╛
-# Construct build configurations
-# MARK: Linux
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _    _                                                                    │
-# │ | |  (_)_ _ _  ___ __                                                      │
-# │ | |__| | ' \ || \ \ /                                                      │
-# │ |____|_|_||_\_,_/_\_\                                                      │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# MARK: MacOS
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  __  __          ___  ___                                                  │
-# │ |  \/  |__ _ __ / _ \/ __|                                                 │
-# │ | |\/| / _` / _| (_) \__ \                                                 │
-# │ |_|  |_\__,_\__|\___/|___/                                                 │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
 # MARK: Windows
+# ╒════════════════════════════════════════════════════════════════════════════╕
+# │            ██     ██ ██ ███    ██ ██████   ██████  ██     ██ ███████       │
+# │            ██     ██ ██ ████   ██ ██   ██ ██    ██ ██     ██ ██            │
+# │            ██  █  ██ ██ ██ ██  ██ ██   ██ ██    ██ ██  █  ██ ███████       │
+# │            ██ ███ ██ ██ ██  ██ ██ ██   ██ ██    ██ ██ ███ ██      ██       │
+# │             ███ ███  ██ ██   ████ ██████   ██████   ███ ███  ███████       │
+# ╘════════════════════════════════════════════════════════════════════════════╛
+
+"""
+## Platforms
+### Windows
+#### Toolchains:
+- msvc
+    - archs [x86_32, x86_64, arm64]
+    - using clang-cl
+- llvm
+- mingw-llvm
+    - archs [x86_32, x86_64, arm64]
+- mingw64
+    - archs [x86_32, x86_64]
+- clion( mingw64 )
+- msys64.ucrt64
+- msys64.mingw32
+- msys64.mingw64
+- msys64.clang32
+- msys64.clang64
+- msys64.clangarm64
+
+### Android
+#### Toolchains:
+- android
+    - arch [arm32, arm64, x86_32, x86_64]
+    
+### Web
+#### Toolchains
+- emsdk
+
+## Variations
+- Thread/noThread
+- Profile/NoProfile
+- Precision single/double
+- Hot Re-Load ON/OFF
+- Exceptions ON/OFF
+"""
+
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │ __      ___         _                                                      │
 # │ \ \    / (_)_ _  __| |_____ __ _____                                       │
 # │  \ \/\/ /| | ' \/ _` / _ \ V  V (_-<                                       │
 # │   \_/\_/ |_|_||_\__,_\___/\_/\_//__/                                       │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-# Build Targets
-#   - lib - 'template_release','template_debug','editor'
-#   - test - 'template_release','template_debug','editor'
-#
-# Build Tool
-#   - CMake
-#   - SCons
-#
-# - msvc
-#   - msvc
-#   - using clang-cl
-# - mingw32
-#   - clion builtin
-#   - mingw64
-#   - msys64/ucrt64
-#   - msys64/mingw32
-#   - msys64/mingw64
-# - clang
-#   - llvm
-#   - llvm-mingw
-#   - msys64/clang32
-#   - msys64/clang64
-#   - msys64/clangarm64
-# - android(clang)
-# - emscripten(clang)
-#
-# Option Variations
-#   - Thread/noThread
-#   - Profile/NoProfile
-#   - Precision single/double
-#   - Hot Re-Load ON/OFF
-#   - Exceptions ON/OFF
 
-# Naming of builds.
-#   host.env.build_tool.compiler.options
-# Where any of the above are omitted it obvious
-
-build_tool = ['scons','cmake']
-
+build_tool:list = ['scons','cmake']
 generators = ['Visual Studio 17 2022', 'Ninja', 'Ninja Multi-Config']
-
 msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
 
 for bt, tc in itertools.product( build_tool, toolchains.values() ):
@@ -240,11 +216,8 @@ for bt, tc in itertools.product( build_tool, toolchains.values() ):
 
     cfg = SimpleNamespace(**{
         'name' : f'w64.{build_tool}.{toolchain.name}',
-        'shell':'pwsh',
-        'build_tool':build_tool,
-        'build_verbs':['source', 'build', 'test'],
         'toolchain':copy.deepcopy(toolchain),
-        'script': None,
+        'verbs':['source', 'build', 'test'],
         'cmake':{
             'build_dir':'build-cmake',
             'godot_build_profile':'test/build_profile.json',
@@ -265,21 +238,17 @@ for bt, tc in itertools.product( build_tool, toolchains.values() ):
         # 'clean_log':clean_log
     })
 
-    if toolchain.name.startswith('msys2'):
-        cfg.shell = toolchain
-
     match build_tool:
         case 'cmake':
-            cfg.script = func_as_script( cmake_script )
-            cfg.build_verbs += ['configure']
+            cfg.script = cmake_script
+            cfg.verbs += ['configure']
             delattr( cfg, 'scons')
         case 'scons':
-            cfg.script = func_as_script( scons_script )
+            cfg.script = scons_script
             delattr( cfg, 'cmake')
 
     match build_tool, toolchain.name:
         case 'scons', 'msvc':
-            cfg.shell = 'pwsh-dev'
             project_config.build_configs[cfg.name] = cfg
             continue
 
@@ -313,22 +282,19 @@ for bt, tc in itertools.product( build_tool, toolchains.values() ):
 
         case 'scons', 'android':
             cfg.scons['build_vars'] += ['platform=android']
-            cfg.build_verbs.remove('test')
+            cfg.verbs.remove('test')
             setattr(cfg, 'test', False)
             project_config.build_configs[cfg.name] = cfg
             continue
 
         case 'scons', 'emsdk':
             cfg.scons['build_vars'] += ['platform=web']
-            cfg.shell = 'emsdk'
-            cfg.build_verbs.remove('test')
+            cfg.verbs.remove('test')
             setattr(cfg, 'test', False)
             project_config.build_configs[cfg.name] = cfg
             continue
 
         case 'cmake', 'msvc':
-            cfg.shell = 'pwsh-dev'
-
             # MSVC
             alt = copy.deepcopy( cfg )
             alt.cmake['config_vars'] = [
@@ -435,7 +401,7 @@ for bt, tc in itertools.product( build_tool, toolchains.values() ):
             continue
 
         case 'cmake', 'android':
-            cfg.build_verbs.remove('test')
+            cfg.verbs.remove('test')
             cfg.cmake['config_vars'] =[
                 '-DCMAKE_BUILD_TYPE=Release',
                 "-DANDROID_PLATFORM=latest",
@@ -458,7 +424,7 @@ for bt, tc in itertools.product( build_tool, toolchains.values() ):
             continue
 
         case 'cmake', 'emsdk':
-            cfg.build_verbs.remove('test')
+            cfg.verbs.remove('test')
             # FIXME, investigate the rest of the emcmake pyhton script for any other options.
             cfg.cmake['config_vars'] =[
                 '-G"Ninja"',
@@ -474,15 +440,6 @@ for bt, tc in itertools.product( build_tool, toolchains.values() ):
             print( f'ignoring combination: {build_tool} - {toolchain.name}')
             continue
 
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │                 ███    ███  ██████  ██████  ██ ██      ███████             │
-# │                 ████  ████ ██    ██ ██   ██ ██ ██      ██                  │
-# │                 ██ ████ ██ ██    ██ ██████  ██ ██      █████               │
-# │                 ██  ██  ██ ██    ██ ██   ██ ██ ██      ██                  │
-# │                 ██      ██  ██████  ██████  ██ ███████ ███████             │
-# ╘════════════════════════════════════════════════════════════════════════════╛
-
-# MARK: Android
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │    _           _         _    _                                            │
 # │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
@@ -490,7 +447,90 @@ for bt, tc in itertools.product( build_tool, toolchains.values() ):
 # │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-# MARK: iOS
+
+
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │ __      __   _                                                             │
+# │ \ \    / /__| |__                                                          │
+# │  \ \/\/ / -_) '_ \                                                         │
+# │   \_/\_/\___|_.__/                                                         │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
+
+
+# MARK: Linux
+# ╒════════════════════════════════════════════════════════════════════════════╕
+# │                      ██      ██ ███    ██ ██    ██ ██   ██                 │
+# │                      ██      ██ ████   ██ ██    ██  ██ ██                  │
+# │                      ██      ██ ██ ██  ██ ██    ██   ███                   │
+# │                      ██      ██ ██  ██ ██ ██    ██  ██ ██                  │
+# │                      ███████ ██ ██   ████  ██████  ██   ██                 │
+# ╘════════════════════════════════════════════════════════════════════════════╛
+"""
+== Platforms ==
+- Linux
+- MacOS
+- iOS
+- Windows
+- Android
+- Web
+== Toolchains ==
+- OSXCross
+- cctools(for iOS)
+- gcc
+- clang
+- riscv
+- mingw32
+- android(clang)
+- emsdk(clang)
+"""
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  _    _                                                                    │
+# │ | |  (_)_ _ _  ___ __                                                      │
+# │ | |__| | ' \ || \ \ /                                                      │
+# │ |____|_|_||_\_,_/_\_\                                                      │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │    _           _         _    _                                            │
+# │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
+# │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
+# │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │ __      __   _                                                             │
+# │ \ \    / /__| |__                                                          │
+# │  \ \/\/ / -_) '_ \                                                         │
+# │   \_/\_/\___|_.__/                                                         │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
+# MARK: MacOS
+# ╒════════════════════════════════════════════════════════════════════════════╕
+# │                   ███    ███  █████   ██████  ██████  ███████              │
+# │                   ████  ████ ██   ██ ██      ██    ██ ██                   │
+# │                   ██ ████ ██ ███████ ██      ██    ██ ███████              │
+# │                   ██  ██  ██ ██   ██ ██      ██    ██      ██              │
+# │                   ██      ██ ██   ██  ██████  ██████  ███████              │
+# ╘════════════════════════════════════════════════════════════════════════════╛
+"""
+== Platforms ==
+- MacOS
+
+- android
+- web
+== Toolchains ==
+- appleclang
+- android(clang)
+- emsdk(clang)
+"""
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  __  __          ___  ___                                                  │
+# │ |  \/  |__ _ __ / _ \/ __|                                                 │
+# │ | |\/| / _` / _| (_) \__ \                                                 │
+# │ |_|  |_\__,_\__|\___/|___/                                                 │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  _  ___  ___                                                               │
 # │ (_)/ _ \/ __|                                                              │
@@ -498,17 +538,16 @@ for bt, tc in itertools.product( build_tool, toolchains.values() ):
 # │ |_|\___/|___/                                                              │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-# MARK: Web
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │                            ██     ██ ███████ ██████                        │
-# │                            ██     ██ ██      ██   ██                       │
-# │                            ██  █  ██ █████   ██████                        │
-# │                            ██ ███ ██ ██      ██   ██                       │
-# │                             ███ ███  ███████ ██████                        │
-# ╘════════════════════════════════════════════════════════════════════════════╛
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │    _           _         _    _                                            │
+# │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
+# │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
+# │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
+# ╰────────────────────────────────────────────────────────────────────────────╯
 
-
-#{cmake,meson}
-#{make,ninja,scons,msvc,autotools,gradle,etc}
-#{gcc,clang,msvc,appleclang,ibm,etc}
-#{ld,lld,gold,mold,appleld,msvc}
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │ __      __   _                                                             │
+# │ \ \    / /__| |__                                                          │
+# │  \ \/\/ / -_) '_ \                                                         │
+# │   \_/\_/\___|_.__/                                                         │
+# ╰────────────────────────────────────────────────────────────────────────────╯

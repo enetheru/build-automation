@@ -47,6 +47,7 @@ def namespace_to_script( name:str, namespace:SimpleNamespace, script:StringIO ):
 
 
 def write_preamble(config: SimpleNamespace, script:StringIO):
+    script.write( "#!/bin/env python" )
     script.write( f"""
 import sys
 sys.path.append({repr(str(config.root_dir))})
@@ -63,19 +64,33 @@ rich._console = console = Console(soft_wrap=False, width=9000)
 """)
     namespace_to_script('config', config, script )
 
-    script.write( centre(" End Of Preamble ", left("\n#", fill("- ", 80))) )
-    script.write('\n')
-
 def write_toolchain( toolchain:SimpleNamespace, script:StringIO ):
+    script.write( centre("[ Start Of Toolchain ]", left("\n#", fill("- ", 80))) )
+    script.write('\n')
 
     if 'write' in getattr( toolchain, 'verbs', [] ):
         script.write( func_as_script( toolchain.script ) )
     else:
         script.write( "# No Toolchain additions" )
 
-    script.write( centre(" End Of Toolchain ", left("\n#", fill("- ", 80))) )
+
+
+def write_project( project:SimpleNamespace, script:StringIO ):
+    script.write( centre("[ Start Of Project ]", left("\n#", fill("- ", 80))) )
     script.write('\n')
 
+    if 'write' in getattr( project, 'verbs', [] ):
+        script.write( func_as_script( project.script ) )
+    else:
+        script.write( "# No Project additions" )
+
+
+
+def write_build( build:SimpleNamespace, script:StringIO ):
+    script.write( centre("[ Start of Build ]", left("\n#", fill("- ", 80))) )
+    script.write('\n')
+
+    script.write( func_as_script( build.script ) )
 
 # MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -90,13 +105,12 @@ def generate_build_scripts( projects:dict ):
     h4( "Generating Build Scripts" )
     for project in projects.values():
         for build in project.build_configs.values():
-
             script = StringIO()
+
             write_preamble( build, script )
-
             write_toolchain( build.toolchain, script )
-
-            build.write( build, script )
+            write_project( project, script )
+            write_build( build, script )
 
             with open( build.script_path, "w", encoding='utf-8' ) as file:
                 file.write( script.getvalue() )

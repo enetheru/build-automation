@@ -38,7 +38,7 @@ def fetch_projects( projects:dict ):
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def git_checkout(config: dict):
     print(figlet("Git Checkout", {"font": "small"}))
-    print(f"  gitURL={config['gitUrl']}")
+    # print(f"  gitURL={config['gitUrl']}")
     if 'githash' in config:
         print(f"  gitHash={config['gitHash']}")
 

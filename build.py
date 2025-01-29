@@ -3,6 +3,7 @@ import argparse
 import copy
 import importlib.util
 import multiprocessing
+import pathlib
 import platform
 import sys
 from datetime import datetime
@@ -15,7 +16,7 @@ from rich.table import Table
 # Local Imports
 from share.ConsoleMultiplex import ConsoleMultiplex
 from share.actions import fetch_projects
-from share.env_commands import *
+from share.toolchains import *
 from share.generate import generate_build_scripts
 
 sys.stdout.reconfigure(encoding='utf-8')
@@ -224,6 +225,9 @@ def update_configs():
         setattr( project, 'actions', copy.deepcopy(bargs.project_actions ))
         setattr( project, 'project_root', project.root_dir / project.name )
 
+        if not getattr(project, 'verbs', False ):
+            setattr( project, 'verbs', [] )
+
         for build in project.build_configs.values():
             for k, v in get_interior_dict( project ).items():
                 if v is None: continue
@@ -238,7 +242,12 @@ def update_configs():
             setattr( build, 'script_path', build.project_root / f"{build.name}.py" )
             setattr( build, 'actions', copy.deepcopy(bargs.build_actions ))
 
+            # print( Path( build.script_path ).as_posix() )
+            run_cmd = ' '.join(build.toolchain.shell + [f'"python {Path( build.script_path ).as_posix()}"'] )
+            setattr( build, 'run_cmd', run_cmd )
+
 update_configs()
+# exit()
 
 # MARK: Generate Scripts
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -272,7 +281,7 @@ def process_build( build:SimpleNamespace ):
     # Skip the build config if there are no actions to perform
     skip = True
     for k, v in build.actions.items():
-        if v and k in build.build_verbs:
+        if v and k in build.verbs:
             skip = False
 
     if skip:
@@ -283,14 +292,12 @@ def process_build( build:SimpleNamespace ):
     console.set_window_title( f"{build.project} - {build.name}" )
 
     # =====================[ stdout Logging ]======================-
-    h4( "Configure Logging" )
     log_path = build.project_root / f"logs-raw/{build.name}.txt"
     build_log = open( file=log_path, mode='w', buffering=1, encoding="utf-8" )
     build_console = Console( file=build_log, force_terminal=True )
     console.tee( name=build.name, new_console=build_console )
 
     # =================[ Build Heading / Config ]==================-
-    print()
     print( centre( f"- Starting: {build.name} -", fill( "=", 120 ) ) )
     print()
 
@@ -298,38 +305,34 @@ def process_build( build:SimpleNamespace ):
     from rich.panel import Panel
     from rich.syntax import Syntax
 
-    with open(build.script_path, "rt") as code_file:
-        syntax = Syntax(code_file.read(),
-            lexer="python",
-            code_width=110,
-            line_numbers=True,
-            tab_size=2,
-            dedent=True,
-            word_wrap=True
-        )
-    print( " ".join( build.toolchain.shell ) )
-    panel = Panel( syntax,
-        title=str(build.script_path),
-        title_align='left',
-        expand=False,
-        width=120 )
-    if bargs.verbose: print(panel)
+    if bargs.verbose:
+        with open(build.script_path, "rt") as code_file:
+            syntax = Syntax(code_file.read(),
+                lexer="python",
+                code_width=110,
+                line_numbers=True,
+                tab_size=2,
+                dedent=True,
+                word_wrap=True)
+        print( Panel( syntax,
+            title=str(build.script_path),
+            title_align='left',
+            expand=False,
+            width=120 ) )
 
     # ====================[ Run Build Script ]=====================-
-    h3( "Run" )
 
     stats = {"start_time": datetime.now()}
     build.stats = stats
 
-    command = ' '.join(build.toolchain.shell + [f'python {build.script_path}'])
-    proc = subprocess.Popen(
-        command, encoding="utf-8", stderr=subprocess.STDOUT, stdout=subprocess.PIPE )
-    with proc:
+    proc = stream_command( build.run_cmd )
+    # proc = subprocess.Popen( build.run_cmd, encoding="utf-8", stderr=subprocess.STDOUT, stdout=subprocess.PIPE )
+    # with proc:
         # TODO The evaluation of the output appears delayed, research a lower latency solution
-        for line in proc.stdout:
-            print(
-                line.rstrip()
-            )  # TODO I can watch for print statements here which assign statistics.  #   if line.startswith('scrape_this|'):  #     eval(line.split('|')[1], globals(), locals() )
+        # for line in proc.stdout:
+        #     print(
+        #         line.rstrip()
+        #     )  # TODO I can watch for print statements here which assign statistics.  #   if line.startswith('scrape_this|'):  #     eval(line.split('|')[1], globals(), locals() )
 
         # TODO create a timeout for the processing, something reasonable.  #   this should be defined in the build config as the largest possible build time that is expected.  #   that way it can trigger a check of the system if it is failing this test.
 

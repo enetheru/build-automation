@@ -6,13 +6,6 @@ from rich.console import Console
 from share.format import *
 from share.run import stream_command
 
-# MARK: Shells
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  ___ _        _ _    ___                              _                    │
-# │ / __| |_  ___| | |  / __|___ _ __  _ __  __ _ _ _  __| |___                │
-# │ \__ \ ' \/ -_) | | | (__/ _ \ '  \| '  \/ _` | ' \/ _` (_-<                │
-# │ |___/_||_\___|_|_|  \___\___/_|_|_|_|_|_\__,_|_||_\__,_/__/                │
-# ╰────────────────────────────────────────────────────────────────────────────╯
 """
 Windows Host
     Compiler Environments / Toolchains
@@ -37,57 +30,6 @@ MacOS Host
     - Compiler Environment / Toolchain
 """
 
-shells = {
-    # Default Windows
-    "pwsh": ["pwsh", "-Command"],
-    # Developer Powershell for VS2022
-    "pwsh-dev": [
-        "pwsh",
-        "-Command",
-        """&{Import-Module "C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Community\\\\Common7\\\\Tools\\\\Microsoft.VisualStudio.DevShell.dll"; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64"};""",
-    ],
-    # MSYS2 GCC
-    "msys2-mingw32": [
-        "C:/msys64/msys2_shell.cmd",
-        "-mingw32",
-        "-defterm",
-        "-no-start",
-        "-c",
-    ],
-    "msys2-mingw64": [
-        "C:/msys64/msys2_shell.cmd",
-        "-mingw64",
-        "-defterm",
-        "-no-start",
-        "-c",
-    ],
-    "msys2-ucrt64": [
-        "C:/msys64/msys2_shell.cmd",
-        "-ucrt64",
-        "-defterm",
-        "-no-start",
-        "-c",
-    ],
-    # MSYS2 Clang
-    "msys2-clang64": [
-        "C:/msys64/msys2_shell.cmd",
-        "-clang64",
-        "-defterm",
-        "-no-start",
-        "-c",
-    ],
-    "msys2-clangarm64": [
-        "C:/msys64/msys2_shell.cmd",
-        "-clangarm64",
-        "-defterm",
-        "-no-start",
-        "-c",
-    ],
-    # MSYS2 default, doesnt really have a utility, ust here for completion
-    "msys2": ["C:/msys64/msys2_shell.cmd", "-msys", "-defterm", "-no-start", "-c"],
-    "emsdk": ["pwsh", "-Command", "C:/emsdk/emsdk_env.ps1;"],
-}
-
 # MARK: Toolchains
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  _____         _    _         _                                            │
@@ -97,14 +39,14 @@ shells = {
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 # The variations of toolchains for mingw are listed here: https://www.mingw-w64.org/downloads/
-def emsdk_update( toolchain, config:SimpleNamespace, console:Console ):
+def emsdk_update( toolchain:SimpleNamespace, config:SimpleNamespace, console:Console ):
     import os
     from pathlib import Path
 
     console.set_window_title('Updating Emscripten SDK')
     print(figlet("EMSDK Update", {"font": "small"}))
 
-    emsdk_path = Path( toolchain['path'] )
+    emsdk_path = Path( toolchain.path )
     os.chdir(emsdk_path)
     stream_command( 'git pull', dry=config.dry )
 
@@ -148,7 +90,8 @@ def emsdk_script( config:dict, toolchain:dict ):
 toolchains = {
     "msvc": SimpleNamespace(**{
         'desc':'# Microsoft Visual Studio',
-        'shell':[ "pwsh", "-Command", """&{Import-Module "C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Community\\\\Common7\\\\Tools\\\\Microsoft.VisualStudio.DevShell.dll"; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64"};""" ]
+        'shell':[ "pwsh", "-Command",
+            """ "&{Import-Module 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'};" """ ]
     }),
     "llvm": SimpleNamespace(**{
         'desc':'# Use Clang-Cl from llvm.org',
@@ -193,8 +136,6 @@ toolchains = {
         'desc':'[Emscripten](https://emscripten.org/)',
         'path':Path('C:/emsdk'),
         'version':'3.1.64',
-        # 'shell': ["pwsh", "-Command", "C:/emsdk/emsdk_env.ps1;"],
-        'shell': ["pwsh", "-Command"],
         'verbs':['update', 'write'],
         'update':emsdk_update,
         'script':emsdk_script
@@ -204,7 +145,13 @@ toolchains = {
 
 def finalise_toolchains():
     for name, toolchain in toolchains.items():
+
+        # set the names
         setattr(toolchain, 'name', name )
+
+        # set the shell if not specified.
+        if not getattr(toolchain, 'shell', False):
+            setattr(toolchain, 'shell', ["pwsh", "-Command"] )
 
 finalise_toolchains()
 

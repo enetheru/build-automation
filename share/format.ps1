@@ -3,6 +3,8 @@
 
 # Incase I forget here is the command for these banners:
 # CodeBox -border "╭─╮│ │╰─╯" -compact -align left -font 'small' Message
+# CodeBox -border "╒═╕│ │╘═╛" -compact -align left Message
+
 # Fill '=' 64 | Left '# ' | Right '-' | Center "[ Message ]"
 
 # Powershell execution options
