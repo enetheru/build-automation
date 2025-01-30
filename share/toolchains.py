@@ -57,15 +57,14 @@ def emsdk_script( config:dict, toolchain:dict ):
 
     emsdk_path = Path(toolchain['path'])
     emsdk_version = toolchain['version']
+    emsdk_tool = f'pwsh -Command {str(emsdk_path / 'emsdk.ps1')} '
 
     def emsdk_is_active() -> bool:
-        return False
+        return True if 'EMSDK' in os.environ else False
 
-    def emsdk_check( sdk_path, sdk_version ) -> bool:
-        # C:\emsdk\emsdk.ps1 list | rg INSTALLED
-        command = ' '.join( toolchain['shell'] + [f'{str(sdk_path / 'emsdk.ps1')} list'])
+    def emsdk_check( sdk_version ) -> bool:
         output = StringIO()
-        stream_command( command, quiet=True, dry=config['dry'],
+        stream_command( emsdk_tool + 'list', quiet=True, dry=config['dry'],
             stdout_handler=lambda text : output.write(text + '\n') )
         output.seek(0)
         for line in output:
@@ -73,19 +72,25 @@ def emsdk_script( config:dict, toolchain:dict ):
             if 'INSTALLED' in line: return True
         return False
 
-    def emsdk_activate( sdk_path, sdk_version ):
+    def emsdk_activate( sdk_version ):
         print(figlet("EMSDK Activate", {"font": "small"}))
-        command = ' '.join( toolchain['shell'] + [f'{str(sdk_path / 'emsdk.ps1')} activate {sdk_version}'])
-        stream_command( command, dry=config['dry'] )
+        stream_command( emsdk_tool + f'activate {sdk_version}', dry=config['dry'] )
 
-    def emsdk_install( sdk_path, sdk_version ):
+    def emsdk_install( sdk_version ):
         print(figlet("EMSDK Install", {"font": "small"}))
-        command = ' '.join( toolchain['shell'] + [f'{str(sdk_path / 'emsdk.ps1')} install {sdk_version}'])
-        stream_command( command, dry=config['dry'] )
+        stream_command( emsdk_tool + f'install {sdk_version}', dry=config['dry'] )
 
-    if emsdk_check( emsdk_path, emsdk_version ):
-        emsdk_activate(emsdk_path, emsdk_version )
-    else: emsdk_install(emsdk_path, emsdk_version )
+    # Because the emsdk has no means to change the current environnment from within
+    # python, I am just going to run the script again, but after activating it.
+    if not emsdk_is_active():
+        if emsdk_check( emsdk_version ):
+            print(figlet("EMSDK Activate", {"font": "small"}))
+            stream_command( emsdk_tool + f'activate {emsdk_version}; python {config['script_path']}', dry=config['dry'] )
+        else:
+            print(figlet("EMSDK Install", {"font": "small"}))
+            stream_command( emsdk_tool + f'install {emsdk_version}; python {config['script_path']}', dry=config['dry'] )
+            emsdk_install( emsdk_version )
+        quit()
 
 
 toolchains = {
