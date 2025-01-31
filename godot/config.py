@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import copy
-from io import StringIO
 from types import SimpleNamespace
 
 import rich
@@ -32,18 +31,20 @@ def scons_script( config:dict, console:rich.console.Console ):
     from share.Timer import Timer
     from share.actions import git_checkout, scons_build
 
-    actions = config['actions']
+    def want( action:str ) -> bool:
+        return action in config['verbs'] and action in config['actions']
+
     stats:dict = dict()
     timer = Timer()
 
     #[=================================[ Fetch ]=================================]
-    if actions['source']:
+    if want('source'):
         console.set_window_title('Source - {name}')
 
         stats['source'] = timer.time_function( config, func=git_checkout )
 
     #[=================================[ Build ]=================================]
-    if actions['build'] and timer.ok():
+    if want('build') and timer.ok():
         console.set_window_title('Build - {name}')
 
         stats['build'] = timer.time_function( config, func=scons_build )
@@ -111,10 +112,8 @@ def scons_script( config:dict, console:rich.console.Console ):
 # │  \ \/\/ /| | ' \/ _` / _ \ V  V (_-<                                       │
 # │   \_/\_/ |_|_||_\__,_\___/\_/\_//__/                                       │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-
 for toolchain in toolchains.values():
-    cfg = SimpleNamespace(
-        **{
+    cfg = SimpleNamespace( **{
             "name": f"w64.{toolchain.name}",
             'verbs':['write', 'source', 'build'],
             "toolchain": copy.deepcopy(toolchain),
@@ -126,57 +125,32 @@ for toolchain in toolchains.values():
         }
     )
 
-    if toolchain.name.startswith("msys2"):
-        cfg.shell = toolchain
-
     match toolchain.name:
         case "msvc":
-            cfg.shell = "pwsh-dev"
-            project_config.build_configs[cfg.name] = cfg
-            continue
+            pass
 
         case "llvm":
             cfg.scons["build_vars"].append("use_llvm=yes")
-            project_config.build_configs[cfg.name] = cfg
-            continue
 
         case "llvm-mingw":
             cfg.scons["build_vars"].append("use_mingw=yes")
             cfg.scons["build_vars"].append("use_llvm=yes")
-            project_config.build_configs[cfg.name] = cfg
-            continue
 
         case "msys2-ucrt64":
             # cfg.gitHash = 'df2f263531d0e26fb6d60aa66de3e84165e27788'
             cfg.scons["build_vars"].append("use_mingw=yes")
-            project_config.build_configs[cfg.name] = cfg
-            continue
 
         case "msys2-clang64":
             # cfg.gitHash = 'df2f263531d0e26fb6d60aa66de3e84165e27788'
             cfg.scons["build_vars"] += ["use_mingw=yes", "use_llvm=yes"]
-            project_config.build_configs[cfg.name] = cfg
-            continue
 
         case "mingw64":
             cfg.scons["build_vars"] += ["use_mingw=yes"]
-            project_config.build_configs[cfg.name] = cfg
-            continue
-
-        case "android":
-            cfg.scons["build_vars"] += ["platform=android"]
-            project_config.build_configs[cfg.name] = cfg
-            continue
-
-        case "emsdk":
-            cfg.scons["build_vars"] += ["platform=web"]
-            cfg.shell = "emsdk"
-            project_config.build_configs[cfg.name] = cfg
-            continue
 
         case _:
-            print(f"ignoring toolchain: {toolchain.name}")
             continue
+
+    project_config.build_configs[cfg.name] = cfg
 
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │    _           _         _    _                                            │
@@ -184,8 +158,18 @@ for toolchain in toolchains.values():
 # │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
 # │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-
-
+cfg = SimpleNamespace( **{
+        "name": f"w64.android",
+        'verbs':['write', 'source', 'build'],
+        "toolchain": copy.deepcopy(toolchains['android']),
+        'script':scons_script,
+        "scons": {
+            "build_vars": ["platform=android"],
+            "targets": ["template_release", "template_debug", "editor"],
+        }
+    }
+)
+project_config.build_configs[cfg.name] = cfg
 
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │ __      __   _                                                             │
@@ -193,7 +177,18 @@ for toolchain in toolchains.values():
 # │  \ \/\/ / -_) '_ \                                                         │
 # │   \_/\_/\___|_.__/                                                         │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-
+cfg = SimpleNamespace( **{
+        "name": f"w64.emsdk",
+        'verbs':['write', 'source', 'build'],
+        "toolchain": copy.deepcopy(toolchains['emsdk']),
+        'script':scons_script,
+        "scons": {
+            "build_vars": ["platform=web"],
+            "targets": ["template_release", "template_debug", "editor"],
+        }
+    }
+)
+project_config.build_configs[cfg.name] = cfg
 
 
 # MARK: Linux

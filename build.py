@@ -58,41 +58,9 @@ parser_filter.add_argument( "--project", default="*" )
 parser_filter.add_argument( "--filter", default=".*" )
 
 # Process actions
-toolchain_group = parser.add_argument_group( "Toolchain Actions" )
-project_group = parser.add_argument_group( "Project Actions" )
-build_group = parser.add_argument_group( "Build Actions" )
-toolchain_actions = {
-    'update':'u',
-}
-project_actions = {
-    'fetch':'f',
-}
-build_actions = {
-    'source':'s',
-    'reset':'r',
-    'clean':'c',
-    'prepare':'p',
-    'build':'b',
-    'test':'t',
-}
-for long,short in toolchain_actions.items():
-    toolchain_group.add_argument(
-        f'-{short}', f'--{long}',
-        action=argparse.BooleanOptionalAction )
-
-for long,short in project_actions.items():
-    project_group.add_argument(
-        f'-{short}', f'--{long}',
-        action=argparse.BooleanOptionalAction )
-
-for long,short in build_actions.items():
-    build_group.add_argument(
-        f'-{short}', f'--{long}',
-        action=argparse.BooleanOptionalAction )
-
-# Options for actions, but I want to split this up into per action options
-parser_opts.add_argument( "--fresh",
-    action=argparse.BooleanOptionalAction )
+parser.add_argument('-t', '--toolchain-actions', nargs='+', default=[])
+parser.add_argument('-p', '--project-actions', nargs='+', default=[])
+parser.add_argument('-b', '--build-actions', nargs='+', default=[])
 
 parser_opts.add_argument( "--gitUrl" )  # The Url to clone from
 parser_opts.add_argument( "--gitHash" )  # the Commit to checkout
@@ -109,22 +77,6 @@ console.tee( Console( file=open( bargs.root_dir / "build_log.txt", "w", encoding
 
 # Add all the things from the command line
 parser.parse_args( namespace=bargs )
-
-# re-structure actions into their own dictionary as an attribute
-for action in toolchain_actions.keys():
-    toolchain_actions[action] =  bargs.__dict__[action]
-    delattr( bargs, action )
-setattr(bargs, 'toolchain_actions', toolchain_actions )
-
-for action in project_actions.keys():
-    project_actions[action] =  bargs.__dict__[action]
-    delattr( bargs, action )
-setattr(bargs, 'project_actions', project_actions )
-
-for action in build_actions.keys():
-    build_actions[action] =  bargs.__dict__[action]
-    delattr( bargs, action )
-setattr(bargs, 'build_actions', build_actions )
 
 # MARK: Configs
 # ==================[ Import Configurations ]==================-
@@ -197,9 +149,9 @@ delattr(bargs, 'filter')
 # │   |_|\___/\___/_\__|_||_\__,_|_|_||_| /_/ \_\__|\__|_\___/_||_/__/         │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def process_toolchains():
-    for verb, value in toolchain_actions.items():
+    for verb in bargs.toolchain_actions:
         for toolchain_name, toolchain in toolchains.items():
-            if value and verb in getattr( toolchain, 'verbs', [] ):
+            if verb in getattr( toolchain, 'verbs', [] ):
                 getattr( toolchain, verb )( toolchain, bargs, console )
 
 process_toolchains()
@@ -267,7 +219,7 @@ generate_build_scripts( projects )
 # │  \___|_|\__| |_|\___|\__\__|_||_| |_| |_| \___// \___\__|\__/__/           │
 # │                                              |__/                          │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-if bargs.project_actions['fetch']:
+if 'fetch' in bargs.project_actions:
     fetch_projects( projects )
 
 # MARK: Build
@@ -279,9 +231,9 @@ if bargs.project_actions['fetch']:
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def process_build( build:SimpleNamespace ):
     # Skip the build config if there are no actions to perform
-    skip = True
-    for k, v in build.actions.items():
-        if v and k in build.verbs:
+    skip:bool=True
+    for k in build.actions:
+        if k in build.verbs:
             skip = False
 
     if skip:

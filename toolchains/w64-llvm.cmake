@@ -4,8 +4,8 @@ set( CMAKE_SYSTEM_PROCESSOR x86_64 )
 #set( CMAKE_SYSROOT "C:/Program Files/LLVM" )
 
 # which compilers to use for C and C++
-set( CMAKE_C_COMPILER "C:/Program Files/LLVM/bin/clang-cl.exe" )
-set( CMAKE_CXX_COMPILER "C:/Program Files/LLVM/bin/clang-cl.exe" )
+set( CMAKE_C_COMPILER "C:/Program Files/LLVM/bin/clang.exe" )
+set( CMAKE_CXX_COMPILER "C:/Program Files/LLVM/bin/clang++.exe" )
 set( CMAKE_RC_COMPILER "C:/Program Files/LLVM/bin/llvm-rc.exe" )
 
 # https://github.com/godotengine/godot/issues/43354
