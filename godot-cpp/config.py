@@ -45,6 +45,14 @@ project_config = SimpleNamespace(**{
 # ║                 ███████  ██████ ██   ██ ██ ██         ██    ███████                    ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
+# MARK: SCons Script
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ___  ___               ___         _      _                               │
+# │ / __|/ __|___ _ _  ___ / __| __ _ _(_)_ __| |_                             │
+# │ \__ \ (__/ _ \ ' \(_-< \__ \/ _| '_| | '_ \  _|                            │
+# │ |___/\___\___/_||_/__/ |___/\__|_| |_| .__/\__|                            │
+# │                                      |_|                                   │
+# ╰────────────────────────────────────────────────────────────────────────────╯
 def scons_script( config:SimpleNamespace, console:rich.console.Console ):
     from share.Timer import Timer
     from share.actions import git_checkout, scons_build
@@ -123,6 +131,14 @@ def scons_script( config:SimpleNamespace, console:rich.console.Console ):
     if not timer.ok():
         exit(1)
 
+# MARK: CMake Script
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │   ___ __  __      _         ___         _      _                           │
+# │  / __|  \/  |__ _| |_____  / __| __ _ _(_)_ __| |_                         │
+# │ | (__| |\/| / _` | / / -_) \__ \/ _| '_| | '_ \  _|                        │
+# │  \___|_|  |_\__,_|_\_\___| |___/\__|_| |_| .__/\__|                        │
+# │                                          |_|                               │
+# ╰────────────────────────────────────────────────────────────────────────────╯
 def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
     import os
     from pathlib import Path
@@ -147,6 +163,9 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
 
     #[===============================[ Configure ]===============================]
     if want('configure'):
+        if want('fresh'):
+            cmake['config_vars'].append('--fresh')
+
         if 'godot_build_profile' in cmake:
             profile_path = Path(cmake['godot_build_profile'])
             if not profile_path.is_absolute():
@@ -252,7 +271,7 @@ build_tools:list = ['scons','cmake']
 generators = ['msvc', 'ninja', 'ninja-multi']
 msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
 
-for build_tool, toolchain, generator in itertools.product( build_tools, toolchains.values() ):
+for build_tool, toolchain in itertools.product( build_tools, toolchains.values() ):
     cfg = SimpleNamespace(**{
         'name' : f'w64.{build_tool}.{toolchain.name}',
         'toolchain':copy.deepcopy(toolchain),
@@ -280,7 +299,7 @@ for build_tool, toolchain, generator in itertools.product( build_tools, toolchai
     match build_tool:
         case 'cmake':
             cfg.script = cmake_script
-            cfg.verbs += ['configure', 'prepare']
+            cfg.verbs += ['configure', 'fresh']
             delattr( cfg, 'scons')
         case 'scons':
             cfg.script = scons_script
@@ -453,10 +472,8 @@ for bt, tc in itertools.product( build_tools, toolchains.values() ):
     match build_tool, toolchain.name:
         case 'scons', 'android':
             cfg.scons['build_vars'] += ['platform=android']
-            cfg.verbs.remove('test')
 
         case 'cmake', 'android':
-            cfg.verbs.remove('test')
             cfg.cmake['config_vars'] =[
                 "-DANDROID_PLATFORM=latest",
                 "-DANDROID_ABI=x86_64"]

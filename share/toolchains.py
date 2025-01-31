@@ -136,11 +136,11 @@ toolchains = {
     })
 }
 
+# Currently only clang-cl is supported.
 env = {k:v for k,v in os.environ.items()}
 env['PATH'] = f'C:/Program Files/LLVM/bin;{os.environ['PATH']}'
 toolchains["llvm"] = SimpleNamespace(**{
     'desc':'# Use Clang-Cl from llvm.org',
-    'shell':[],
     'env': env
 })
 
