@@ -20,7 +20,7 @@ def godotcpp_test( config:dict ) -> bool:
     godot_editor = Path(config['godot_e'])
     godot_release_template = Path(config['godot_tr'])
 
-    test_project_dir = Path(config['source_dir']) / 'test/project'
+    test_project_dir = Path(config['source_dir']) / 'project'
     dot_godot_dir = test_project_dir / '.godot'
     if not dot_godot_dir.exists():
         h4('Generating the .godot folder')

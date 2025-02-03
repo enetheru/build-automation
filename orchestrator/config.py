@@ -13,7 +13,7 @@ from share.format import *
 
 project_config = SimpleNamespace(**{
     'gitUrl'  : "https://github.com/enetheru/godot-orchestrator.git/",
-    'gitHash':  '565bfba589ed7263336fa05665fb5994e17119d2',
+    'gitHash':  '728d7b87202524e05b9f5083751740a8a5bd095a',
     'build_configs' : {}
 })
 
