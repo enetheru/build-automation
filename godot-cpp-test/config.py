@@ -12,7 +12,8 @@ from share.toolchains import toolchains
 from share.format import *
 
 project_config = SimpleNamespace(**{
-    'gitUrl'  : "https://github.com/enetheru/godot-cpp-test.git/",
+    'gitUrl'    : "https://github.com/enetheru/godot-cpp-test.git/",
+    'gitHash'   : "main",
     'build_configs' : {}
 })
 
@@ -193,8 +194,8 @@ for  toolchain, generator in itertools.product( toolchains.values(), generators 
         'cmake':{
             'build_dir':'build-cmake',
             'godot_build_profile':'build_profile.json',
-            'config_vars':['-DGODOT_ENABLE_TESTING=ON'],
-            'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
+            'config_vars':[],
+            'targets':['gdexample'],
         },
         'godot_tr':'C:/build/godot/w64.msvc/bin/godot.windows.template_release.x86_64.console.exe',
         'godot_td':'C:/build/godot/w64.msvc/bin/godot.windows.template_debug.x86_64.console.exe',
@@ -231,7 +232,6 @@ for  toolchain, generator in itertools.product( toolchains.values(), generators 
             pass
 
         case 'mingw64', 'mingw':
-            # cfg.gitHash = '537b787f2dc73d097a0cba7963f2e24b82ce6076'
             pass
 
         case _:
@@ -257,9 +257,9 @@ for toolchain, generator in itertools.product( [toolchains['android']], generato
         'cmake':{
             'build_dir':'build-cmake',
             'godot_build_profile':'build_profile.json',
-            'config_vars':['-DGODOT_ENABLE_TESTING=ON'],
+            'config_vars':[],
             'build_vars':[],
-            'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
+            'targets':['gdexample'],
         },
     })
 
@@ -295,9 +295,9 @@ for toolchain, generator in itertools.product( [toolchains['emsdk']], generators
         'cmake':{
             'build_dir':'build-cmake',
             'godot_build_profile':'build_profile.json',
-            'config_vars':['-DGODOT_ENABLE_TESTING=ON'],
+            'config_vars':[],
             'build_vars':[],
-            'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
+            'targets':['gdexample'],
         },
     })
 
