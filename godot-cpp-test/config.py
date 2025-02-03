@@ -12,7 +12,7 @@ from share.toolchains import toolchains
 from share.format import *
 
 project_config = SimpleNamespace(**{
-    'gitUrl'  : "https://github.com/enetheru/godot-cpp.git/",
+    'gitUrl'  : "https://github.com/enetheru/godot-cpp-test.git/",
     'build_configs' : {}
 })
 
@@ -44,92 +44,6 @@ project_config = SimpleNamespace(**{
 # ║                      ██ ██      ██   ██ ██ ██         ██         ██                    ║
 # ║                 ███████  ██████ ██   ██ ██ ██         ██    ███████                    ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
-
-# MARK: SCons Script
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  ___  ___               ___         _      _                               │
-# │ / __|/ __|___ _ _  ___ / __| __ _ _(_)_ __| |_                             │
-# │ \__ \ (__/ _ \ ' \(_-< \__ \/ _| '_| | '_ \  _|                            │
-# │ |___/\___\___/_||_/__/ |___/\__|_| |_| .__/\__|                            │
-# │                                      |_|                                   │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-def scons_script( config:SimpleNamespace, console:rich.console.Console ):
-    from share.Timer import Timer
-    from share.actions import git_checkout, scons_build
-    from actions import godotcpp_test
-    from share.Timer import TaskStatus
-
-    def want( action:str ) -> bool:
-        return action in config['verbs'] and action in config['actions']
-
-    name = config['name']
-    scons: dict = config["scons"]
-
-    stats:dict = dict()
-    timer = Timer()
-
-    #[=================================[ Fetch ]=================================]
-    if want('source'):
-        console.set_window_title(f'Source - {name}')
-        stats['source'] = timer.time_function( config, func=git_checkout )
-
-    # Check whether build path is viable.
-    if "build_dir" in scons.keys():
-        build_dir = Path(scons["build_dir"])
-        if not build_dir.is_absolute():
-            build_dir = Path(config["source_dir"]) / build_dir
-    else:
-        build_dir = Path(config["source_dir"])
-
-    os.chdir(build_dir)
-
-    # requires SConstruct file existing in the current directory.
-    if not (build_dir / "SConstruct").exists():
-        print(f"[red]Missing SConstruct in {build_dir}")
-        raise "Missing SConstruct"
-
-    #[=================================[ Clean ]=================================]
-    if want('clean'):
-        console.set_window_title(f'Clean - {name}')
-        print(figlet("SCons Clean", {"font": "small"}))
-
-        with timer:
-            try:
-                proc = stream_command( "scons --clean" , dry=config['dry'])
-                # Change status depending on the truthiness of returnvalue
-                # where False is Success and True is Failure.
-                timer.status = TaskStatus.FAILED if proc.returncode else TaskStatus.COMPLETED
-            except subprocess.CalledProcessError as e:
-                # FIXME should this be more generic and handled elsewhere?
-                print( '[red]subprocess error')
-                print( f'[red]{e}' )
-                timer.status = TaskStatus.FAILED
-            stats['clean'] = timer.get_dict()
-
-    #[=================================[ Build ]=================================]
-    if want('build') and timer.ok():
-        console.set_window_title(f'Build - {name}')
-        stats['build'] = timer.time_function( config, func=scons_build )
-
-    #[==================================[ Test ]==================================]
-    if want('test') and timer.ok():
-        console.set_window_title(f'Test - {name}')
-        stats['test'] = timer.time_function( config, func=godotcpp_test )
-
-    #[=================================[ Stats ]=================================]
-    from rich.table import Table
-    table = Table(title="Stats", highlight=True, min_width=80)
-
-    table.add_column("Section", style="cyan", no_wrap=True)
-    table.add_column("Status", style="magenta")
-    table.add_column("Duration", style="green")
-
-    for cmd_name, cmd_stats in stats.items():
-        table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}')
-
-    print( table )
-    if not timer.ok():
-        exit(1)
 
 # MARK: CMake Script
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -267,162 +181,62 @@ def process_script( script:str ) -> str:
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 variations = ['default']
-build_tools:list = ['scons','cmake']
-generators = ['msvc', 'ninja', 'ninja-multi']
+generators = ['msvc', 'ninja', 'ninja-multi', 'mingw']
 msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
 
-for build_tool, toolchain in itertools.product( build_tools, toolchains.values() ):
+for  toolchain, generator in itertools.product( toolchains.values(), generators ):
     cfg = SimpleNamespace(**{
-        'name' : f'w64.{build_tool}.{toolchain.name}',
+        'name' : f'w64.{toolchain.name}.{generator}',
         'toolchain':copy.deepcopy(toolchain),
-        'verbs':['source', 'build', 'test'],
+        'verbs':['source','configure', 'fresh', 'build', 'test'],
+        'script': cmake_script,
         'cmake':{
             'build_dir':'build-cmake',
-            'godot_build_profile':'test/build_profile.json',
+            'godot_build_profile':'build_profile.json',
             'config_vars':['-DGODOT_ENABLE_TESTING=ON'],
-            'build_vars':[],
             'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
         },
-        'scons':{
-            'build_dir':'test',
-            'build_vars':['build_profile=build_profile.json'],
-            'targets':['template_release','template_debug','editor'],
-        },
-        # Variables for testing
         'godot_tr':'C:/build/godot/w64.msvc/bin/godot.windows.template_release.x86_64.console.exe',
         'godot_td':'C:/build/godot/w64.msvc/bin/godot.windows.template_debug.x86_64.console.exe',
         'godot_e':'C:/build/godot/w64.msvc/bin/godot.windows.editor.x86_64.console.exe',
-        # Variables to clean the logs
-        # 'clean_log':clean_log
     })
 
-    match build_tool:
-        case 'cmake':
-            cfg.script = cmake_script
-            cfg.verbs += ['configure', 'fresh']
-            delattr( cfg, 'scons')
-        case 'scons':
-            cfg.script = scons_script
-            cfg.verbs += ['clean']
-            delattr( cfg, 'cmake')
+    match generator:
+        case 'msvc':
+            cfg.cmake['config_vars'] += ['-G"Visual Studio 17 2022"']
+            cfg.cmake['tool_vars'] = msbuild_extras
+        case 'ninja':
+            cfg.cmake['config_vars'] += ['-G"Ninja"', '-DCMAKE_BUILD_TYPE=Release']
+        case 'ninja-multi':
+            cfg.cmake['config_vars'] += ['-G"Ninja Multi-Config"']
+            cfg.cmake['build_vars'] = ['--config Release']
+        case 'mingw':
+            cfg.cmake['config_vars'] = [ '-G"MinGW Makefiles"', '-DCMAKE_BUILD_TYPE=Release' ]
+        case _:
+            continue
 
     # Toolchain
-    match build_tool, toolchain.name:
-        case 'scons', 'msvc':
+    match toolchain.name, generator:
+        case 'msvc', 'msvc' | 'ninja' | 'ninja-multi':
             pass
 
-        case 'scons', 'llvm':
-            cfg.scons['build_vars'].append('use_llvm=yes')
-
-        case 'scons', 'llvm-mingw':
-            cfg.scons['build_vars'].append('use_mingw=yes')
-            cfg.scons['build_vars'].append('use_llvm=yes')
-
-        case 'scons','msys2-ucrt64' | 'msys2-clang64' | 'msys2-mingw64' | 'msys2-mingw32' | 'msys2-clang32':
-            cfg.gitHash = '5cf70a3e9ae0269e2eadb6cfe66c8313a15a6180'
-
-        case 'scons','mingw64':
-            cfg.scons['build_vars'] += ['use_mingw=yes']
-
-        case 'cmake', 'msvc':
-            # MSVC
-            alt = copy.deepcopy( cfg )
-            alt.cmake['config_vars'] = [
-                f'-G"Visual Studio 17 2022"',
-                '-DGODOT_ENABLE_TESTING=ON']
-            alt.cmake['build_vars'].append('--config Release')
-            alt.cmake['tool_vars'] = msbuild_extras
-            project_config.build_configs[alt.name] = alt
-
-            # Ninja
-            alt = copy.deepcopy( cfg )
-            alt.name += '.ninja'
-            alt.cmake['config_vars'] = [
-                '-G"Ninja"',
-                '-DCMAKE_BUILD_TYPE=Release',
-                '-DGODOT_ENABLE_TESTING=ON']
-            project_config.build_configs[alt.name] = alt
-
-            # Ninja Multi-Config
-            alt = copy.deepcopy( cfg )
-            alt.name += '.ninja-multi'
-            alt.cmake['config_vars'] = [
-                '-G"Ninja Multi-Config"',
-                '-DGODOT_ENABLE_TESTING=ON']
-            alt.cmake['build_vars'].append('--config Release')
-            project_config.build_configs[alt.name] = alt
-            continue
-
-        case 'cmake', 'llvm':
+        case 'llvm', 'ninja' | 'ninja-multi':
             cfg.cmake['toolchain_file'] = "toolchains/w64-llvm.cmake"
-            # Ninja
-            alt = copy.deepcopy( cfg )
-            alt.name += '.ninja'
-            alt.cmake['config_vars'] = [
-                '-G"Ninja"',
-                '-DCMAKE_BUILD_TYPE=Release',
-                '-DGODOT_ENABLE_TESTING=ON']
-            project_config.build_configs[alt.name] = alt
 
-            # Ninja Multi-Config
-            alt = copy.deepcopy( cfg )
-            alt.name += '.ninja-multi'
-            alt.cmake['config_vars'] = [
-                '-G"Ninja Multi-Config"',
-                '-DGODOT_ENABLE_TESTING=ON']
-            alt.cmake['build_vars'].append('--config Release')
-            project_config.build_configs[alt.name] = alt
-            continue
+        case 'llvm-mingw', 'ninja' | 'ninja-multi':
+            pass
 
-        case 'cmake', 'llvm-mingw':
-            cfg.cmake['config_vars'] = [
-                '-G"Ninja"',
-                '-DCMAKE_BUILD_TYPE=Release',
-                '-DGODOT_ENABLE_TESTING=ON']
-            project_config.build_configs[cfg.name] = cfg
-            continue
+        case 'msys2-ucrt64' | 'msys2-clang64' | 'msys2-mingw64' | 'msys2-mingw32', \
+            'ninja' | 'ninja-multi':
+            pass
 
-        case 'cmake', 'msys2-ucrt64':
-            # Ninja
-            alt = copy.deepcopy( cfg )
-            alt.name += '.ninja'
-            alt.cmake['config_vars'] = [
-                '-G"Ninja"',
-                '-DCMAKE_BUILD_TYPE=Release',
-                '-DGODOT_ENABLE_TESTING=ON']
-            project_config.build_configs[alt.name] = alt
-
-            # Ninja Multi-Config
-            alt = copy.deepcopy( cfg )
-            alt.name += '.ninja-multi'
-            alt.cmake['config_vars'] += ['-G"Ninja Multi-Config"']
-            alt.cmake['build_vars'].append('--config Release')
-            project_config.build_configs[alt.name] = alt
-            continue
-
-        case 'cmake', 'msys2-clang64':
-            alt = copy.deepcopy( cfg )
-            alt.name += '.ninja'
-            alt.cmake['config_vars'] += ['-G"Ninja"', '-DCMAKE_BUILD_TYPE=Release']
-            project_config.build_configs[alt.name] = alt
-
-            # Ninja Multi-Config
-            alt = copy.deepcopy( cfg )
-            alt.name += '.ninja-multi'
-            alt.cmake['config_vars'] += ['-G"Ninja Multi-Config"' ]
-            alt.cmake['build_vars'].append('--config Release')
-            project_config.build_configs[alt.name] = alt
-            continue
-
-        case 'cmake', 'mingw64':
-            cfg.gitHash = '537b787f2dc73d097a0cba7963f2e24b82ce6076'
-            cfg.cmake['config_vars'] = [
-                '-G"MinGW Makefiles"',
-                '-DCMAKE_BUILD_TYPE=Release',
-                '-DGODOT_ENABLE_TESTING=ON']
+        case 'mingw64', 'mingw':
+            # cfg.gitHash = '537b787f2dc73d097a0cba7963f2e24b82ce6076'
+            pass
 
         case _:
             continue
+
     project_config.build_configs[cfg.name] = cfg
 
 
@@ -432,63 +246,37 @@ for build_tool, toolchain in itertools.product( build_tools, toolchains.values()
 # │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
 # │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-for bt, tc in itertools.product( build_tools, toolchains.values() ):
-    build_tool:str = bt
-    toolchain:SimpleNamespace = tc
+# We only have android here, but we might be able to add msvc later.
+for toolchain, generator in itertools.product( [toolchains['android']], generators ):
 
     cfg = SimpleNamespace(**{
-        'name' : f'w64.{build_tool}.{toolchain.name}',
+        'name' : f'w64.{toolchain.name}.{generator}',
         'toolchain':copy.deepcopy(toolchain),
-        'verbs':['source', 'build'],
+        'verbs':['source','configure', 'prepare', 'build'],
+        'script': cmake_script,
         'cmake':{
             'build_dir':'build-cmake',
-            'godot_build_profile':'test/build_profile.json',
+            'godot_build_profile':'build_profile.json',
             'config_vars':['-DGODOT_ENABLE_TESTING=ON'],
             'build_vars':[],
             'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
         },
-        'scons':{
-            'build_dir':'test',
-            'build_vars':['build_profile=build_profile.json'],
-            'targets':['template_release','template_debug','editor'],
-        },
     })
 
-    match build_tool:
-        case 'cmake':
-            cfg.script = cmake_script
-            cfg.verbs += ['configure', 'prepare']
-            delattr( cfg, 'scons')
-        case 'scons':
-            cfg.script = scons_script
-            cfg.verbs += ['clean']
-            delattr( cfg, 'cmake')
+    # TODO I can add more types of android build here
+    cfg.cmake['toolchain_file'] = 'C:/androidsdk/ndk/23.2.8568313/build/cmake/android.toolchain.cmake'
+    cfg.cmake['config_vars'] += [ "-DANDROID_PLATFORM=latest", "-DANDROID_ABI=x86_64"]
 
-    match build_tool, toolchain.name:
-        case 'scons', 'android':
-            cfg.scons['build_vars'] += ['platform=android']
-
-        case 'cmake', 'android':
-            cfg.cmake['config_vars'] =[
-                "-DANDROID_PLATFORM=latest",
-                "-DANDROID_ABI=x86_64"]
-            cfg.cmake['toolchain_file'] = 'C:/androidsdk/ndk/23.2.8568313/build/cmake/android.toolchain.cmake'
-
-            alt = copy.deepcopy( cfg )
-            alt.name += '.ninja'
-            alt.cmake['config_vars'] += ['-G"Ninja"', '-DCMAKE_BUILD_TYPE=Release']
-            alt.cmake['build_vars'].append('--config Release')
-            project_config.build_configs[alt.name] = alt
-
-            alt = copy.deepcopy( cfg )
-            alt.name += '.ninja-multi'
-            alt.cmake['config_vars'] += ['-G"Ninja Multi-Config"']
-            alt.cmake['build_vars'].append('--config Release')
-            project_config.build_configs[alt.name] = alt
-            continue
-
+    match generator:
+        case 'msvc': continue # Skip MSVC
+        case 'ninja':
+            cfg.cmake['config_vars'] += ['-G"Ninja"', '-DCMAKE_BUILD_TYPE=Release']
+        case 'ninja-multi':
+            cfg.cmake['config_vars'] += ['-G"Ninja Multi-Config"']
+            cfg.cmake['build_vars'].append('--config Release')
         case _:
             continue
+
     project_config.build_configs[cfg.name] = cfg
 
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -497,49 +285,35 @@ for bt, tc in itertools.product( build_tools, toolchains.values() ):
 # │  \ \/\/ / -_) '_ \                                                         │
 # │   \_/\_/\___|_.__/                                                         │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-for build_tool, toolchain in itertools.product( build_tools, toolchains.values() ):
+# There isn only one toolchain right now, and thats emscripten.
+for toolchain, generator in itertools.product( [toolchains['emsdk']], generators ):
     cfg = SimpleNamespace(**{
-        'name' : f'w64.{build_tool}.{toolchain.name}',
+        'name' : f'w64.{toolchain.name}.{generator}',
         'toolchain':copy.deepcopy(toolchain),
-        'verbs':['source', 'build'],
+        'verbs':['source', 'configure', 'fresh', 'build'],
+        'script':cmake_script,
         'cmake':{
             'build_dir':'build-cmake',
-            'godot_build_profile':'test/build_profile.json',
+            'godot_build_profile':'build_profile.json',
             'config_vars':['-DGODOT_ENABLE_TESTING=ON'],
             'build_vars':[],
             'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
         },
-        'scons':{
-            'build_dir':'test',
-            'build_vars':['platform=web', 'build_profile=build_profile.json'],
-            'targets':['template_release','template_debug','editor'],
-        },
-        # Variables to clean the logs
-        # 'clean_log':clean_log
     })
 
-    match build_tool:
-        case 'cmake':
-            cfg.script = cmake_script
-            cfg.verbs += ['configure']
-            delattr( cfg, 'scons')
-        case 'scons':
-            cfg.script = scons_script
-            cfg.verbs += ['clean']
-            delattr( cfg, 'cmake')
+    cfg.cmake['toolchain_file'] = 'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
 
-    match build_tool, toolchain.name:
-        case 'scons', 'emsdk':
-            pass
-
-        case 'cmake', 'emsdk':
-            cfg.cmake['toolchain_file'] = 'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
-
+    match generator:
+        case 'msvc': continue # Skip MSVC
+        case 'ninja':
+            cfg.cmake['config_vars'] += ['-G"Ninja"', '-DCMAKE_BUILD_TYPE=Release']
+        case 'ninja-multi':
+            cfg.cmake['config_vars'] += ['-G"Ninja Multi-Config"']
+            cfg.cmake['build_vars'].append('--config Release')
         case _:
             continue
 
     project_config.build_configs[cfg.name] = cfg
-
 
 
 # MARK: Linux

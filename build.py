@@ -369,6 +369,7 @@ process_projects()
 def show_statistics():
     table = Table( title="Stats", highlight=True, min_width=80 )
 
+    table.add_column( "Commit" )
     table.add_column( "Project/Config", style="cyan", no_wrap=True )
     table.add_column( "Status" )
     table.add_column( "Time" )
@@ -376,7 +377,9 @@ def show_statistics():
     for project in projects.values():
         for build in project.build_configs.values():
             if 'stats' in build.__dict__:
+                short_hash = getattr(build, 'gitHash', '' )[0:7]
                 table.add_row(
+                    short_hash,
                 f"{project.name}/{build.name}", f"{build.stats['status']}", f"{build.stats['duration']}",
                 style="red" if build.stats["status"] == "Failed" else "green", )
 

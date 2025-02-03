@@ -16,18 +16,18 @@ def fetch_projects( projects:dict ):
     print(figlet("Git Fetch", {"font": "small"}))
     for project in projects.values():
         os.chdir( project.project_root )
-        if project.actions['fetch']:
-            h3( project.name )
-            print(f"  gitURL={project.gitUrl}")
 
-            bare_git_path = project.project_root / "git"
-            if not bare_git_path.exists():
-                stream_command( f'git clone --bare "{project.gitUrl}" "{bare_git_path}"', dry=project.dry )
-            else:
-                stream_command( f'git --git-dir="{bare_git_path}" fetch --force origin *:*' , dry=project.dry )
-                stream_command( f'git --git-dir="{bare_git_path}" log -1 --pretty=%B' , dry=project.dry )
-                stream_command( f'git --git-dir="{bare_git_path}" worktree list' , dry=project.dry )
-                stream_command( f'git --git-dir="{bare_git_path}" worktree prune' , dry=project.dry )
+        h3( project.name )
+        print(f"  gitURL={project.gitUrl}")
+
+        bare_git_path = project.project_root / "git"
+        if not bare_git_path.exists():
+            stream_command( f'git clone --bare "{project.gitUrl}" "{bare_git_path}"', dry=project.dry )
+        else:
+            stream_command( f'git --git-dir="{bare_git_path}" fetch --force origin *:*' , dry=project.dry )
+            stream_command( f'git --git-dir="{bare_git_path}" log -1 --pretty=%B' , dry=project.dry )
+            stream_command( f'git --git-dir="{bare_git_path}" worktree list' , dry=project.dry )
+            stream_command( f'git --git-dir="{bare_git_path}" worktree prune' , dry=project.dry )
 
 # MARK: Git Checkout
 # ╭────────────────────────────────────────────────────────────────────────────╮
