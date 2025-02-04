@@ -11,7 +11,10 @@ This is mainly for me tracking my things, but if it helps anyone else that's fin
 * make resulting configuration structure queryable
 * fix rich formatting on subprocesses
 * process the logs to filter the compile results.
-* Flatten Structure
+* Flatten Structure - continue
+* respond to keyboard interrupt as a means to cancel remaining jobs and return
+    stats.
+
 
 ## Notes: 
 ytnuf's godot-cpp vcpkg

@@ -387,3 +387,19 @@ def show_statistics():
 
 show_statistics()
 console.pop( "build_log" )
+
+# Dump last config to json so we can inspect it
+# TypeError: Object of type SimpleNamespace is not JSON serializable
+with open( "last_config_dump.json", 'w' ) as file:
+    import json
+    from json import JSONEncoder
+
+    class MyEncoder(JSONEncoder):
+        def default(self, o):
+            if type(o) is SimpleNamespace:
+                return o.__dict__
+            return f"Unable to dump '{type(o).__name__}'"
+
+    json.JSONEncoder = MyEncoder
+
+    print( json.dumps( projects, indent=2 ) )

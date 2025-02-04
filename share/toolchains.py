@@ -92,39 +92,39 @@ def emsdk_script( config:dict, toolchain:dict ):
             emsdk_install( emsdk_version )
         quit()
 
+# List of CPU architectures from the arch setting in godot
+# (auto|x86_32|x86_64|arm32|arm64|rv64|ppc32|ppc64|wasm32|loongarch64)
 
 toolchains = {
     "msvc": SimpleNamespace(**{
         'desc':'# Microsoft Visual Studio',
         'shell':[ "pwsh", "-Command",
-            """ "&{Import-Module 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'};" """ ]
+            """ "&{Import-Module 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'};" """ ],
+        "arch":['x86_64','x86_32']
     }),
     "msys2-mingw32": SimpleNamespace(**{
         'desc':'i686      gcc linking against msvcrt',
         'shell': [ "C:/msys64/msys2_shell.cmd", "-mingw32", "-defterm", "-no-start", "-c"],
+        "arch":['x86_32']
     }),
     "msys2-mingw64": SimpleNamespace(**{
         'desc':'x86_64    gcc linking against msvcrt',
         'shell': ["C:/msys64/msys2_shell.cmd", "-mingw64", "-defterm", "-no-start", "-c"],
+        "arch":['x86_64']
     }),
     "msys2-ucrt64": SimpleNamespace(**{
         'desc':'x86_64    gcc linking against ucrt',
         'shell': ["C:/msys64/msys2_shell.cmd", "-ucrt64", "-defterm", "-no-start", "-c"],
-    }),
-    "msys2-clang32": SimpleNamespace(**{
-        'desc':'i686      clang linking against ucrt',
-        'shell': ["C:/msys64/msys2_shell.cmd", "-clang32", "-defterm", "-no-start", "-c"],
+        "arch":['x86_64']
     }),
     "msys2-clang64": SimpleNamespace(**{
         'desc':'x86_64    clang linking against ucrt',
         'shell': ["C:/msys64/msys2_shell.cmd", "-clang64", "-defterm", "-no-start", "-c"],
-    }),
-    "msys2-clangarm64": SimpleNamespace(**{
-        'desc':'aarch64   clang linking against ucrt',
-        'shell': ["C:/msys64/msys2_shell.cmd", "-clangarm64", "-defterm", "-no-start", "-c"],
+        "arch":['x86_64']
     }),
     "android": SimpleNamespace(**{
         'desc':'[Android](https://developer.android.com/tools/sdkmanager)',
+        "arch":['x86_64', 'x86_32', 'arm64']
     }),
     "emsdk": SimpleNamespace(**{
         'desc':'[Emscripten](https://emscripten.org/)',
@@ -132,7 +132,8 @@ toolchains = {
         'version':'3.1.64',
         'verbs':['update', 'write'],
         'update':emsdk_update,
-        'script':emsdk_script
+        'script':emsdk_script,
+        "arch":['wasm32'] #wasm64
     })
 }
 
@@ -141,6 +142,7 @@ env = {k:v for k,v in os.environ.items()}
 env['PATH'] = f'C:/Program Files/LLVM/bin;{os.environ['PATH']}'
 toolchains["llvm"] = SimpleNamespace(**{
     'desc':'# Use Clang-Cl from llvm.org',
+    "arch":['x86_64', 'x86_32', 'arm64'],
     'env': env
 })
 
@@ -148,6 +150,7 @@ env = {k:v for k,v in os.environ.items()}
 env['PATH'] = f'C:/llvm-mingw/bin;{os.environ['PATH']}'
 toolchains["llvm-mingw"] = SimpleNamespace(**{
     'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
+    "arch":['x86_64', 'x86_32', 'arm32', 'arm64'],
     'env': env
 })
 
@@ -155,6 +158,7 @@ env = {k:v for k,v in os.environ.items()}
 env['PATH'] = f'C:/mingw64/bin;{os.environ['PATH']}'
 toolchains["mingw64"] = SimpleNamespace(**{
     'desc':'[mingw](https://github.com/niXman/mingw-builds-binaries/releases,), This is also the default toolchain for clion',
+    "arch":['x86_64'],
     'env': env
 })
 
