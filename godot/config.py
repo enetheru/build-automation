@@ -17,6 +17,7 @@ from share.toolchains import toolchains
 
 project_config = SimpleNamespace(
     **{"gitUrl": "https://github.com/godotengine/godot.git/", "build_configs": {}}
+    # TODO Update Verbs
 )
 
 # MARK: Scripts
@@ -229,8 +230,8 @@ def generate():
     # "host_os.toolchain.platform.arch.variant"
 
     for config in configs:
-        print( config.name )
         project_config.build_configs[config.name] = config
+        # TODO Update available verbs
 
 generate()
 
