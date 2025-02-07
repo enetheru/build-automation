@@ -141,6 +141,7 @@ def scons_script( config:SimpleNamespace, console:rich.console.Console ):
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
     import os
+    import copy
     from pathlib import Path
 
     from share.Timer import Timer
@@ -161,34 +162,93 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
         console.set_window_title('Source - {name}')
         stats['source'] = timer.time_function( config, func=git_checkout )
 
+
     #[===============================[ Configure ]===============================]
     if want('configure'):
-        if want('fresh'):
-            cmake['config_vars'].append('--fresh')
+        print(figlet("CMake Configure", {"font": "small"}))
+        console.set_window_title('Prepare - {name}')
 
-        if 'godot_build_profile' in cmake:
-            profile_path = Path(cmake['godot_build_profile'])
-            if not profile_path.is_absolute():
-                profile_path = config['source_dir'] / profile_path
-            h4(f'using build profile: "{profile_path}"')
-            cmake['config_vars'].append(f'-DGODOT_BUILD_PROFILE="{os.fspath(profile_path)}"')
+        source_dir = Path(config["source_dir"])
+
+        # requires CMakeLists.txt file existing in the current directory.
+        if not (source_dir / "CMakeLists.txt").exists():
+            raise f"Missing CMakeLists.txt in {source_dir}"
+
+        os.chdir( source_dir )
+
+        # Create Build Directory
+        build_dir = Path(cmake['build_dir'])
+        if not build_dir.is_dir():
+            h4(f"Creating {build_dir}")
+            os.mkdir(build_dir)
+
+        config_opts = [
+            "--fresh" if want('fresh') else None,
+            "--log-level=VERBOSE" if not config["quiet"] else None,
+            # f'-S "{source_dir}"', # we are in the source dir.
+            f'-B "{build_dir}"',
+        ]
 
         if 'toolchain_file' in cmake:
-            toolchain_path = Path(cmake['toolchain_file'])
-            if not toolchain_path.is_absolute():
-                toolchain_path = config['root_dir'] / toolchain_path
-            h4(f'using toolchain file: "{toolchain_path}"')
-            cmake['config_vars'].append(f'--toolchain "{os.fspath(toolchain_path)}"')
+            config_opts.append( f'--toolchain "{os.fspath(cmake['toolchain_file'])}"' )
 
-        console.set_window_title('Prepare - {name}')
-        stats['prepare'] = timer.time_function( config, func=cmake_configure )
+        if 'generator' in cmake:
+            config_opts.append( f'-G "{cmake['generator']}"' )
+
+        if 'godot_build_profile' in cmake:
+            config_opts.append( f'-DGODOT_BUILD_PROFILE="{os.fspath(cmake['godot_build_profile'])}"' )
+
+        if "config_vars" in cmake:
+            config_opts += cmake["config_vars"]
+
+        with timer:
+            stream_command(f'cmake {' '.join(filter(None, config_opts))}', dry=config['dry'])
+            print('')
+
+        print(centre(" CMake Configure Completed ", fill("-")))
+        stats['prepare'] = timer.get_dict()
 
     #[=================================[ Build ]=================================]
     if want('build') and timer.ok():
+        print(figlet("CMake Build", {"font": "small"}))
         console.set_window_title('Build - {name}')
-        stats['build'] = timer.time_function( config, func=cmake_build )
 
-    #[==================================[ Test ]==================================]
+        build_dir = Path(cmake["build_dir"])
+        if not build_dir.is_absolute():
+            build_dir = Path(config['source_dir']) / build_dir
+
+        # requires CMakeLists.txt file existing in the current directory.
+        if not (build_dir / "CMakeCache.txt").exists():
+            print(f"Missing CMakeCache.txt in {build_dir}")
+            raise "Missing CMakeCache.txt"
+
+        os.chdir( build_dir )
+
+        build_opts = [
+            f'--build .',
+            "--verbose" if not config["quiet"] else None,
+            f"-j {config['jobs']}",
+        ]
+        build_opts += cmake.get("build_vars", [])
+
+        with timer:
+            for target in cmake["targets"]:
+                print(centre(f" Building target: {target} ", fill("~ ")))
+                target_opts = copy.copy(build_opts)
+                target_opts.append(f" --target {target}")
+
+                if "tool_vars" in cmake:
+                    target_opts.append('--')
+                    target_opts += cmake["tool_vars"]
+
+                stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=config["dry"])
+                print('')
+
+        print(centre(" CMake Build Completed ", fill("-")))
+        print('')
+        stats['build'] = timer.get_dict()
+
+#[==================================[ Test ]==================================]
     if want('test') and timer.ok():
         console.set_window_title('Test - {name}')
         stats['test'] = timer.time_function( config, func=godotcpp_test )
@@ -222,17 +282,13 @@ def process_script( script:str ) -> str:
 # │             ███ ███  ██ ██   ████ ██████   ██████   ███ ███  ███████       │
 # ╘════════════════════════════════════════════════════════════════════════════╛
 
-build_tools:list = ['scons','cmake']
-platforms = ['windows','web','android']
 variations = ['default',
     'double',
     'nothreads',
     'hotreload'
     'exceptions']
 
-generators = ['msvc', 'ninja', 'ninja-multi', 'mingw']
-msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
-
+# MARK: Variant
 def configure_variant( config:SimpleNamespace ) -> bool:
     match config.variant:
         case 'default':
@@ -243,12 +299,13 @@ def configure_variant( config:SimpleNamespace ) -> bool:
                 case 'scons':
                     config.scons["build_vars"].append("precision=double")
                 case 'cmake':
-                    config.cmake["build_vars"].append("-DGODOT_PRECISION=double")
+                    config.cmake["config_vars"].append("-DGODOT_PRECISION=double")
                     pass
         case _:
             return False
     return True
 
+# MARK: CMake
 def expand_cmake( config:SimpleNamespace ) -> list:
     config.name += ".cmake"
 
@@ -263,31 +320,35 @@ def expand_cmake( config:SimpleNamespace ) -> list:
     })
 
     configs_out:list = []
-    for generator in generators:
+    for generator in ['msvc', 'ninja', 'ninja-multi', 'mingw']:
         cfg = copy.deepcopy(config)
 
         setattr( cfg, 'gen', generator )
-        cfg.name += f".{generator}"
+        if generator != cfg.toolchain.name:
+            cfg.name += f".{generator}"
 
         match generator:
             case 'msvc':
                 if cfg.toolchain.name != generator: continue
-                pass
+                cfg.cmake['generator'] = 'Visual Studio 17 2022'
+                cfg.cmake['tool_vars'] = ['/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
             case 'ninja':
-                pass
+                cfg.cmake['generator'] = 'Ninja'
             case 'ninja-multi':
-                pass
+                cfg.cmake['generator'] = 'Ninja Multi-Config'
             case 'mingw':
                 if cfg.toolchain.name != 'mingw64': continue
-                pass
+                cfg.cmake['generator'] = 'MinGW Makefiles'
             case _:
                 print( f"unknown generator: {generator}" )
                 continue
 
         if not configure_variant( cfg ): continue
+
         configs_out.append( cfg )
     return configs_out
 
+# MARK: SCons
 def expand_scons( config:SimpleNamespace ) -> list:
     configs_out:list = []
     # Add base options
@@ -324,9 +385,10 @@ def expand_scons( config:SimpleNamespace ) -> list:
 
     return [cfg]
 
+# MARK: Tool
 def expand_build_tools( config:SimpleNamespace ) -> list:
     configs_out:list = []
-    for tool in build_tools:
+    for tool in ['scons','cmake']:
         cfg = copy.deepcopy(config)
         setattr( cfg, 'build_tool', tool )
 
@@ -341,6 +403,7 @@ def expand_build_tools( config:SimpleNamespace ) -> list:
 
     return configs_out
 
+# MARK: Variant
 def expand_variant( config:SimpleNamespace ) -> list:
     configs_out:list = []
     for variant in variations:
@@ -353,9 +416,10 @@ def expand_variant( config:SimpleNamespace ) -> list:
         configs_out += expand_build_tools( cfg )
     return configs_out
 
+# MARK: Platform
 def expand_platforms( config:SimpleNamespace ) -> list:
     configs_out:list = []
-    for platform in platforms:
+    for platform in ['windows','web','android']:
         cfg = copy.deepcopy(config)
 
         setattr( cfg, 'platform', platform )
@@ -383,6 +447,7 @@ def expand_platforms( config:SimpleNamespace ) -> list:
         configs_out += expand_variant( cfg )
     return configs_out
 
+# MARK: Arch
 def expand_arch( config:SimpleNamespace ) -> list:
     configs_out:list = []
 
@@ -395,6 +460,7 @@ def expand_arch( config:SimpleNamespace ) -> list:
         configs_out += expand_platforms( cfg )
     return configs_out
 
+# MARK: Toolchain
 def expand_toolchains( config:SimpleNamespace ) -> list:
     configs_out:list = []
     for toolchain in toolchains.values():
@@ -407,6 +473,7 @@ def expand_toolchains( config:SimpleNamespace ) -> list:
 
     return configs_out
 
+# MARK: Base
 def base_config() -> SimpleNamespace:
     import platform
     host = 'unknown'

@@ -191,12 +191,18 @@ def update_configs():
             setattr( build, 'project', project.name )
             setattr( build, 'source_dir', build.project_root / build.name )
             setattr( build, 'script_path', build.project_root / f"{build.name}.py" )
-            setattr( build, 'actions', copy.deepcopy(bargs.build_actions ))
+            setattr( build, 'actions', copy.deepcopy( bargs.build_actions ) )
 
+            # TODO Clean-up shell command with proper paths for python
             shell = getattr(build.toolchain, 'shell', False)
             if shell: run_cmd = ' '.join(build.toolchain.shell + [f'"python {Path( build.script_path ).as_posix()}"'] )
             else: run_cmd = f'python {Path( build.script_path ).as_posix()}'
             setattr( build, 'run_cmd', run_cmd )
+
+            # TODO Expand build commands so that we can inspect after the fact
+            #   SCons
+            #   CMake Configure
+            #   CMake Build
 
 update_configs()
 # exit()
@@ -402,4 +408,4 @@ with open( "last_config_dump.json", 'w' ) as file:
 
     json.JSONEncoder = MyEncoder
 
-    print( json.dumps( projects, indent=2 ) )
+    file.write( json.dumps( projects, indent=2 ) )

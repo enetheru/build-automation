@@ -127,7 +127,6 @@ def cmake_configure(config: dict):
     cmake = config["cmake"]
 
     source_dir = Path(config["source_dir"])
-
     os.chdir(source_dir)
 
     # requires CMakeLists.txt file existing in the current directory.
@@ -156,6 +155,7 @@ def cmake_configure(config: dict):
         "--log-level=VERBOSE" if not config["quiet"] else None,
         f'-S "{source_dir}"',
         f'-B "{build_dir}"',
+        f'-G"{config['generator']}"'if 'generator' in config else None,
     ]
 
     if "config_vars" in cmake.keys():
