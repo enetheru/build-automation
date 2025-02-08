@@ -368,12 +368,14 @@ def expand_scons( config:SimpleNamespace ) -> list:
     cfg = copy.deepcopy(config)
     cfg.name += ".scons"
     setattr(cfg, 'script', scons_script )
-    setattr(cfg, 'verbs', ['source', 'build', 'test'] )
+    setattr(cfg, 'verbs', ['source', 'clean', 'build', 'test'] )
     setattr(cfg, 'scons', {
         'build_dir':'test',
         'build_vars':['build_profile=build_profile.json'],
         'targets':['template_release','template_debug','editor'],
     })
+    # Add the arch
+    cfg.scons['build_vars'].append(f'arch={cfg.arch}')
 
     match cfg.toolchain.name:
         case "msvc" | 'emsdk' | 'android':
