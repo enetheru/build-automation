@@ -154,6 +154,7 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
         return action in config['verbs'] and action in config['actions']
 
     stats:dict = dict()
+    toolchain = config['toolchain']
     cmake = config['cmake']
     timer = Timer()
 
@@ -189,7 +190,7 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
             f'-B "{build_dir}"',
         ]
 
-        if 'toolchain_file' in cmake:
+        if 'toolchain' in config.toolchain:
             config_opts.append( f'--toolchain "{os.fspath(cmake['toolchain_file'])}"' )
 
         if 'generator' in cmake:
@@ -331,7 +332,7 @@ def expand_cmake( config:SimpleNamespace ) -> list:
             case 'msvc':
                 if cfg.toolchain.name != generator: continue
                 cfg.cmake['generator'] = 'Visual Studio 17 2022'
-                cfg.cmake['tool_vars'] = ['/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
+                cfg.cmake['tool_vars'] = ['-nologo', '-verbosity:normal', "-consoleLoggerParameters:'ShowCommandLine;ForceNoAlign'"]
             case 'ninja':
                 cfg.cmake['generator'] = 'Ninja'
             case 'ninja-multi':

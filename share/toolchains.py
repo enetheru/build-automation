@@ -1,4 +1,3 @@
-import copy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -7,36 +6,163 @@ from rich.console import Console
 from share.format import *
 from share.run import stream_command
 
-"""
-Windows Host
-    Compiler Environments / Toolchains
-        - msvc
-        - mingw32
-            - clion builtin
-            - mingw64
-            - msys64/ucrt64
-            - msys64/mingw32
-            - msys64/mingw64
-        - clang
-            - llvm
-            - llvm-mingw
-            - msys64/clang32
-            - msys64/clang64
-            - msys64/clangarm64
-        - android(clang)
-        - emscripten(clang)
+# MARK: Toolchains
+# ╭─────────────────────────────────────────────────────────────────────────────────╮
+# │ ████████  ██████   ██████  ██       ██████ ██   ██  █████  ██ ███    ██ ███████ │
+# │    ██    ██    ██ ██    ██ ██      ██      ██   ██ ██   ██ ██ ████   ██ ██      │
+# │    ██    ██    ██ ██    ██ ██      ██      ███████ ███████ ██ ██ ██  ██ ███████ │
+# │    ██    ██    ██ ██    ██ ██      ██      ██   ██ ██   ██ ██ ██  ██ ██      ██ │
+# │    ██     ██████   ██████  ███████  ██████ ██   ██ ██   ██ ██ ██   ████ ███████ │
+# ╰─────────────────────────────────────────────────────────────────────────────────╯
+# List of CPU architectures from the arch setting in godot
+# (auto|x86_32|x86_64|arm32|arm64|rv64|ppc32|ppc64|wasm32|loongarch64)
+toolchains:dict = {}
+
+""" TODO
 Linux Host
     - Compiler Environment / Toolchain
 MacOS Host
     - Compiler Environment / Toolchain
 """
 
-# MARK: Toolchains
+# MARK: MSVC
 # ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _____         _    _         _                                            │
-# │ |_   _|__  ___| |__| |_  __ _(_)_ _  ___                                   │
-# │   | |/ _ \/ _ \ / _| ' \/ _` | | ' \(_-<                                   │
-# │   |_|\___/\___/_\__|_||_\__,_|_|_||_/__/                                   │
+# │  __  __ _____   _____                                                      │
+# │ |  \/  / __\ \ / / __|                                                     │
+# │ | |\/| \__ \\ V / (__                                                      │
+# │ |_|  |_|___/ \_/ \___|                                                     │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+toolchains["msvc"] = SimpleNamespace(**{
+    'desc':'# Microsoft Visual Studio',
+    'shell':[ "pwsh", "-Command",
+        """ "&{Import-Module 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'};" """ ],
+    "arch":['x86_64','x86_32']
+}),
+
+# MARK: LLVM
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  _    _ __   ____  __                                                      │
+# │ | |  | |\ \ / /  \/  |                                                     │
+# │ | |__| |_\ V /| |\/| |                                                     │
+# │ |____|____\_/ |_|  |_|                                                     │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+# Currently only clang-cl is supported.
+env = {k:v for k,v in os.environ.items()}
+env['PATH'] = f'C:/Program Files/LLVM/bin;{os.environ['PATH']}'
+toolchains["llvm"] = SimpleNamespace(**{
+    'desc':'# Use Clang-Cl from llvm.org',
+    "arch":['x86_64', 'x86_32', 'arm64'],
+    'env': env
+})
+
+# MARK: LLVM-MinGW
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  _    _ __   ____  __     __  __ _      _____      __                      │
+# │ | |  | |\ \ / /  \/  |___|  \/  (_)_ _ / __\ \    / /                      │
+# │ | |__| |_\ V /| |\/| |___| |\/| | | ' \ (_ |\ \/\/ /                       │
+# │ |____|____\_/ |_|  |_|   |_|  |_|_|_||_\___| \_/\_/                        │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+env = {k:v for k,v in os.environ.items()}
+env['PATH'] = f'C:/llvm-mingw/bin;{os.environ['PATH']}'
+toolchains["llvm-mingw"] = SimpleNamespace(**{
+    'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
+    "arch":['x86_64', 'x86_32', 'arm32', 'arm64'],
+    'env': env
+})
+
+# MARK: MinGW64
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  __  __ _      _____      ____ _ _                                         │
+# │ |  \/  (_)_ _ / __\ \    / / /| | |                                        │
+# │ | |\/| | | ' \ (_ |\ \/\/ / _ \_  _|                                       │
+# │ |_|  |_|_|_||_\___| \_/\_/\___/ |_|                                        │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+env = {k:v for k,v in os.environ.items()}
+env['PATH'] = f'C:/mingw64/bin;{os.environ['PATH']}'
+toolchains["mingw64"] = SimpleNamespace(**{
+    'desc':'[mingw](https://github.com/niXman/mingw-builds-binaries/releases,), This is also the default toolchain for clion',
+    "arch":['x86_64'],
+    'env': env
+})
+
+# MARK: MSYS2
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  __  __ _____   _____ ___                                                  │
+# │ |  \/  / __\ \ / / __|_  )                                                 │
+# │ | |\/| \__ \\ V /\__ \/ /                                                  │
+# │ |_|  |_|___/ |_| |___/___|                                                 │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+toolchains["msys2-mingw32"] = SimpleNamespace(**{
+    'desc':'i686      gcc linking against msvcrt',
+    'shell': [ "C:/msys64/msys2_shell.cmd", "-mingw32", "-defterm", "-no-start", "-c"],
+    "arch":['x86_32']
+})
+
+toolchains["msys2-mingw64"] = SimpleNamespace(**{
+    'desc':'x86_64    gcc linking against msvcrt',
+    'shell': ["C:/msys64/msys2_shell.cmd", "-mingw64", "-defterm", "-no-start", "-c"],
+    "arch":['x86_64']
+}),
+
+toolchains["msys2-ucrt64"] = SimpleNamespace(**{
+    'desc':'x86_64    gcc linking against ucrt',
+    'shell': ["C:/msys64/msys2_shell.cmd", "-ucrt64", "-defterm", "-no-start", "-c"],
+    "arch":['x86_64']
+}),
+
+toolchains["msys2-clang64"] = SimpleNamespace(**{
+    'desc':'x86_64    clang linking against ucrt',
+    'shell': ["C:/msys64/msys2_shell.cmd", "-clang64", "-defterm", "-no-start", "-c"],
+    "arch":['x86_64']
+}),
+
+# MARK: Android
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │    _           _         _    _                                            │
+# │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
+# │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
+# │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+# The variations of toolchains for mingw are listed here: https://www.mingw-w64.org/downloads/
+def android_update( toolchain:SimpleNamespace, config:SimpleNamespace, console:Console ):
+    import os
+    from pathlib import Path
+
+    console.set_window_title('Updating Android SDK')
+    print(figlet("Android Update", {"font": "small"}))
+
+    sdk_path = Path( toolchain.path )
+    os.chdir(sdk_path / 'cmdline-tools/latest/bin')
+
+    cmd_chunks = [
+        'sdkmanager.bat',
+        '--update',
+        '--verbose' if config['quiet'] is False else None,
+    ]
+    stream_command( ' '.join(filter(None, cmd_chunks)), dry=config['dry'] )
+
+
+toolchains["android"] = SimpleNamespace(**{
+    'desc':'[Android](https://developer.android.com/tools/sdkmanager)',
+    'path':Path('C:/androidsdk'),
+    'verbs':['update'],
+    'update':android_update,
+    'arch':['x86_64', 'x86_32', 'arm64'],
+    'cmake':{
+        'toolchain':'C:/androidsdk/ndk/23.2.8568313/build/cmake/android.toolchain.cmake',
+        'config_vars':[
+            "-DANDROID_PLATFORM=latest",
+            "-DANDROID_ABI=x86_64"]
+    }
+}),
+
+# MARK: Emscripten
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ___                  _      _                                             │
+# │ | __|_ __  ___ __ _ _(_)_ __| |_ ___ _ _                                   │
+# │ | _|| '  \(_-</ _| '_| | '_ \  _/ -_) ' \                                  │
+# │ |___|_|_|_/__/\__|_| |_| .__/\__\___|_||_|                                 │
+# │                        |_|                                                 │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 # The variations of toolchains for mingw are listed here: https://www.mingw-w64.org/downloads/
@@ -92,76 +218,27 @@ def emsdk_script( config:dict, toolchain:dict ):
             emsdk_install( emsdk_version )
         quit()
 
-# List of CPU architectures from the arch setting in godot
-# (auto|x86_32|x86_64|arm32|arm64|rv64|ppc32|ppc64|wasm32|loongarch64)
-
-toolchains = {
-    "msvc": SimpleNamespace(**{
-        'desc':'# Microsoft Visual Studio',
-        'shell':[ "pwsh", "-Command",
-            """ "&{Import-Module 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'};" """ ],
-        "arch":['x86_64','x86_32']
-    }),
-    "msys2-mingw32": SimpleNamespace(**{
-        'desc':'i686      gcc linking against msvcrt',
-        'shell': [ "C:/msys64/msys2_shell.cmd", "-mingw32", "-defterm", "-no-start", "-c"],
-        "arch":['x86_32']
-    }),
-    "msys2-mingw64": SimpleNamespace(**{
-        'desc':'x86_64    gcc linking against msvcrt',
-        'shell': ["C:/msys64/msys2_shell.cmd", "-mingw64", "-defterm", "-no-start", "-c"],
-        "arch":['x86_64']
-    }),
-    "msys2-ucrt64": SimpleNamespace(**{
-        'desc':'x86_64    gcc linking against ucrt',
-        'shell': ["C:/msys64/msys2_shell.cmd", "-ucrt64", "-defterm", "-no-start", "-c"],
-        "arch":['x86_64']
-    }),
-    "msys2-clang64": SimpleNamespace(**{
-        'desc':'x86_64    clang linking against ucrt',
-        'shell': ["C:/msys64/msys2_shell.cmd", "-clang64", "-defterm", "-no-start", "-c"],
-        "arch":['x86_64']
-    }),
-    "android": SimpleNamespace(**{
-        'desc':'[Android](https://developer.android.com/tools/sdkmanager)',
-        "arch":['x86_64', 'x86_32', 'arm64']
-    }),
-    "emsdk": SimpleNamespace(**{
-        'desc':'[Emscripten](https://emscripten.org/)',
-        'path':Path('C:/emsdk'),
-        'version':'3.1.64',
-        'verbs':['update', 'write'],
-        'update':emsdk_update,
-        'script':emsdk_script,
-        "arch":['wasm32'] #wasm64
-    })
-}
-
-# Currently only clang-cl is supported.
-env = {k:v for k,v in os.environ.items()}
-env['PATH'] = f'C:/Program Files/LLVM/bin;{os.environ['PATH']}'
-toolchains["llvm"] = SimpleNamespace(**{
-    'desc':'# Use Clang-Cl from llvm.org',
-    "arch":['x86_64', 'x86_32', 'arm64'],
-    'env': env
+toolchains["emsdk"] = SimpleNamespace(**{
+    'desc':'[Emscripten](https://emscripten.org/)',
+    'path':Path('C:/emsdk'),
+    'version':'3.1.64',
+    'verbs':['update', 'script'],
+    'update':emsdk_update,
+    'script':emsdk_script,
+    "arch":['wasm32'], #wasm64
+    'cmake':{
+        'toolchain':'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
+    }
 })
 
-env = {k:v for k,v in os.environ.items()}
-env['PATH'] = f'C:/llvm-mingw/bin;{os.environ['PATH']}'
-toolchains["llvm-mingw"] = SimpleNamespace(**{
-    'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
-    "arch":['x86_64', 'x86_32', 'arm32', 'arm64'],
-    'env': env
-})
-
-env = {k:v for k,v in os.environ.items()}
-env['PATH'] = f'C:/mingw64/bin;{os.environ['PATH']}'
-toolchains["mingw64"] = SimpleNamespace(**{
-    'desc':'[mingw](https://github.com/niXman/mingw-builds-binaries/releases,), This is also the default toolchain for clion',
-    "arch":['x86_64'],
-    'env': env
-})
-
+# MARK: Finalise
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ___ _           _ _                                                       │
+# │ | __(_)_ _  __ _| (_)___ ___                                               │
+# │ | _|| | ' \/ _` | | (_-</ -_)                                              │
+# │ |_| |_|_||_\__,_|_|_/__/\___|                                              │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+# Copy the dictionary key into the toolchain as the name
 def finalise_toolchains():
     for name, toolchain in toolchains.items():
 
@@ -169,61 +246,3 @@ def finalise_toolchains():
         setattr(toolchain, 'name', name )
 
 finalise_toolchains()
-
-# MARK: Toolchain Scripts
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _____         _    _         _        ___         _      _                │
-# │ |_   _|__  ___| |__| |_  __ _(_)_ _   / __| __ _ _(_)_ __| |_ ___          │
-# │   | |/ _ \/ _ \ / _| ' \/ _` | | ' \  \__ \/ _| '_| | '_ \  _(_-<          │
-# │   |_|\___/\___/_\__|_||_\__,_|_|_||_| |___/\__|_| |_| .__/\__/__/          │
-# │                                                     |_|                    │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-def env_mingw64_script(config:dict, console:Console):
-    import os
-    from pathlib import Path
-
-    mingw_path = Path("C:/mingw64/bin" )
-
-    h4(f'prepending {mingw_path} PATH')
-    os.environ['PATH'] = f'{mingw_path};{os.environ.get('PATH')}'
-
-def env_llvm_script(config:dict, console:Console):
-    import os
-    from pathlib import Path
-
-    llvm_path = Path("C:/Program Files/LLVM/bin" )
-
-    h4( f'prepending "{llvm_path}" to PATH' )
-    os.environ['PATH'] = f'{llvm_path};{os.environ.get('PATH')}'
-
-def env_llvm_mingw_script(config:dict, console:Console):
-    import os
-    from pathlib import Path
-
-    llvm_mingw_path = Path("C:/llvm-mingw/bin" )
-
-    h4( f'prepending "{llvm_mingw_path}" to PATH' )
-    os.environ['PATH'] = f'{llvm_mingw_path};{os.environ.get('PATH')}'
-
-def env_android_script(config:dict, console:Console):
-    import os
-    from pathlib import Path
-
-    cmdlineTools = Path("C:/androidsdk/cmdline-tools/latest/bin")
-
-    h4( f'prepending "{cmdlineTools}" to PATH' )
-    os.environ['PATH'] = f'{cmdlineTools};{os.environ.get('PATH')}'
-
-    if 'update' in config['actions']:
-        console.set_window_title('Updating Android SDK')
-        h3("Update Android SDK")
-
-        cmd_chunks = [
-            'sdkmanager.bat',
-            '--update',
-            '--verbose' if config['quiet'] is False else None,
-        ]
-        stream_command( ' '.join(filter(None, cmd_chunks)), dry=config['dry'] )
-
-
