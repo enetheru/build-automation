@@ -165,6 +165,8 @@ process_toolchains()
 # │       |_|                                           |___/                  │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def update_configs():
+    from copy import deepcopy
+
     h4( "Collating Configs" )
     for project in projects.values():
         for k, v in get_interior_dict( bargs ).items():
@@ -173,7 +175,8 @@ def update_configs():
             if getattr( project, k, None ) is None:
                 setattr( project, k, v )
 
-        setattr( project, 'actions', copy.deepcopy(bargs.project_actions ))
+
+        setattr( project, 'actions', deepcopy(bargs.project_actions ))
         setattr( project, 'project_root', project.root_dir / project.name )
 
         if not getattr(project, 'verbs', False ):
@@ -184,14 +187,14 @@ def update_configs():
                 if v is None: continue
                 if k in ["build_configs"]: continue
                 if getattr( build, k, None ) is None:
-                    setattr( build, k, copy.deepcopy(v) )
+                    setattr( build, k, deepcopy(v) )
 
             # additional overrides
             # TODO Allow specification of the working tree in the config.
             setattr( build, 'project', project.name )
             setattr( build, 'source_dir', build.project_root / build.name )
             setattr( build, 'script_path', build.project_root / f"{build.name}.py" )
-            setattr( build, 'actions', copy.deepcopy( bargs.build_actions ) )
+            setattr( build, 'actions', deepcopy( bargs.build_actions ) )
 
             # TODO Clean-up shell command with proper paths for python
             shell = getattr(build.toolchain, 'shell', False)

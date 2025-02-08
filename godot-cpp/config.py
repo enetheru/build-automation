@@ -139,7 +139,7 @@ def scons_script( config:SimpleNamespace, console:rich.console.Console ):
 # │  \___|_|  |_\__,_|_\_\___| |___/\__|_| |_| .__/\__|                        │
 # │                                          |_|                               │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
+def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.Console ):
     import os
     import copy
     from pathlib import Path
@@ -154,7 +154,6 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
         return action in config['verbs'] and action in config['actions']
 
     stats:dict = dict()
-    toolchain = config['toolchain']
     cmake = config['cmake']
     timer = Timer()
 
@@ -186,21 +185,24 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
         config_opts = [
             "--fresh" if want('fresh') else None,
             "--log-level=VERBOSE" if not config["quiet"] else None,
-            # f'-S "{source_dir}"', # we are in the source dir.
             f'-B "{build_dir}"',
         ]
 
-        if 'toolchain' in config.toolchain:
-            config_opts.append( f'--toolchain "{os.fspath(cmake['toolchain_file'])}"' )
+        if 'cmake' in toolchain:
+            tc = toolchain['cmake']
+            if 'toolchain' in tc:
+                config_opts.append( f'--toolchain "{os.fspath(tc['toolchain'])}"' )
+            for var in tc.get('config_vars', []):
+                config_opts.append(var)
 
         if 'generator' in cmake:
             config_opts.append( f'-G "{cmake['generator']}"' )
 
-        if 'godot_build_profile' in cmake:
-            config_opts.append( f'-DGODOT_BUILD_PROFILE="{os.fspath(cmake['godot_build_profile'])}"' )
-
         if "config_vars" in cmake:
             config_opts += cmake["config_vars"]
+
+        if 'godot_build_profile' in cmake:
+            config_opts.append( f'-DGODOT_BUILD_PROFILE="{os.fspath(cmake['godot_build_profile'])}"' )
 
         with timer:
             stream_command(f'cmake {' '.join(filter(None, config_opts))}', dry=config['dry'])
@@ -291,6 +293,14 @@ variations = ['default',
 
 # MARK: Variant
 def configure_variant( config:SimpleNamespace ) -> bool:
+    match config.build_tool:
+        case 'scons':
+            pass
+        case 'cmake':
+            # -DGODOT_USE_STATIC_CPP=OFF '-DGODOT_DEBUG_CRT=ON'
+            config.cmake["config_vars"].append('-DGODOT_ENABLE_TESTING=ON')
+
+
     match config.variant:
         case 'default':
             pass
@@ -315,7 +325,7 @@ def expand_cmake( config:SimpleNamespace ) -> list:
     setattr(config, 'cmake', {
         'build_dir':'build-cmake',
         'godot_build_profile':'test/build_profile.json',
-        'config_vars':['-DGODOT_ENABLE_TESTING=ON'], # -DGODOT_USE_STATIC_CPP=OFF '-DGODOT_DEBUG_CRT=ON'
+        'config_vars':[],
         'build_vars':[],
         'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
     })
@@ -330,8 +340,10 @@ def expand_cmake( config:SimpleNamespace ) -> list:
 
         match generator:
             case 'msvc':
+                _A = {'x86_32':'Win32', 'x86_64':'x64', 'arm64':'ARM64'}
                 if cfg.toolchain.name != generator: continue
                 cfg.cmake['generator'] = 'Visual Studio 17 2022'
+                cfg.cmake['config_vars'].append( f'-A {_A[cfg.arch]}')
                 cfg.cmake['tool_vars'] = ['-nologo', '-verbosity:normal', "-consoleLoggerParameters:'ShowCommandLine;ForceNoAlign'"]
             case 'ninja':
                 cfg.cmake['generator'] = 'Ninja'

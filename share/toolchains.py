@@ -37,7 +37,7 @@ toolchains["msvc"] = SimpleNamespace(**{
     'shell':[ "pwsh", "-Command",
         """ "&{Import-Module 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'};" """ ],
     "arch":['x86_64','x86_32']
-}),
+})
 
 # MARK: LLVM
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -102,19 +102,19 @@ toolchains["msys2-mingw64"] = SimpleNamespace(**{
     'desc':'x86_64    gcc linking against msvcrt',
     'shell': ["C:/msys64/msys2_shell.cmd", "-mingw64", "-defterm", "-no-start", "-c"],
     "arch":['x86_64']
-}),
+})
 
 toolchains["msys2-ucrt64"] = SimpleNamespace(**{
     'desc':'x86_64    gcc linking against ucrt',
     'shell': ["C:/msys64/msys2_shell.cmd", "-ucrt64", "-defterm", "-no-start", "-c"],
     "arch":['x86_64']
-}),
+})
 
 toolchains["msys2-clang64"] = SimpleNamespace(**{
     'desc':'x86_64    clang linking against ucrt',
     'shell': ["C:/msys64/msys2_shell.cmd", "-clang64", "-defterm", "-no-start", "-c"],
     "arch":['x86_64']
-}),
+})
 
 # MARK: Android
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -154,7 +154,7 @@ toolchains["android"] = SimpleNamespace(**{
             "-DANDROID_PLATFORM=latest",
             "-DANDROID_ABI=x86_64"]
     }
-}),
+})
 
 # MARK: Emscripten
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -240,9 +240,8 @@ toolchains["emsdk"] = SimpleNamespace(**{
 # ╰────────────────────────────────────────────────────────────────────────────╯
 # Copy the dictionary key into the toolchain as the name
 def finalise_toolchains():
-    for name, toolchain in toolchains.items():
-
+    for key, value in toolchains.items():
         # set the names
-        setattr(toolchain, 'name', name )
+        setattr(value, 'name', key )
 
 finalise_toolchains()
