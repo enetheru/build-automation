@@ -5,17 +5,22 @@ import multiprocessing
 import platform
 import sys
 from datetime import datetime
+from pathlib import Path
 from subprocess import CalledProcessError
+from types import SimpleNamespace
 from typing import IO
 
 import rich
+from rich.console import Console
 from rich.pretty import pprint
 from rich.table import Table
 
 # Local Imports
 from share.ConsoleMultiplex import ConsoleMultiplex
+from share.format import *
 from share.actions import fetch_projects
-from share.toolchains import *
+from share.run import stream_command
+from share.toolchains import toolchains
 from share.generate import generate_build_scripts
 
 sys.stdout.reconfigure(encoding='utf-8')
@@ -119,6 +124,10 @@ def show_heading():
     h1( "AutoBuild" )
     h3( "Options", newline=False )
     pprint( bargs.__dict__, expand_all=True )
+
+    h3( "Toolchains" )
+    for name in toolchains.keys():
+        print( "  - ", name )
 
     h3( "projects and Configs" )
     if not len( projects ):

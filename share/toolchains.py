@@ -6,123 +6,123 @@ from rich.console import Console
 from share.format import *
 from share.run import stream_command
 
-# MARK: Toolchains
-# ╭─────────────────────────────────────────────────────────────────────────────────╮
-# │ ████████  ██████   ██████  ██       ██████ ██   ██  █████  ██ ███    ██ ███████ │
-# │    ██    ██    ██ ██    ██ ██      ██      ██   ██ ██   ██ ██ ████   ██ ██      │
-# │    ██    ██    ██ ██    ██ ██      ██      ███████ ███████ ██ ██ ██  ██ ███████ │
-# │    ██    ██    ██ ██    ██ ██      ██      ██   ██ ██   ██ ██ ██  ██ ██      ██ │
-# │    ██     ██████   ██████  ███████  ██████ ██   ██ ██   ██ ██ ██   ████ ███████ │
-# ╰─────────────────────────────────────────────────────────────────────────────────╯
-# List of CPU architectures from the arch setting in godot
-# (auto|x86_32|x86_64|arm32|arm64|rv64|ppc32|ppc64|wasm32|loongarch64)
-toolchains:dict = {}
-
-""" TODO
-Linux Host
-    - Compiler Environment / Toolchain
-MacOS Host
-    - Compiler Environment / Toolchain
-"""
+# MARK: Windows
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │            ██     ██ ██ ███    ██ ██████   ██████  ██     ██ ███████       │
+# │            ██     ██ ██ ████   ██ ██   ██ ██    ██ ██     ██ ██            │
+# │            ██  █  ██ ██ ██ ██  ██ ██   ██ ██    ██ ██  █  ██ ███████       │
+# │            ██ ███ ██ ██ ██  ██ ██ ██   ██ ██    ██ ██ ███ ██      ██       │
+# │             ███ ███  ██ ██   ████ ██████   ██████   ███ ███  ███████       │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+windows_toolchains:list = []
+# The variations of toolchains for mingw are listed here: https://www.mingw-w64.org/downloads/
 
 # MARK: MSVC
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  __  __ _____   _____                                                      │
-# │ |  \/  / __\ \ / / __|                                                     │
-# │ | |\/| \__ \\ V / (__                                                      │
-# │ |_|  |_|___/ \_/ \___|                                                     │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-toolchains["msvc"] = SimpleNamespace(**{
+# ╭────────────────────────╮
+# │  __  __ _____   _____  │
+# │ |  \/  / __\ \ / / __| │
+# │ | |\/| \__ \\ V / (__  │
+# │ |_|  |_|___/ \_/ \___| │
+# ╰────────────────────────╯
+windows_toolchains.append( SimpleNamespace(**{
+    'name':'msvc',
     'desc':'# Microsoft Visual Studio',
     'shell':[ "pwsh", "-Command",
         """ "&{Import-Module 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'};" """ ],
     "arch":['x86_64','x86_32']
-})
+}))
 
 # MARK: LLVM
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _    _ __   ____  __                                                      │
-# │ | |  | |\ \ / /  \/  |                                                     │
-# │ | |__| |_\ V /| |\/| |                                                     │
-# │ |____|____\_/ |_|  |_|                                                     │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+# ╭────────────────────────╮
+# │  _    _ __   ____  __  │
+# │ | |  | |\ \ / /  \/  | │
+# │ | |__| |_\ V /| |\/| | │
+# │ |____|____\_/ |_|  |_| │
+# ╰────────────────────────╯
 # Currently only clang-cl is supported.
 env = {k:v for k,v in os.environ.items()}
 env['PATH'] = f'C:/Program Files/LLVM/bin;{os.environ['PATH']}'
-toolchains["llvm"] = SimpleNamespace(**{
+windows_toolchains.append( SimpleNamespace(**{
+    'name':'llvm',
     'desc':'# Use Clang-Cl from llvm.org',
     "arch":['x86_64', 'x86_32', 'arm64'],
     'env': env
-})
+}))
 
 # MARK: LLVM-MinGW
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _    _ __   ____  __     __  __ _      _____      __                      │
-# │ | |  | |\ \ / /  \/  |___|  \/  (_)_ _ / __\ \    / /                      │
-# │ | |__| |_\ V /| |\/| |___| |\/| | | ' \ (_ |\ \/\/ /                       │
-# │ |____|____\_/ |_|  |_|   |_|  |_|_|_||_\___| \_/\_/                        │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+# ╭───────────────────────────────────────────────────────╮
+# │  _    _ __   ____  __     __  __ _      _____      __ │
+# │ | |  | |\ \ / /  \/  |___|  \/  (_)_ _ / __\ \    / / │
+# │ | |__| |_\ V /| |\/| |___| |\/| | | ' \ (_ |\ \/\/ /  │
+# │ |____|____\_/ |_|  |_|   |_|  |_|_|_||_\___| \_/\_/   │
+# ╰───────────────────────────────────────────────────────╯
 env = {k:v for k,v in os.environ.items()}
 env['PATH'] = f'C:/llvm-mingw/bin;{os.environ['PATH']}'
-toolchains["llvm-mingw"] = SimpleNamespace(**{
+windows_toolchains.append( SimpleNamespace(**{
+    'name':"llvm-mingw",
     'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
     "arch":['x86_64', 'x86_32', 'arm32', 'arm64'],
     'env': env
-})
+}))
 
 # MARK: MinGW64
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  __  __ _      _____      ____ _ _                                         │
-# │ |  \/  (_)_ _ / __\ \    / / /| | |                                        │
-# │ | |\/| | | ' \ (_ |\ \/\/ / _ \_  _|                                       │
-# │ |_|  |_|_|_||_\___| \_/\_/\___/ |_|                                        │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+# ╭──────────────────────────────────────╮
+# │  __  __ _      _____      ____ _ _   │
+# │ |  \/  (_)_ _ / __\ \    / / /| | |  │
+# │ | |\/| | | ' \ (_ |\ \/\/ / _ \_  _| │
+# │ |_|  |_|_|_||_\___| \_/\_/\___/ |_|  │
+# ╰──────────────────────────────────────╯
 env = {k:v for k,v in os.environ.items()}
 env['PATH'] = f'C:/mingw64/bin;{os.environ['PATH']}'
-toolchains["mingw64"] = SimpleNamespace(**{
+windows_toolchains.append( SimpleNamespace(**{
+    'name':"mingw64",
     'desc':'[mingw](https://github.com/niXman/mingw-builds-binaries/releases,), This is also the default toolchain for clion',
     "arch":['x86_64'],
     'env': env
-})
+}))
 
 # MARK: MSYS2
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  __  __ _____   _____ ___                                                  │
-# │ |  \/  / __\ \ / / __|_  )                                                 │
-# │ | |\/| \__ \\ V /\__ \/ /                                                  │
-# │ |_|  |_|___/ |_| |___/___|                                                 │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-toolchains["msys2-mingw32"] = SimpleNamespace(**{
+# ╭────────────────────────────╮
+# │  __  __ _____   _____ ___  │
+# │ |  \/  / __\ \ / / __|_  ) │
+# │ | |\/| \__ \\ V /\__ \/ /  │
+# │ |_|  |_|___/ |_| |___/___| │
+# ╰────────────────────────────╯
+windows_toolchains.append( SimpleNamespace(**{
+    'name':"msys2-mingw32",
     'desc':'i686      gcc linking against msvcrt',
     'shell': [ "C:/msys64/msys2_shell.cmd", "-mingw32", "-defterm", "-no-start", "-c"],
     "arch":['x86_32']
-})
+}))
 
-toolchains["msys2-mingw64"] = SimpleNamespace(**{
+windows_toolchains.append( SimpleNamespace(**{
+    'name':"msys2-mingw64",
     'desc':'x86_64    gcc linking against msvcrt',
     'shell': ["C:/msys64/msys2_shell.cmd", "-mingw64", "-defterm", "-no-start", "-c"],
     "arch":['x86_64']
-})
+}))
 
-toolchains["msys2-ucrt64"] = SimpleNamespace(**{
+windows_toolchains.append( SimpleNamespace(**{
+    'name':"msys2-ucrt64",
     'desc':'x86_64    gcc linking against ucrt',
     'shell': ["C:/msys64/msys2_shell.cmd", "-ucrt64", "-defterm", "-no-start", "-c"],
     "arch":['x86_64']
-})
+}))
 
-toolchains["msys2-clang64"] = SimpleNamespace(**{
+windows_toolchains.append( SimpleNamespace(**{
+    'name':"msys2-clang64",
     'desc':'x86_64    clang linking against ucrt',
     'shell': ["C:/msys64/msys2_shell.cmd", "-clang64", "-defterm", "-no-start", "-c"],
     "arch":['x86_64']
-})
+}))
 
 # MARK: Android
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │    _           _         _    _                                            │
-# │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
-# │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
-# │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+# ╭──────────────────────────────────╮
+# │    _           _         _    _  │
+# │   /_\  _ _  __| |_ _ ___(_)__| | │
+# │  / _ \| ' \/ _` | '_/ _ \ / _` | │
+# │ /_/ \_\_||_\__,_|_| \___/_\__,_| │
+# ╰──────────────────────────────────╯
 # The variations of toolchains for mingw are listed here: https://www.mingw-w64.org/downloads/
 def android_update( toolchain:SimpleNamespace, config:SimpleNamespace, console:Console ):
     import os
@@ -141,8 +141,8 @@ def android_update( toolchain:SimpleNamespace, config:SimpleNamespace, console:C
     ]
     stream_command( ' '.join(filter(None, cmd_chunks)), dry=config['dry'] )
 
-
-toolchains["android"] = SimpleNamespace(**{
+windows_toolchains.append( SimpleNamespace(**{
+    'name':'android',
     'desc':'[Android](https://developer.android.com/tools/sdkmanager)',
     'path':Path('C:/androidsdk'),
     'verbs':['update'],
@@ -154,18 +154,16 @@ toolchains["android"] = SimpleNamespace(**{
             "-DANDROID_PLATFORM=latest",
             "-DANDROID_ABI=x86_64"]
     }
-})
+}))
 
 # MARK: Emscripten
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  ___                  _      _                                             │
-# │ | __|_ __  ___ __ _ _(_)_ __| |_ ___ _ _                                   │
-# │ | _|| '  \(_-</ _| '_| | '_ \  _/ -_) ' \                                  │
-# │ |___|_|_|_/__/\__|_| |_| .__/\__\___|_||_|                                 │
-# │                        |_|                                                 │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# The variations of toolchains for mingw are listed here: https://www.mingw-w64.org/downloads/
+# ╭────────────────────────────────────────────╮
+# │  ___                  _      _             │
+# │ | __|_ __  ___ __ _ _(_)_ __| |_ ___ _ _   │
+# │ | _|| '  \(_-</ _| '_| | '_ \  _/ -_) ' \  │
+# │ |___|_|_|_/__/\__|_| |_| .__/\__\___|_||_| │
+# │                        |_|                 │
+# ╰────────────────────────────────────────────╯
 def emsdk_update( toolchain:SimpleNamespace, config:SimpleNamespace, console:Console ):
     import os
     from pathlib import Path
@@ -218,7 +216,8 @@ def emsdk_script( config:dict, toolchain:dict ):
             emsdk_install( emsdk_version )
         quit()
 
-toolchains["emsdk"] = SimpleNamespace(**{
+windows_toolchains.append( SimpleNamespace(**{
+    'name':'emsdk',
     'desc':'[Emscripten](https://emscripten.org/)',
     'path':Path('C:/emsdk'),
     'version':'3.1.64',
@@ -229,19 +228,48 @@ toolchains["emsdk"] = SimpleNamespace(**{
     'cmake':{
         'toolchain':'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
     }
-})
+}))
 
-# MARK: Finalise
+
+# MARK: Darwin
 # ╭────────────────────────────────────────────────────────────────────────────╮
-# │  ___ _           _ _                                                       │
-# │ | __(_)_ _  __ _| (_)___ ___                                               │
-# │ | _|| | ' \/ _` | | (_-</ -_)                                              │
-# │ |_| |_|_||_\__,_|_|_/__/\___|                                              │
+# │                 ██████   █████  ██████  ██     ██ ██ ███    ██             │
+# │                 ██   ██ ██   ██ ██   ██ ██     ██ ██ ████   ██             │
+# │                 ██   ██ ███████ ██████  ██  █  ██ ██ ██ ██  ██             │
+# │                 ██   ██ ██   ██ ██   ██ ██ ███ ██ ██ ██  ██ ██             │
+# │                 ██████  ██   ██ ██   ██  ███ ███  ██ ██   ████             │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+darwin_toolchains:list = []
+
+# MARK: AppleClang
+# ╭───────────────────────────────────────────────╮
+# │    _             _      ___ _                 │
+# │   /_\  _ __ _ __| |___ / __| |__ _ _ _  __ _  │
+# │  / _ \| '_ \ '_ \ / -_) (__| / _` | ' \/ _` | │
+# │ /_/ \_\ .__/ .__/_\___|\___|_\__,_|_||_\__, | │
+# │       |_|  |_|                         |___/  │
+# ╰───────────────────────────────────────────────╯
+darwin_toolchains.append( SimpleNamespace(**{
+    'name':"appleclang",
+    'desc':"Apple's Clang",
+    'arch':['x86_64','arm64']
+}))
+
+# MARK: Select
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │                 ███████ ███████ ██      ███████  ██████ ████████           │
+# │                 ██      ██      ██      ██      ██         ██              │
+# │                 ███████ █████   ██      █████   ██         ██              │
+# │                      ██ ██      ██      ██      ██         ██              │
+# │                 ███████ ███████ ███████ ███████  ██████    ██              │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 # Copy the dictionary key into the toolchain as the name
-def finalise_toolchains():
-    for key, value in toolchains.items():
-        # set the names
-        setattr(value, 'name', key )
-
-finalise_toolchains()
+import sys
+toolchains:dict = {}
+match sys.platform:
+    case 'windows':
+        for tc in windows_toolchains:
+            toolchains[tc.name] = tc
+    case 'darwin':
+        for tc in darwin_toolchains:
+            toolchains[tc.name] = tc

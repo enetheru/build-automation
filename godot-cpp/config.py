@@ -1,6 +1,7 @@
 import copy
 import inspect
 import itertools
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -434,30 +435,41 @@ def expand_variant( config:SimpleNamespace ) -> list:
 # MARK: Platform
 def expand_platforms( config:SimpleNamespace ) -> list:
     configs_out:list = []
-    for platform in ['windows','web','android']:
+    for platform in ['android', 'ios', 'linux', 'macos', 'web', 'windows']:
         cfg = copy.deepcopy(config)
 
         setattr( cfg, 'platform', platform )
         cfg.name = f"{cfg.host}.{cfg.toolchain.name}.{platform}.{cfg.arch}"
 
-        if platform == 'web' and config.toolchain.name != 'emsdk': continue
-        if config.toolchain.name == 'emsdk' and platform != 'web': continue
+        # Filter out host system capabilities
+        match sys.platform:
+            case 'windows':
+                if platform not in ['android', 'web','windows']: continue
+            case 'darwin':
+                if platform not in ['android', 'ios', 'macos', 'web']: continue
+            case 'linux':
+                if platform not in ['android', 'linux', 'web', 'windows']: continue
 
-        if platform == 'android' and config.toolchain.name != 'android': continue
-        if config.toolchain.name == 'android' and platform != 'android': continue
+        # Filter out toolchain capabilities
+        match cfg.toolchain.name:
+            case 'android':
+                if platform != 'android': continue
+            case 'emsdk':
+                if platform != 'web': continue
 
         match platform:
             case "windows":
                 pass
 
             case "android":
-                cfg.name = f"{config.host}.{platform}"
+                if cfg.toolchain.name != 'android': continue
+                cfg.name = f"{config.host}.{platform}.{cfg.arch}"
 
             case "web":
+                if cfg.toolchain.name != 'emsdk': continue
                 cfg.name = f"{config.host}.{platform}"
 
             case _:
-                print( f"skipping platform: {platform}" )
                 continue
         configs_out += expand_variant( cfg )
     return configs_out
@@ -495,10 +507,13 @@ def base_config() -> SimpleNamespace:
     match platform.system():
         case 'Windows':
             host  = 'w'
+            if platform.architecture()[0] == '64bit':
+                host += '64'
+            else:
+                host += '32'
+        case 'Darwin':
+            host = 'macos'
 
-    match platform.architecture()[0]:
-        case '64bit':
-            host += '64'
 
     if host == 'unknown':
         print( "Failed to match host platform")
