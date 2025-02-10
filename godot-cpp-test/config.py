@@ -7,7 +7,7 @@ import rich
 
 from share.actions import git_checkout
 from share.format import *
-from share.config import expand_config
+from share.expand_config import expand_config
 
 project_config = SimpleNamespace(**{
     'name'      : 'godot-cpp-test',
@@ -135,10 +135,6 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
     if not timer.ok():
         exit(1)
 
-def process_script( script:str ) -> str:
-    print( 'processing script' )
-    return script.replace('%replaceme%', inspect.getsource(git_checkout))
-
 # MARK: Config Expansion
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │   ___           __ _        ___                        _                   │
@@ -152,8 +148,10 @@ def configure_variant( config:SimpleNamespace ) -> bool:
         case 'scons':
             pass
         case 'cmake':
+            pass
+
             # -DGODOT_USE_STATIC_CPP=OFF '-DGODOT_DEBUG_CRT=ON'
-            config.cmake["config_vars"].append('-DGODOT_ENABLE_TESTING=ON')
+            # config.cmake["config_vars"].append('-DGODOT_ENABLE_TESTING=ON')
 
 
     match config.variant:
@@ -182,7 +180,7 @@ def expand_cmake( config:SimpleNamespace ) -> list:
         'godot_build_profile':'test/build_profile.json',
         'config_vars':[],
         'build_vars':[],
-        'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
+        'targets':['gdexample'],
     })
 
     configs_out:list = []
@@ -195,8 +193,8 @@ def expand_cmake( config:SimpleNamespace ) -> list:
 
         match generator:
             case 'msvc':
-                _A = {'x86_32':'Win32', 'x86_64':'x64', 'arm64':'ARM64'}
                 if cfg.toolchain.name != generator: continue
+                _A = {'x86_32':'Win32', 'x86_64':'x64', 'arm64':'ARM64'}
                 cfg.cmake['generator'] = 'Visual Studio 17 2022'
                 cfg.cmake['config_vars'].append( f'-A {_A[cfg.arch]}')
                 cfg.cmake['tool_vars'] = ['-nologo', '-verbosity:normal', "-consoleLoggerParameters:'ShowCommandLine;ForceNoAlign'"]
@@ -216,7 +214,7 @@ def expand_cmake( config:SimpleNamespace ) -> list:
     return configs_out
 
 # MARK: Tool
-def expand_build_tools( config:SimpleNamespace ) -> list:
+def build_tools( config:SimpleNamespace ) -> list:
     configs_out:list = []
     for tool in ['scons','cmake']:
         cfg = copy.deepcopy(config)
@@ -233,7 +231,7 @@ def expand_build_tools( config:SimpleNamespace ) -> list:
     return configs_out
 
 # MARK: Variant
-def expand_variant( config:SimpleNamespace ) -> list:
+def variants( config:SimpleNamespace ) -> list:
     configs_out:list = []
     for variant in variations:
         cfg = copy.deepcopy(config)
@@ -242,11 +240,11 @@ def expand_variant( config:SimpleNamespace ) -> list:
         if variant != 'default':
             cfg.name += f'.{variant}'
 
-        configs_out += expand_build_tools( cfg )
+        configs_out.append( cfg )
     return configs_out
 
 # MARK: Platform
-def expand_platforms( config:SimpleNamespace ) -> list:
+def platforms( config:SimpleNamespace ) -> list:
     configs_out:list = []
     for platform in ['android', 'ios', 'linux', 'macos', 'web', 'windows']:
         cfg = copy.deepcopy(config)
@@ -270,10 +268,8 @@ def expand_platforms( config:SimpleNamespace ) -> list:
             case 'emsdk':
                 if platform != 'web': continue
 
+        # rename for android and web since they only build for one system
         match platform:
-            case "windows":
-                pass
-
             case "android":
                 if cfg.toolchain.name != 'android': continue
                 cfg.name = f"{config.host}.{platform}.{cfg.arch}"
@@ -282,15 +278,27 @@ def expand_platforms( config:SimpleNamespace ) -> list:
                 if cfg.toolchain.name != 'emsdk': continue
                 cfg.name = f"{config.host}.{platform}"
 
-            case _:
-                continue
-        configs_out += expand_variant( cfg )
+        configs_out.append(cfg)
     return configs_out
 
-
+def expand( configs:list, func ) -> list:
+    configs_out:list = []
+    for config in configs:
+        configs_out += func( config )
+    return configs_out
+        
 def generate_configs():
-    for config in expand_config( base_config() ):
-        for cfg in expand_platforms( config ):
-            project_config.build_configs[cfg.name] = cfg
+    configs:list = expand_config( base_config() )
+    print( f'after config, len = {len(configs)}')
+    configs = expand( configs, platforms )
+    print( f'after platforms, len = {len(configs)}')
+    configs = expand( configs, variants )
+    print( f'after variants, len = {len(configs)}')
+    configs = expand( configs, build_tools )
+    print( f'after build_tools, len = {len(configs)}')
+
+    for config in configs:
+        project_config.build_configs[config.name] = config
+
 
 generate_configs()

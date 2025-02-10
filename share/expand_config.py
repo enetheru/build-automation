@@ -7,13 +7,9 @@ from share.toolchains import toolchains
 # MARK: Arch
 def expand_arch( config:SimpleNamespace ) -> list:
     configs_out:list = []
-
     for arch in config.toolchain.arch:
         cfg = deepcopy(config)
-
-        cfg.name += f".{arch}"
         setattr( cfg, 'arch', arch )
-
         configs_out.append( cfg )
     return configs_out
 
@@ -22,12 +18,8 @@ def expand_toolchains( config:SimpleNamespace ) -> list:
     configs_out:list = []
     for toolchain in toolchains.values():
         cfg = deepcopy(config)
-
-        cfg.name += f".{toolchain.name}"
         setattr(cfg, 'toolchain', toolchain )
-
-        configs_out += expand_arch( cfg )
-
+        configs_out.append( cfg )
     return configs_out
 
 def expand_config( config:SimpleNamespace ) -> list:
@@ -49,5 +41,10 @@ def expand_config( config:SimpleNamespace ) -> list:
             return []
 
     setattr( config, 'host', host )
-    return expand_toolchains( config )
+
+    configs_out:list = []
+    for config in expand_toolchains( config ):
+        configs_out += expand_arch( config )
+    
+    return configs_out
 

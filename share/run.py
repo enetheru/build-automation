@@ -3,6 +3,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from subprocess import PIPE, CalledProcessError, CompletedProcess, Popen
+import shlex
 
 from rich import print
 
@@ -29,6 +30,10 @@ def stream_command(
          $ {args}""")
     if dry: return 0
     """Mimic subprocess.run, while processing the command output in real time."""
+
+    if isinstance(args, str):
+        args = shlex.split( args )
+
     with (
         # errors: 'strict', 'replace', 'ignore', 'backslashreplace'
         Popen(args, bufsize=1, stdout=stdout, stderr=stderr, env=env, **kwargs, text=text, encoding='utf-8', errors='backslashreplace') as process,

@@ -7,7 +7,7 @@
 # ╰────────────────────────────────────────────────────────────────────────────╯
 import inspect
 from io import StringIO
-from pathlib import WindowsPath
+from pathlib import WindowsPath, PosixPath
 from types import SimpleNamespace
 
 from share.format import *
@@ -29,7 +29,7 @@ def namespace_to_script( name:str, namespace:SimpleNamespace, script:StringIO ):
     for k, v in namespace.__dict__.items():
         if k in skip_keys: continue
         # Fix Windows Path Items
-        if isinstance(v, WindowsPath):
+        if isinstance(v, WindowsPath) or isinstance(v, PosixPath):
             chunk.append(f"\t{repr(k)}:Path({repr(str(v))}),")
             continue
         # Skip Functions
