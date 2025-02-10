@@ -1,4 +1,7 @@
-# Helper functions for configuraton
+from copy import deepcopy
+from types import SimpleNamespace
+
+from share.toolchains import toolchains
 
 
 # MARK: Arch
@@ -6,7 +9,7 @@ def expand_arch( config:SimpleNamespace ) -> list:
     configs_out:list = []
 
     for arch in config.toolchain.arch:
-        cfg = copy.deepcopy(config)
+        cfg = deepcopy(config)
 
         cfg.name += f".{arch}"
         setattr( cfg, 'arch', arch )
@@ -18,7 +21,7 @@ def expand_arch( config:SimpleNamespace ) -> list:
 def expand_toolchains( config:SimpleNamespace ) -> list:
     configs_out:list = []
     for toolchain in toolchains.values():
-        cfg = copy.deepcopy(config)
+        cfg = deepcopy(config)
 
         cfg.name += f".{toolchain.name}"
         setattr(cfg, 'toolchain', toolchain )

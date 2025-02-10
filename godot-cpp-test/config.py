@@ -1,14 +1,11 @@
 import copy
 import inspect
-import itertools
-from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import rich
 
 from share.actions import git_checkout
-from share.run import stream_command
-from share.toolchains import toolchains
 from share.format import *
 from share.config import expand_config
 
@@ -24,6 +21,12 @@ def base_config() -> SimpleNamespace:
     return SimpleNamespace( **{
         "name": '',
     })
+
+variations = ['default',
+    'double',
+    'nothreads',
+    'hotreload'
+    'exceptions']
 
 # MARK: Notes
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -136,284 +139,158 @@ def process_script( script:str ) -> str:
     print( 'processing script' )
     return script.replace('%replaceme%', inspect.getsource(git_checkout))
 
-# MARK: Windows
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │            ██     ██ ██ ███    ██ ██████   ██████  ██     ██ ███████       │
-# │            ██     ██ ██ ████   ██ ██   ██ ██    ██ ██     ██ ██            │
-# │            ██  █  ██ ██ ██ ██  ██ ██   ██ ██    ██ ██  █  ██ ███████       │
-# │            ██ ███ ██ ██ ██  ██ ██ ██   ██ ██    ██ ██ ███ ██      ██       │
-# │             ███ ███  ██ ██   ████ ██████   ██████   ███ ███  ███████       │
-# ╘════════════════════════════════════════════════════════════════════════════╛
-
-"""
-## Platforms
-### Windows
-#### Toolchains:
-- msvc
-    - archs [x86_32, x86_64, arm64]
-    - using clang-cl
-- llvm
-- mingw-llvm
-    - archs [x86_32, x86_64, arm64]
-- mingw64
-    - archs [x86_32, x86_64]
-- clion( mingw64 )
-- msys64.ucrt64
-- msys64.mingw32
-- msys64.mingw64
-- msys64.clang32
-- msys64.clang64
-- msys64.clangarm64
-
-### Android
-#### Toolchains:
-- android
-    - arch [arm32, arm64, x86_32, x86_64]
-    
-### Web
-#### Toolchains
-- emsdk
-
-## Variations
-- Thread/noThread
-- Profile/NoProfile
-- Precision single/double
-- Hot Re-Load ON/OFF
-- Exceptions ON/OFF
-"""
-
+# MARK: Config Expansion
 # ╭────────────────────────────────────────────────────────────────────────────╮
-# │ __      ___         _                                                      │
-# │ \ \    / (_)_ _  __| |_____ __ _____                                       │
-# │  \ \/\/ /| | ' \/ _` / _ \ V  V (_-<                                       │
-# │   \_/\_/ |_|_||_\__,_\___/\_/\_//__/                                       │
+# │   ___           __ _        ___                        _                   │
+# │  / __|___ _ _  / _(_)__ _  | __|_ ___ __  __ _ _ _  __(_)___ _ _           │
+# │ | (__/ _ \ ' \|  _| / _` | | _|\ \ / '_ \/ _` | ' \(_-< / _ \ ' \          │
+# │  \___\___/_||_|_| |_\__, | |___/_\_\ .__/\__,_|_||_/__/_\___/_||_|         │
+# │                     |___/          |_|                                     │
 # ╰────────────────────────────────────────────────────────────────────────────╯
+def configure_variant( config:SimpleNamespace ) -> bool:
+    match config.build_tool:
+        case 'scons':
+            pass
+        case 'cmake':
+            # -DGODOT_USE_STATIC_CPP=OFF '-DGODOT_DEBUG_CRT=ON'
+            config.cmake["config_vars"].append('-DGODOT_ENABLE_TESTING=ON')
 
-variations = ['default']
-generators = ['msvc', 'ninja', 'ninja-multi', 'mingw']
-msbuild_extras = ['--', '/nologo', '/v:m', "/clp:'ShowCommandLine;ForceNoAlign'"]
 
-for  toolchain, generator in itertools.product( toolchains.values(), generators ):
-    cfg = SimpleNamespace(**{
-        'name' : f'w64.{toolchain.name}.{generator}',
-        'toolchain':copy.deepcopy(toolchain),
-        'verbs':['source','configure', 'fresh', 'build', 'test'],
-        'script': cmake_script,
-        'cmake':{
-            'build_dir':'build-cmake',
-            'godot_build_profile':'build_profile.json',
-            'config_vars':[],
-            'targets':['gdexample'],
-        },
-        'godot_tr':'C:/build/godot/w64.msvc/bin/godot.windows.template_release.x86_64.console.exe',
-        'godot_td':'C:/build/godot/w64.msvc/bin/godot.windows.template_debug.x86_64.console.exe',
-        'godot_e':'C:/build/godot/w64.msvc/bin/godot.windows.editor.x86_64.console.exe',
+    match config.variant:
+        case 'default':
+            pass
+        case 'double':
+            if config.arch not in ['x86_64', 'arm64']: return False
+            match config.build_tool:
+                case 'scons':
+                    config.scons["build_vars"].append("precision=double")
+                case 'cmake':
+                    config.cmake["config_vars"].append("-DGODOT_PRECISION=double")
+                    pass
+        case _:
+            return False
+    return True
+
+# MARK: CMake
+def expand_cmake( config:SimpleNamespace ) -> list:
+    config.name += ".cmake"
+
+    setattr(config, 'script', cmake_script )
+    setattr(config, 'verbs', ['source', 'configure', 'fresh', 'build', 'test'] )
+    setattr(config, 'cmake', {
+        'build_dir':'build-cmake',
+        'godot_build_profile':'test/build_profile.json',
+        'config_vars':[],
+        'build_vars':[],
+        'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
     })
 
-    match generator:
-        case 'msvc':
-            cfg.cmake['config_vars'] += ['-G"Visual Studio 17 2022"']
-            cfg.cmake['tool_vars'] = msbuild_extras
-        case 'ninja':
-            cfg.cmake['config_vars'] += ['-G"Ninja"', '-DCMAKE_BUILD_TYPE=Release']
-        case 'ninja-multi':
-            cfg.cmake['config_vars'] += ['-G"Ninja Multi-Config"']
-            cfg.cmake['build_vars'] = ['--config Release']
-        case 'mingw':
-            cfg.cmake['config_vars'] = [ '-G"MinGW Makefiles"', '-DCMAKE_BUILD_TYPE=Release' ]
-        case _:
-            continue
+    configs_out:list = []
+    for generator in ['msvc', 'ninja', 'ninja-multi', 'mingw']:
+        cfg = copy.deepcopy(config)
 
-    # Toolchain
-    match toolchain.name, generator:
-        case 'msvc', 'msvc' | 'ninja' | 'ninja-multi':
-            pass
+        setattr( cfg, 'gen', generator )
+        if generator != cfg.toolchain.name:
+            cfg.name += f".{generator}"
 
-        case 'llvm', 'ninja' | 'ninja-multi':
-            cfg.cmake['toolchain_file'] = "toolchains/w64-llvm.cmake"
+        match generator:
+            case 'msvc':
+                _A = {'x86_32':'Win32', 'x86_64':'x64', 'arm64':'ARM64'}
+                if cfg.toolchain.name != generator: continue
+                cfg.cmake['generator'] = 'Visual Studio 17 2022'
+                cfg.cmake['config_vars'].append( f'-A {_A[cfg.arch]}')
+                cfg.cmake['tool_vars'] = ['-nologo', '-verbosity:normal', "-consoleLoggerParameters:'ShowCommandLine;ForceNoAlign'"]
+            case 'ninja':
+                cfg.cmake['generator'] = 'Ninja'
+            case 'ninja-multi':
+                cfg.cmake['generator'] = 'Ninja Multi-Config'
+            case 'mingw':
+                if cfg.toolchain.name != 'mingw64': continue
+                cfg.cmake['generator'] = 'MinGW Makefiles'
+            case _:
+                continue
 
-        case 'llvm-mingw', 'ninja' | 'ninja-multi':
-            pass
+        if not configure_variant( cfg ): continue
 
-        case 'msys2-ucrt64' | 'msys2-clang64' | 'msys2-mingw64' | 'msys2-mingw32', \
-            'ninja' | 'ninja-multi':
-            pass
+        configs_out.append( cfg )
+    return configs_out
 
-        case 'mingw64', 'mingw':
-            pass
+# MARK: Tool
+def expand_build_tools( config:SimpleNamespace ) -> list:
+    configs_out:list = []
+    for tool in ['scons','cmake']:
+        cfg = copy.deepcopy(config)
+        setattr( cfg, 'build_tool', tool )
 
-        case _:
-            continue
+        match tool:
+            # case 'scons':
+                # configs_out += expand_scons( cfg )
+            case 'cmake':
+                configs_out += expand_cmake( cfg )
+            case _:
+                continue
 
-    project_config.build_configs[cfg.name] = cfg
+    return configs_out
 
+# MARK: Variant
+def expand_variant( config:SimpleNamespace ) -> list:
+    configs_out:list = []
+    for variant in variations:
+        cfg = copy.deepcopy(config)
 
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │    _           _         _    _                                            │
-# │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
-# │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
-# │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-# We only have android here, but we might be able to add msvc later.
-for toolchain, generator in itertools.product( [toolchains['android']], generators ):
+        setattr( cfg, 'variant', variant )
+        if variant != 'default':
+            cfg.name += f'.{variant}'
 
-    cfg = SimpleNamespace(**{
-        'name' : f'w64.{toolchain.name}.{generator}',
-        'toolchain':copy.deepcopy(toolchain),
-        'verbs':['source','configure', 'prepare', 'build'],
-        'script': cmake_script,
-        'cmake':{
-            'build_dir':'build-cmake',
-            'godot_build_profile':'build_profile.json',
-            'config_vars':[],
-            'build_vars':[],
-            'targets':['gdexample'],
-        },
-    })
+        configs_out += expand_build_tools( cfg )
+    return configs_out
 
-    # TODO I can add more types of android build here
-    cfg.cmake['toolchain_file'] = 'C:/androidsdk/ndk/23.2.8568313/build/cmake/android.toolchain.cmake'
-    cfg.cmake['config_vars'] += [ "-DANDROID_PLATFORM=latest", "-DANDROID_ABI=x86_64"]
+# MARK: Platform
+def expand_platforms( config:SimpleNamespace ) -> list:
+    configs_out:list = []
+    for platform in ['android', 'ios', 'linux', 'macos', 'web', 'windows']:
+        cfg = copy.deepcopy(config)
 
-    match generator:
-        case 'msvc': continue # Skip MSVC
-        case 'ninja':
-            cfg.cmake['config_vars'] += ['-G"Ninja"', '-DCMAKE_BUILD_TYPE=Release']
-        case 'ninja-multi':
-            cfg.cmake['config_vars'] += ['-G"Ninja Multi-Config"']
-            cfg.cmake['build_vars'].append('--config Release')
-        case _:
-            continue
+        setattr( cfg, 'platform', platform )
+        cfg.name = f"{cfg.host}.{cfg.toolchain.name}.{platform}.{cfg.arch}"
 
-    project_config.build_configs[cfg.name] = cfg
+        # Filter out host system capabilities
+        match sys.platform:
+            case 'windows':
+                if platform not in ['android', 'web','windows']: continue
+            case 'darwin':
+                if platform not in ['android', 'ios', 'macos', 'web']: continue
+            case 'linux':
+                if platform not in ['android', 'linux', 'web', 'windows']: continue
 
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │ __      __   _                                                             │
-# │ \ \    / /__| |__                                                          │
-# │  \ \/\/ / -_) '_ \                                                         │
-# │   \_/\_/\___|_.__/                                                         │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-# There isn only one toolchain right now, and thats emscripten.
-for toolchain, generator in itertools.product( [toolchains['emsdk']], generators ):
-    cfg = SimpleNamespace(**{
-        'name' : f'w64.{toolchain.name}.{generator}',
-        'toolchain':copy.deepcopy(toolchain),
-        'verbs':['source', 'configure', 'fresh', 'build'],
-        'script':cmake_script,
-        'cmake':{
-            'build_dir':'build-cmake',
-            'godot_build_profile':'build_profile.json',
-            'config_vars':[],
-            'build_vars':[],
-            'targets':['gdexample'],
-        },
-    })
+        # Filter out toolchain capabilities
+        match cfg.toolchain.name:
+            case 'android':
+                if platform != 'android': continue
+            case 'emsdk':
+                if platform != 'web': continue
 
-    cfg.cmake['toolchain_file'] = 'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
+        match platform:
+            case "windows":
+                pass
 
-    match generator:
-        case 'msvc': continue # Skip MSVC
-        case 'ninja':
-            cfg.cmake['config_vars'] += ['-G"Ninja"', '-DCMAKE_BUILD_TYPE=Release']
-        case 'ninja-multi':
-            cfg.cmake['config_vars'] += ['-G"Ninja Multi-Config"']
-            cfg.cmake['build_vars'].append('--config Release')
-        case _:
-            continue
+            case "android":
+                if cfg.toolchain.name != 'android': continue
+                cfg.name = f"{config.host}.{platform}.{cfg.arch}"
 
-    project_config.build_configs[cfg.name] = cfg
+            case "web":
+                if cfg.toolchain.name != 'emsdk': continue
+                cfg.name = f"{config.host}.{platform}"
+
+            case _:
+                continue
+        configs_out += expand_variant( cfg )
+    return configs_out
 
 
-# MARK: Linux
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │                      ██      ██ ███    ██ ██    ██ ██   ██                 │
-# │                      ██      ██ ████   ██ ██    ██  ██ ██                  │
-# │                      ██      ██ ██ ██  ██ ██    ██   ███                   │
-# │                      ██      ██ ██  ██ ██ ██    ██  ██ ██                  │
-# │                      ███████ ██ ██   ████  ██████  ██   ██                 │
-# ╘════════════════════════════════════════════════════════════════════════════╛
-"""
-== Platforms ==
-- Linux
-- MacOS
-- iOS
-- Windows
-- Android
-- Web
-== Toolchains ==
-- OSXCross
-- cctools(for iOS)
-- gcc
-- clang
-- riscv
-- mingw32
-- android(clang)
-- emsdk(clang)
-"""
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _    _                                                                    │
-# │ | |  (_)_ _ _  ___ __                                                      │
-# │ | |__| | ' \ || \ \ /                                                      │
-# │ |____|_|_||_\_,_/_\_\                                                      │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+def generate_configs():
+    for config in expand_config( base_config() ):
+        for cfg in expand_platforms( config ):
+            project_config.build_configs[cfg.name] = cfg
 
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │    _           _         _    _                                            │
-# │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
-# │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
-# │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │ __      __   _                                                             │
-# │ \ \    / /__| |__                                                          │
-# │  \ \/\/ / -_) '_ \                                                         │
-# │   \_/\_/\___|_.__/                                                         │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# MARK: MacOS
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │                   ███    ███  █████   ██████  ██████  ███████              │
-# │                   ████  ████ ██   ██ ██      ██    ██ ██                   │
-# │                   ██ ████ ██ ███████ ██      ██    ██ ███████              │
-# │                   ██  ██  ██ ██   ██ ██      ██    ██      ██              │
-# │                   ██      ██ ██   ██  ██████  ██████  ███████              │
-# ╘════════════════════════════════════════════════════════════════════════════╛
-"""
-== Platforms ==
-- MacOS
-
-- android
-- web
-== Toolchains ==
-- appleclang
-- android(clang)
-- emsdk(clang)
-"""
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  __  __          ___  ___                                                  │
-# │ |  \/  |__ _ __ / _ \/ __|                                                 │
-# │ | |\/| / _` / _| (_) \__ \                                                 │
-# │ |_|  |_\__,_\__|\___/|___/                                                 │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _  ___  ___                                                               │
-# │ (_)/ _ \/ __|                                                              │
-# │ | | (_) \__ \                                                              │
-# │ |_|\___/|___/                                                              │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │    _           _         _    _                                            │
-# │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
-# │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
-# │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │ __      __   _                                                             │
-# │ \ \    / /__| |__                                                          │
-# │  \ \/\/ / -_) '_ \                                                         │
-# │   \_/\_/\___|_.__/                                                         │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+generate_configs()

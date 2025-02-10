@@ -268,7 +268,7 @@ darwin_toolchains.append( SimpleNamespace(**{
 import sys
 toolchains:dict = {}
 match sys.platform:
-    case 'windows':
+    case 'win32':
         for tc in windows_toolchains:
             toolchains[tc.name] = tc
     case 'darwin':

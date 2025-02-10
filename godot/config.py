@@ -76,7 +76,102 @@ def scons_script( config:dict, console:rich.console.Console ):
 # ╘════════════════════════════════════════════════════════════════════════════╛
 
 variations = ['default', 'double']
-platforms = ['windows','web','android']
+
+def expand_variations( config:SimpleNamespace ) -> list:
+    configs_out:list = []
+    for variant in variations:
+        cfg = copy.deepcopy(config)
+
+        match variant:
+            case "default":
+                pass
+
+            case "double":
+                # what's the point in using double precision on 32 bit architectures.
+                if config.arch not in ['x86_64', 'arm64']: continue
+
+                cfg.name += f".{variant}"
+                cfg.scons["build_vars"].append("precision=double")
+
+            case _:
+                print( f"skipping variant: {variant}" )
+                continue
+
+        configs_out.append( cfg )
+    return configs_out
+
+def expand_platforms( config:SimpleNamespace ) -> list:
+    configs_out:list = []
+    for platform in ['windows','web','android']:
+        cfg = copy.deepcopy(config)
+
+        setattr( cfg, 'platform', platform )
+        cfg.scons["build_vars"].append(f"platform={platform}")
+
+        cfg.name = f"{cfg.host}.{cfg.toolchain.name}.{platform}.{cfg.arch}"
+
+        if platform == 'web' and config.toolchain.name != 'emsdk': continue
+        if config.toolchain.name == 'emsdk' and platform != 'web': continue
+
+        if platform == 'android' and config.toolchain.name != 'android': continue
+        if config.toolchain.name == 'android' and platform != 'android': continue
+
+        match platform:
+            case "windows":
+                pass
+
+            case "android" | 'web':
+                cfg.name = f"{config.host}.{platform}"
+
+            case _:
+                print( f"skipping platform: {platform}" )
+                continue
+        configs_out += expand_variations( cfg )
+    return configs_out
+
+def expand_arch( config:SimpleNamespace ) -> list:
+    # List of CPU architectures from the arch setting in godot
+    # (auto|x86_32|x86_64|arm32|arm64|rv64|ppc32|ppc64|wasm32|loongarch64)
+    configs_out:list = []
+    for arch in config.toolchain.arch:
+        cfg = copy.deepcopy(config)
+
+        cfg.name += f'.{arch}'
+        setattr( cfg, 'arch', arch )
+        cfg.scons['build_vars'].append(f'arch={arch}')
+
+        configs_out += expand_platforms( cfg )
+    return configs_out
+
+
+def expand_toolchains( config:SimpleNamespace ) -> list:
+    configs_out:list = []
+    for toolchain in toolchains.values():
+        cfg = copy.deepcopy(config)
+
+        cfg.name += f".{toolchain.name}"
+        setattr(cfg, 'toolchain', toolchain )
+
+        match toolchain.name:
+            case "msvc" | 'emsdk' | 'android':
+                pass
+
+            case "llvm":
+                cfg.scons["build_vars"].append("use_llvm=yes")
+
+            case "llvm-mingw" | "msys2-clang64":
+                cfg.scons["build_vars"].append("use_mingw=yes")
+                cfg.scons["build_vars"].append("use_llvm=yes")
+
+            case "mingw64" | "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
+                cfg.scons["build_vars"].append("use_mingw=yes")
+
+            case _:
+                print( f"skipping toolchain: {toolchain.name}" )
+                continue
+
+        configs_out += expand_arch( cfg )
+    return configs_out
 
 def base_config() -> SimpleNamespace:
     import platform
@@ -100,140 +195,15 @@ def base_config() -> SimpleNamespace:
         'verbs':['source', 'build'],
         "scons": {
             "targets": ["template_release", "template_debug", "editor"],
-            "build_vars":["verbose=yes", "compiledb=yes"]
+            "build_vars":["compiledb=yes"]
         }
-
     })
 
-def expand_toolchains( configs_in:list ) -> list:
-    configs_out:list = []
-    for config in configs_in:
-        for toolchain in toolchains.values():
-            cfg = copy.deepcopy(config)
+def generate_configs():
+    for cfg in  expand_toolchains( base_config() ):
+        project_config.build_configs[cfg.name] = cfg
 
-            cfg.name += f".{toolchain.name}"
-            setattr(cfg, 'toolchain', toolchain )
-
-
-            match toolchain.name:
-                case "msvc" | 'emsdk' | 'android':
-                    pass
-
-                case "llvm":
-                    cfg.scons["build_vars"].append("use_llvm=yes")
-
-                case "llvm-mingw" | "msys2-clang64":
-                    cfg.scons["build_vars"].append("use_mingw=yes")
-                    cfg.scons["build_vars"].append("use_llvm=yes")
-
-                case "mingw64" | "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
-                    cfg.scons["build_vars"].append("use_mingw=yes")
-
-                case _:
-                    print( f"skipping toolchain: {toolchain.name}" )
-                    continue
-
-            configs_out.append( cfg )
-    return configs_out
-
-def expand_platforms( configs_in:list ) -> list:
-    configs_out:list = []
-    for config in configs_in:
-        for platform in platforms:
-            cfg = copy.deepcopy(config)
-
-            setattr( cfg, 'platform', platform )
-            cfg.name += f".{platform}"
-
-            if platform == 'web' and config.toolchain.name != 'emsdk': continue
-            if config.toolchain.name == 'emsdk' and platform != 'web': continue
-
-            if platform == 'android' and config.toolchain.name != 'android': continue
-            if config.toolchain.name == 'android' and platform != 'android': continue
-
-            match platform:
-                case "windows":
-                    pass
-
-                case "android":
-                    cfg.name = f"{config.host}.{platform}"
-                    cfg.scons["build_vars"].append("platform=android")
-
-                case "web":
-                    cfg.name = f"{config.host}.{platform}"
-                    cfg.scons["build_vars"].append("platform=web")
-
-                case _:
-                    print( f"skipping platform: {platform}" )
-                    continue
-            configs_out.append( cfg )
-    return configs_out
-
-def expand_arch( configs_in:list ) -> list:
-    # List of CPU architectures from the arch setting in godot
-    # (auto|x86_32|x86_64|arm32|arm64|rv64|ppc32|ppc64|wasm32|loongarch64)
-
-    configs_out:list = []
-    for config in configs_in:
-        for arch in config.toolchain.arch:
-            cfg = copy.deepcopy(config)
-
-            setattr( cfg, 'arch', arch )
-
-            match config.platform:
-                case 'web':
-                    pass
-                case _:
-                    cfg.name += f".{arch}"
-
-            configs_out.append( cfg )
-    return configs_out
-
-def expand_variations( configs_in:list ) -> list:
-    configs_out:list = []
-    for config in configs_in:
-        for variant in variations:
-            cfg = copy.deepcopy(config)
-
-            match variant:
-                case "default":
-                    pass
-
-                case "double":
-                    # what's the point in using double precision on 32 bit architectures.
-                    if config.arch not in ['x86_64', 'arm64']: continue
-
-                    cfg.name += f".{variant}"
-                    cfg.scons["build_vars"].append("precision=double")
-
-                case _:
-                    print( f"skipping variant: {variant}" )
-                    continue
-
-            configs_out.append( cfg )
-    return configs_out
-
-def generate():
-    configs = [base_config()]
-    # "host_os"
-
-    configs = expand_toolchains(configs)
-    # "host_os.toolchain"
-
-    configs = expand_platforms(configs)
-    # "host_os.toolchain.platform"
-
-    configs = expand_arch(configs)
-    # "host_os.toolchain.platform.arch"
-
-    configs = expand_variations(configs)
-    # "host_os.toolchain.platform.arch.variant"
-
-    for config in configs:
-        project_config.build_configs[config.name] = config
-        # TODO Update available verbs
-
-generate()
+generate_configs()
 
 # MARK: Linux
 # ╒════════════════════════════════════════════════════════════════════════════╕
