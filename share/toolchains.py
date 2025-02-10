@@ -183,10 +183,10 @@ def emsdk_script( config:dict, toolchain:dict ):
     emsdk_version = toolchain['version']
     #FIXME, I don't see why I don't change the stream_command to use shell
     # In this instance since I'm always calling to shell anyway
-    match os.platform:
+    match sys.platform:
         case 'win32':
             emsdk_tool = f'pwsh -Command {str(emsdk_path / 'emsdk.ps1')} '
-        case 'darwin'
+        case 'darwin':
             emsdk_tool = f'{os.environ['shell']} -c {str(emsdk_path / 'emsdk')} '
         case _:
             print("Error: There are some things to fix")
