@@ -181,7 +181,16 @@ def emsdk_script( config:dict, toolchain:dict ):
 
     emsdk_path = Path(toolchain['path'])
     emsdk_version = toolchain['version']
-    emsdk_tool = f'pwsh -Command {str(emsdk_path / 'emsdk.ps1')} '
+    #FIXME, I don't see why I don't change the stream_command to use shell
+    # In this instance since I'm always calling to shell anyway
+    match os.platform:
+        case 'win32':
+            emsdk_tool = f'pwsh -Command {str(emsdk_path / 'emsdk.ps1')} '
+        case 'darwin'
+            emsdk_tool = f'{os.environ['shell']} -c {str(emsdk_path / 'emsdk')} '
+        case _:
+            print("Error: There are some things to fix")
+            exit(1)
 
     def emsdk_is_active() -> bool:
         return True if 'EMSDK' in os.environ else False
@@ -254,6 +263,28 @@ darwin_toolchains.append( SimpleNamespace(**{
     'desc':"Default toolchain on MacOS",
     'arch':['x86_64','arm64']
     # Use clang -print-target-triple to get the host triple
+}))
+
+# MARK: Emscripten
+# ╭────────────────────────────────────────────╮
+# │  ___                  _      _             │
+# │ | __|_ __  ___ __ _ _(_)_ __| |_ ___ _ _   │
+# │ | _|| '  \(_-</ _| '_| | '_ \  _/ -_) ' \  │
+# │ |___|_|_|_/__/\__|_| |_| .__/\__\___|_||_| │
+# │                        |_|                 │
+# ╰────────────────────────────────────────────╯                               
+darwin_toolchains.append( SimpleNamespace(**{
+    'name':'emsdk',
+    'desc':'[Emscripten](https://emscripten.org/)',
+    'path':Path('/Users/enetheru/emsdk'),
+    'version':'3.1.64',
+    'verbs':['update', 'script'],
+    'update':emsdk_update,
+    'script':emsdk_script,
+    "arch":['wasm32'], #wasm64
+    'cmake':{
+        'toolchain':'/Users/enetheru/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
+    }
 }))
 
 # MARK: Select
