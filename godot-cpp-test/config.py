@@ -10,12 +10,20 @@ from share.actions import git_checkout
 from share.run import stream_command
 from share.toolchains import toolchains
 from share.format import *
+from share.config import expand_config
 
 project_config = SimpleNamespace(**{
+    'name'      : 'godot-cpp-test',
     'gitUrl'    : "https://github.com/enetheru/godot-cpp-test.git/",
     'gitHash'   : "main",
     'build_configs' : {}
 })
+
+
+def base_config() -> SimpleNamespace:
+    return SimpleNamespace( **{
+        "name": '',
+    })
 
 # MARK: Notes
 # ╭────────────────────────────────────────────────────────────────────────────╮

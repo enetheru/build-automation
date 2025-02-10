@@ -253,6 +253,7 @@ darwin_toolchains.append( SimpleNamespace(**{
     'name':"appleclang",
     'desc':"Apple's Clang",
     'arch':['x86_64','arm64']
+    # Use clang -print-target-triple to get the host triple
 }))
 
 # MARK: Select
