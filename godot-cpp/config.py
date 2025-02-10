@@ -345,14 +345,21 @@ def expand_cmake( config:SimpleNamespace ) -> list:
                 if cfg.toolchain.name != generator: continue
                 cfg.cmake['generator'] = 'Visual Studio 17 2022'
                 cfg.cmake['config_vars'].append( f'-A {_A[cfg.arch]}')
+                cfg.cmake['build_vars'].append('--config Release')
                 cfg.cmake['tool_vars'] = ['-nologo', '-verbosity:normal', "-consoleLoggerParameters:'ShowCommandLine;ForceNoAlign'"]
+
             case 'ninja':
                 cfg.cmake['generator'] = 'Ninja'
+                cfg.cmake['config_vars'].append('-DCMAKE_BUILD_TYPE=Release')
+
             case 'ninja-multi':
                 cfg.cmake['generator'] = 'Ninja Multi-Config'
+                cfg.cmake['build_vars'].append('--config Release')
+
             case 'mingw':
                 if cfg.toolchain.name != 'mingw64': continue
                 cfg.cmake['generator'] = 'MinGW Makefiles'
+                cfg.cmake['config_vars'].append('-DCMAKE_BUILD_TYPE=Release')
             case _:
                 print( f"unknown generator: {generator}" )
                 continue
@@ -428,6 +435,13 @@ def expand_variant( config:SimpleNamespace ) -> list:
         setattr( cfg, 'variant', variant )
         if variant != 'default':
             cfg.name += f'.{variant}'
+
+        # TODO If I want to test against multiple binaries then I need to specify multiple.
+        '{root}/godot/{host}.{toolchain}.{platform}.{arch}.{variant}/bin/godot.{platform}.{target}[.double].{arch}[.llvm].console.exe'
+        # For now I will just focus on the current OS
+        setattr(cfg, 'godot_e', Path('C:/build/godot/w64.msvc.windows.x86_64/bin/godot.windows.editor.x86_64.console'))
+        setattr(cfg, 'godot_tr', Path('C:/build/godot/w64.msvc.windows.x86_64/bin/godot.windows.template_release.x86_64.console'))
+        setattr(cfg, 'godot_td', Path('C:/build/godot/w64.msvc.windows.x86_64/bin/godot.windows.template_debug.x86_64.console'))
 
         configs_out += expand_build_tools( cfg )
     return configs_out
@@ -514,7 +528,6 @@ def base_config() -> SimpleNamespace:
         case 'Darwin':
             host = 'macos'
 
-
     if host == 'unknown':
         print( "Failed to match host platform")
         exit(1)
@@ -540,9 +553,9 @@ generate_configs()
 # │   \_/\_/ |_|_||_\__,_\___/\_/\_//__/                                       │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-#
-#
-# for build_tool, toolchain in itertools.product( build_tools, toolchains.values() ):
+
+
+# for build_tool, toolchain in itertools.product( ['scons','cmake'], toolchains.values() ):
 #     cfg = SimpleNamespace(**{
 #         'name' : f'w64.{build_tool}.{toolchain.name}',
 #         'toolchain':copy.deepcopy(toolchain),
@@ -600,7 +613,7 @@ generate_configs()
 #             alt = copy.deepcopy( cfg )
 #             alt.cmake['config_vars'].append('-G"Visual Studio 17 2022"')
 #             alt.cmake['build_vars'].append('--config Release')
-#             alt.cmake['tool_vars'] = msbuild_extras
+#             alt.cmake['tool_vars'] = ['-nologo', '-verbosity:normal', "-consoleLoggerParameters:'ShowCommandLine;ForceNoAlign'"]
 #             project_config.build_configs[alt.name] = alt
 #
 #             # Ninja
@@ -697,7 +710,7 @@ generate_configs()
 # # │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
 # # │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
 # # ╰────────────────────────────────────────────────────────────────────────────╯
-# for bt, tc in itertools.product( build_tools, toolchains.values() ):
+# for bt, tc in itertools.product( ['scons', 'cmake'], toolchains.values() ):
 #     build_tool:str = bt
 #     toolchain:SimpleNamespace = tc
 #
@@ -762,7 +775,7 @@ generate_configs()
 # # │  \ \/\/ / -_) '_ \                                                         │
 # # │   \_/\_/\___|_.__/                                                         │
 # # ╰────────────────────────────────────────────────────────────────────────────╯
-# for build_tool, toolchain in itertools.product( build_tools, toolchains.values() ):
+# for build_tool, toolchain in itertools.product( ['scons','cmake'], toolchains.values() ):
 #     cfg = SimpleNamespace(**{
 #         'name' : f'w64.{build_tool}.{toolchain.name}',
 #         'toolchain':copy.deepcopy(toolchain),
@@ -805,98 +818,3 @@ generate_configs()
 #
 #     project_config.build_configs[cfg.name] = cfg
 #
-
-
-# MARK: Linux
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │                      ██      ██ ███    ██ ██    ██ ██   ██                 │
-# │                      ██      ██ ████   ██ ██    ██  ██ ██                  │
-# │                      ██      ██ ██ ██  ██ ██    ██   ███                   │
-# │                      ██      ██ ██  ██ ██ ██    ██  ██ ██                  │
-# │                      ███████ ██ ██   ████  ██████  ██   ██                 │
-# ╘════════════════════════════════════════════════════════════════════════════╛
-"""
-== Platforms ==
-- Linux
-- MacOS
-- iOS
-- Windows
-- Android
-- Web
-== Toolchains ==
-- OSXCross
-- cctools(for iOS)
-- gcc
-- clang
-- riscv
-- mingw32
-- android(clang)
-- emsdk(clang)
-"""
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _    _                                                                    │
-# │ | |  (_)_ _ _  ___ __                                                      │
-# │ | |__| | ' \ || \ \ /                                                      │
-# │ |____|_|_||_\_,_/_\_\                                                      │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │    _           _         _    _                                            │
-# │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
-# │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
-# │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │ __      __   _                                                             │
-# │ \ \    / /__| |__                                                          │
-# │  \ \/\/ / -_) '_ \                                                         │
-# │   \_/\_/\___|_.__/                                                         │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# MARK: MacOS
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │                   ███    ███  █████   ██████  ██████  ███████              │
-# │                   ████  ████ ██   ██ ██      ██    ██ ██                   │
-# │                   ██ ████ ██ ███████ ██      ██    ██ ███████              │
-# │                   ██  ██  ██ ██   ██ ██      ██    ██      ██              │
-# │                   ██      ██ ██   ██  ██████  ██████  ███████              │
-# ╘════════════════════════════════════════════════════════════════════════════╛
-"""
-== Platforms ==
-- MacOS
-
-- android
-- web
-== Toolchains ==
-- appleclang
-- android(clang)
-- emsdk(clang)
-"""
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  __  __          ___  ___                                                  │
-# │ |  \/  |__ _ __ / _ \/ __|                                                 │
-# │ | |\/| / _` / _| (_) \__ \                                                 │
-# │ |_|  |_\__,_\__|\___/|___/                                                 │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _  ___  ___                                                               │
-# │ (_)/ _ \/ __|                                                              │
-# │ | | (_) \__ \                                                              │
-# │ |_|\___/|___/                                                              │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │    _           _         _    _                                            │
-# │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
-# │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
-# │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │ __      __   _                                                             │
-# │ \ \    / /__| |__                                                          │
-# │  \ \/\/ / -_) '_ \                                                         │
-# │   \_/\_/\___|_.__/                                                         │
-# ╰────────────────────────────────────────────────────────────────────────────╯

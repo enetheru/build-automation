@@ -1,6 +1,7 @@
 import copy
 import inspect
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import rich
@@ -240,6 +241,13 @@ def variants( config:SimpleNamespace ) -> list:
         if variant != 'default':
             cfg.name += f'.{variant}'
 
+        # TODO If I want to test against multiple binaries then I need to specify multiple.
+        '{root}/godot/{host}.{toolchain}.{platform}.{arch}.{variant}/bin/godot.{platform}.{target}[.double].{arch}[.llvm].console.exe'
+        # For now I will just focus on the current OS
+        setattr(cfg, 'godot_e', Path('C:/build/godot/w64.msvc.windows.x86_64/bin/godot.windows.editor.x86_64.console'))
+        setattr(cfg, 'godot_tr', Path('C:/build/godot/w64.msvc.windows.x86_64/bin/godot.windows.template_release.x86_64.console'))
+        setattr(cfg, 'godot_td', Path('C:/build/godot/w64.msvc.windows.x86_64/bin/godot.windows.template_debug.x86_64.console'))
+
         configs_out.append( cfg )
     return configs_out
 
@@ -289,13 +297,9 @@ def expand( configs:list, func ) -> list:
         
 def generate_configs():
     configs:list = expand_config( base_config() )
-    print( f'after config, len = {len(configs)}')
     configs = expand( configs, platforms )
-    print( f'after platforms, len = {len(configs)}')
     configs = expand( configs, variants )
-    print( f'after variants, len = {len(configs)}')
     configs = expand( configs, build_tools )
-    print( f'after build_tools, len = {len(configs)}')
 
     for config in configs:
         project_config.build_configs[config.name] = config
