@@ -1,11 +1,19 @@
 #!/usr/bin/env python
 import copy
+from copy import deepcopy
 import sys
 from types import SimpleNamespace
+from share.expand_config import expand_config
 
 import rich
 
 from share.toolchains import toolchains
+
+def expand( configs:list, func ) -> list:
+    configs_out:list = []
+    for config in configs:
+        configs_out += func( config )
+    return configs_out
 
 # ╒════════════════════════════════════════════════════════════════════════════╕
 # │                    ██████   ██████  ██████   ██████  ████████              │
@@ -19,6 +27,7 @@ project_config = SimpleNamespace(
     **{"gitUrl": "https://github.com/godotengine/godot.git/", "build_configs": {}}
     # TODO Update Verbs
 )
+
 
 # MARK: Scripts
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -261,16 +270,60 @@ generate_configs()
 # │                   ██      ██ ██   ██  ██████  ██████  ███████              │
 # ╘════════════════════════════════════════════════════════════════════════════╛
 """
-== Platforms ==
-- MacOS
-
-- android
-- web
 == Toolchains ==
 - appleclang
 - android(clang)
 - emsdk(clang)
+== Platforms ==
+- MacOS
+- iOS
+- android
+- web
 """
+
+build_config_base = SimpleNamespace(**{
+    'name':'',
+    'script':scons_script,
+    'verbs':['source', 'build'],
+    "scons": {
+        "targets": ["template_release", "template_debug", "editor"],
+        "build_vars":["compiledb=yes"]
+    }
+})
+
+def macos_platforms( config:SimpleNamespace ) -> list:
+    configs_out:list = []
+    for platform in ['macos', 'ios', 'android', 'web']:
+        cfg = deepcopy( config )
+        setattr( cfg, 'platform', platform )
+
+        cfg.name = f"{cfg.host}.{cfg.toolchain.name}.{platform}.{cfg.arch}"
+        cfg.scons["build_vars"].append(f"platform={platform}")
+
+        if platform == 'web' and config.toolchain.name != 'emsdk': continue
+        if config.toolchain.name == 'emsdk' and platform != 'web': continue
+
+        if platform == 'android' and config.toolchain.name != 'android': continue
+        if config.toolchain.name == 'android' and platform != 'android': continue
+
+        match platform:
+            case "android" | 'web':
+                cfg.name = f"{config.host}.{platform}"
+            case 'ios': # I don't know how to do this yet
+                continue
+
+        configs_out.append( cfg )
+    return configs_out
+
+def generate_macos_configs():
+    configs = expand_config( build_config_base )
+    configs = expand( configs, macos_platforms )
+    configs = expand( configs, expand_variations )
+    
+    for cfg in configs:
+        project_config.build_configs[cfg.name] = cfg
+
+generate_macos_configs()
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  __  __          ___  ___                                                  │
 # │ |  \/  |__ _ __ / _ \/ __|                                                 │
