@@ -1,13 +1,8 @@
 #!/usr/bin/env python
 import copy
-from copy import deepcopy
-import sys
 from types import SimpleNamespace
-from share.expand_config import expand_config
-
 import rich
-
-from share.toolchains import toolchains
+from share.expand_config import expand_host_env
 
 def expand( configs:list, func ) -> list:
     configs_out:list = []
@@ -75,16 +70,30 @@ def scons_script( config:dict, console:rich.console.Console ):
     if not timer.ok():
         exit(1)
 
-# MARK: Windows
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │            ██     ██ ██ ███    ██ ██████   ██████  ██     ██ ███████       │
-# │            ██     ██ ██ ████   ██ ██   ██ ██    ██ ██     ██ ██            │
-# │            ██  █  ██ ██ ██ ██  ██ ██   ██ ██    ██ ██  █  ██ ███████       │
-# │            ██ ███ ██ ██ ██  ██ ██ ██   ██ ██    ██ ██ ███ ██      ██       │
-# │             ███ ███  ██ ██   ████ ██████   ██████   ███ ███  ███████       │
-# ╘════════════════════════════════════════════════════════════════════════════╛
+# MARK: Configs
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │   ___           __ _                                                       │
+# │  / __|___ _ _  / _(_)__ _ ___                                              │
+# │ | (__/ _ \ ' \|  _| / _` (_-<                                              │
+# │  \___\___/_||_|_| |_\__, /__/                                              │
+# │                     |___/                                                  │
+# ╰────────────────────────────────────────────────────────────────────────────╯
 
 variations = ['default', 'double']
+
+def filter_configs(  cfg:SimpleNamespace ) -> list:
+    match cfg.toolchain.name:
+        case "llvm":
+            cfg.scons["build_vars"].append("use_llvm=yes")
+
+        case "llvm-mingw" | "msys2-clang64":
+            cfg.scons["build_vars"].append("use_mingw=yes")
+            cfg.scons["build_vars"].append("use_llvm=yes")
+
+        case "mingw64" | "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
+            cfg.scons["build_vars"].append("use_mingw=yes")
+
+    return [cfg]
 
 def expand_variations( config:SimpleNamespace ) -> list:
     configs_out:list = []
@@ -97,7 +106,7 @@ def expand_variations( config:SimpleNamespace ) -> list:
 
             case "double":
                 # what's the point in using double precision on 32 bit architectures.
-                if config.arch not in ['x86_64', 'arm64']: continue
+                if cfg.arch not in ['x86_64', 'arm64']: continue
 
                 cfg.name += f".{variant}"
                 cfg.scons["build_vars"].append("precision=double")
@@ -109,97 +118,9 @@ def expand_variations( config:SimpleNamespace ) -> list:
         configs_out.append( cfg )
     return configs_out
 
-def expand_platforms( config:SimpleNamespace ) -> list:
-    configs_out:list = []
-    for platform in ['windows','web','android']:
-        cfg = copy.deepcopy(config)
-
-        setattr( cfg, 'platform', platform )
-        cfg.scons["build_vars"].append(f"platform={platform}")
-
-        cfg.name = f"{cfg.host}.{cfg.toolchain.name}.{platform}.{cfg.arch}"
-
-        if platform == 'web' and config.toolchain.name != 'emsdk': continue
-        if config.toolchain.name == 'emsdk' and platform != 'web': continue
-
-        if platform == 'android' and config.toolchain.name != 'android': continue
-        if config.toolchain.name == 'android' and platform != 'android': continue
-
-        match platform:
-            case "windows":
-                pass
-
-            case "android" | 'web':
-                cfg.name = f"{config.host}.{platform}"
-
-            case _:
-                print( f"skipping platform: {platform}" )
-                continue
-        configs_out += expand_variations( cfg )
-    return configs_out
-
-def expand_arch( config:SimpleNamespace ) -> list:
-    # List of CPU architectures from the arch setting in godot
-    # (auto|x86_32|x86_64|arm32|arm64|rv64|ppc32|ppc64|wasm32|loongarch64)
-    configs_out:list = []
-    for arch in config.toolchain.arch:
-        cfg = copy.deepcopy(config)
-
-        cfg.name += f'.{arch}'
-        setattr( cfg, 'arch', arch )
-        cfg.scons['build_vars'].append(f'arch={arch}')
-
-        configs_out += expand_platforms( cfg )
-    return configs_out
-
-
-def expand_toolchains( config:SimpleNamespace ) -> list:
-    configs_out:list = []
-    for toolchain in toolchains.values():
-        cfg = copy.deepcopy(config)
-
-        cfg.name += f".{toolchain.name}"
-        setattr(cfg, 'toolchain', toolchain )
-
-        match toolchain.name:
-            case "msvc" | 'emsdk' | 'android':
-                pass
-
-            case "llvm":
-                cfg.scons["build_vars"].append("use_llvm=yes")
-
-            case "llvm-mingw" | "msys2-clang64":
-                cfg.scons["build_vars"].append("use_mingw=yes")
-                cfg.scons["build_vars"].append("use_llvm=yes")
-
-            case "mingw64" | "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
-                cfg.scons["build_vars"].append("use_mingw=yes")
-
-            case _:
-                print( f"skipping toolchain: {toolchain.name}" )
-                continue
-
-        configs_out += expand_arch( cfg )
-    return configs_out
-
-def base_config() -> SimpleNamespace:
-    import platform
-    host = 'unknown'
-    match platform.system():
-        case 'Windows':
-            host  = 'w'
-
-    match platform.architecture()[0]:
-        case '64bit':
-            host += '64'
-
-    if host == 'unknown':
-        print( "Failed to match host platform")
-        exit(1)
-
-    return SimpleNamespace( **{
-        "name": host,
-        "host": host,
+def generate_configs():
+    config_base = SimpleNamespace(**{
+        'name':'',
         'script':scons_script,
         'verbs':['source', 'build'],
         "scons": {
@@ -208,146 +129,17 @@ def base_config() -> SimpleNamespace:
         }
     })
 
-def generate_configs():
-    for cfg in  expand_toolchains( base_config() ):
-        project_config.build_configs[cfg.name] = cfg
+    configs = expand_host_env( config_base )
+    for cfg in configs:
+        cfg.name = f'{cfg.host}.{cfg.toolchain.name}.{cfg.arch}'
+        cfg.scons['build_vars'].append(f'platform={cfg.platform}')
+        cfg.scons['build_vars'].append(f'arch={cfg.arch}')
 
-generate_configs()
-
-# MARK: Linux
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │                      ██      ██ ███    ██ ██    ██ ██   ██                 │
-# │                      ██      ██ ████   ██ ██    ██  ██ ██                  │
-# │                      ██      ██ ██ ██  ██ ██    ██   ███                   │
-# │                      ██      ██ ██  ██ ██ ██    ██  ██ ██                  │
-# │                      ███████ ██ ██   ████  ██████  ██   ██                 │
-# ╘════════════════════════════════════════════════════════════════════════════╛
-"""
-== Platforms ==
-- Linux
-- MacOS
-- iOS
-- Windows
-- Android
-- Web
-== Toolchains ==
-- OSXCross
-- cctools(for iOS)
-- gcc
-- clang
-- riscv
-- mingw32
-- android(clang)
-- emsdk(clang)
-"""
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _    _                                                                    │
-# │ | |  (_)_ _ _  ___ __                                                      │
-# │ | |__| | ' \ || \ \ /                                                      │
-# │ |____|_|_||_\_,_/_\_\                                                      │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │    _           _         _    _                                            │
-# │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
-# │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
-# │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │ __      __   _                                                             │
-# │ \ \    / /__| |__                                                          │
-# │  \ \/\/ / -_) '_ \                                                         │
-# │   \_/\_/\___|_.__/                                                         │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# MARK: MacOS
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │                   ███    ███  █████   ██████  ██████  ███████              │
-# │                   ████  ████ ██   ██ ██      ██    ██ ██                   │
-# │                   ██ ████ ██ ███████ ██      ██    ██ ███████              │
-# │                   ██  ██  ██ ██   ██ ██      ██    ██      ██              │
-# │                   ██      ██ ██   ██  ██████  ██████  ███████              │
-# ╘════════════════════════════════════════════════════════════════════════════╛
-"""
-== Toolchains ==
-- appleclang
-- android(clang)
-- emsdk(clang)
-== Platforms ==
-- MacOS
-- iOS
-- android
-- web
-"""
-
-build_config_base = SimpleNamespace(**{
-    'name':'',
-    'script':scons_script,
-    'verbs':['source', 'build'],
-    "scons": {
-        "targets": ["template_release", "template_debug", "editor"],
-        "build_vars":["compiledb=yes"]
-    }
-})
-
-def macos_platforms( config:SimpleNamespace ) -> list:
-    configs_out:list = []
-    for platform in ['macos', 'ios', 'android', 'web']:
-        cfg = deepcopy( config )
-        setattr( cfg, 'platform', platform )
-
-        cfg.name = f"{cfg.host}.{cfg.toolchain.name}.{platform}.{cfg.arch}"
-        cfg.scons["build_vars"].append(f"platform={platform}")
-
-        if platform == 'web' and config.toolchain.name != 'emsdk': continue
-        if config.toolchain.name == 'emsdk' and platform != 'web': continue
-
-        if platform == 'android' and config.toolchain.name != 'android': continue
-        if config.toolchain.name == 'android' and platform != 'android': continue
-
-        match platform:
-            case "android" | 'web':
-                cfg.name = f"{config.host}.{platform}"
-            case 'ios': # I don't know how to do this yet
-                continue
-
-        configs_out.append( cfg )
-    return configs_out
-
-def generate_macos_configs():
-    configs = expand_config( build_config_base )
-    configs = expand( configs, macos_platforms )
     configs = expand( configs, expand_variations )
+
+    configs = expand( configs, filter_configs )
     
     for cfg in configs:
         project_config.build_configs[cfg.name] = cfg
 
-generate_macos_configs()
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  __  __          ___  ___                                                  │
-# │ |  \/  |__ _ __ / _ \/ __|                                                 │
-# │ | |\/| / _` / _| (_) \__ \                                                 │
-# │ |_|  |_\__,_\__|\___/|___/                                                 │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _  ___  ___                                                               │
-# │ (_)/ _ \/ __|                                                              │
-# │ | | (_) \__ \                                                              │
-# │ |_|\___/|___/                                                              │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │    _           _         _    _                                            │
-# │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
-# │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
-# │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │ __      __   _                                                             │
-# │ \ \    / /__| |__                                                          │
-# │  \ \/\/ / -_) '_ \                                                         │
-# │   \_/\_/\___|_.__/                                                         │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+generate_configs()
