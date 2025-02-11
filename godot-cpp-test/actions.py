@@ -1,4 +1,7 @@
+import subprocess
+from io import StringIO
 from pathlib import Path
+from subprocess import SubprocessError
 
 from share.format import *
 from share.run import stream_command
@@ -16,27 +19,33 @@ from share.run import stream_command
 def godotcpp_test( config:dict ) -> bool:
     print( figlet( 'Testing', {'font': 'small'}) )
 
+
     # FIXME use fresh to delete the .godot folder
     godot_editor = Path(config['godot_e'])
     godot_release_template = Path(config['godot_tr'])
 
     test_project_dir = Path(config['source_dir']) / 'project'
     dot_godot_dir = test_project_dir / '.godot'
+
     if not dot_godot_dir.exists():
         h4('Generating the .godot folder')
         cmd_chunks = [
             f'"{godot_editor}"',
-            '-e',
             f'--path "{test_project_dir}"',
-            '--quit',
+            '--import',
             '--headless'
         ]
-        # TODO redirect stdout to null
         try:
-            stream_command(' '.join(cmd_chunks), dry=config['dry'])
-        except subprocess.SubprocessError as e:
+            stream_command(' '.join(cmd_chunks), dry=config['dry'] )
+        except subprocess.CalledProcessError as e:
             print( '[red]Godot exited abnormally during .godot folder creation')
+            return True
+        except Exception as e:
+            print( '[red]Unable to call test process')
+            return True
 
+    print("testing Output2")
+    return False
     if not dot_godot_dir.exists():
         print('Error: Creating .godot folder')
         return True

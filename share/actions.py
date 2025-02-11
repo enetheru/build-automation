@@ -134,13 +134,19 @@ def cmake_configure(config: dict):
         raise f"Missing CMakeLists.txt in {source_dir}"
 
     # determine build directory
-    if "build_dir" in cmake.keys():
+    if "build_dir" in cmake:
         build_dir = Path(cmake["build_dir"])
     else:
         build_dir = Path("build-cmake")
 
     if not build_dir.is_absolute():
         cmake["build_dir"] = build_dir = source_dir / build_dir
+
+    toolchain_path = ''
+    if 'toolchain' in cmake:
+        toolchain_path = Path(cmake['toolchain'])
+        if not toolchain_path.is_absolute():
+            toolchain_path = config['root_dir'] / toolchain_path
 
     # Create Build Directory
     if not build_dir.is_dir():
@@ -151,11 +157,12 @@ def cmake_configure(config: dict):
 
     config_command = [
         "cmake",
-        "--fresh" if 'fresh' in config else None,
+        "--fresh" if cmake['fresh'] else None,
         "--log-level=VERBOSE" if not config["quiet"] else None,
         f'-S "{source_dir}"',
         f'-B "{build_dir}"',
-        f'-G"{config['generator']}"'if 'generator' in config else None,
+        f'-G"{cmake['generator']}"'if 'generator' in cmake else None,
+        f'--toolchain "{os.fspath(toolchain_path)}"' if toolchain_path else None
     ]
 
     if "config_vars" in cmake.keys():

@@ -1,19 +1,21 @@
 import copy
 import inspect
-import itertools
-from pathlib import Path
+from textwrap import indent
 from types import SimpleNamespace
 
 import rich
 
 from share.actions import git_checkout
-from share.run import stream_command
+from share.expand_config import expand, expand_host_env
 from share.toolchains import toolchains
 from share.format import *
 
 project_config = SimpleNamespace(**{
     'gitUrl'  : "https://github.com/enetheru/godot-orchestrator.git/",
     'gitHash':  '0ff6b380d6546d305caca48eebf3d3d9c0db018e',
+    'godot':{
+        'platforms':['android', 'ios', 'linux', 'macos', 'web', 'windows'],
+    },
     'build_configs' : {}
 })
 
@@ -46,15 +48,6 @@ project_config = SimpleNamespace(**{
 # ║                 ███████  ██████ ██   ██ ██ ██         ██    ███████                    ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
-# MARK: SCons Script
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  ___  ___               ___         _      _                               │
-# │ / __|/ __|___ _ _  ___ / __| __ _ _(_)_ __| |_                             │
-# │ \__ \ (__/ _ \ ' \(_-< \__ \/ _| '_| | '_ \  _|                            │
-# │ |___/\___\___/_||_/__/ |___/\__|_| |_| .__/\__|                            │
-# │                                      |_|                                   │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
 # MARK: CMake Script
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │   ___ __  __      _         ___         _      _                           │
@@ -75,8 +68,25 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
         return action in config['verbs'] and action in config['actions']
 
     stats:dict = dict()
-    cmake = config['cmake']
+
     timer = Timer()
+
+    # use the toolchain cmake and merge/overwrite with the build cmake
+    if 'cmake' in toolchain:
+        cmake = toolchain['cmake']
+        for key,val in config['cmake'].items():
+            if isinstance(val,list):
+                cmake[key] = cmake.get(key,[]) + val
+            if isinstance(val,str):
+                cmake[key] = val
+    else:
+        cmake = config['cmake']
+
+    config['cmake'] = cmake
+
+    import json
+    print( json.dumps( config['cmake'], indent=2 ) )
+
 
     #[=================================[ Fetch ]=================================]
     if want('source'):
@@ -85,22 +95,14 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
 
     #[===============================[ Configure ]===============================]
     if want('configure'):
-        if want('fresh'):
-            cmake['config_vars'].append('--fresh')
+        cmake['fresh'] = True if want('fresh') else False
 
-        # if 'godot_build_profile' in cmake:
-        #     profile_path = Path(cmake['godot_build_profile'])
-        #     if not profile_path.is_absolute():
-        #         profile_path = config['source_dir'] / profile_path
-        #     h4(f'using build profile: "{profile_path}"')
-            # cmake['config_vars'].append(f'-DGODOT_BUILD_PROFILE="{os.fspath(profile_path)}"')
-
-        if 'toolchain_file' in cmake:
-            toolchain_path = Path(cmake['toolchain_file'])
-            if not toolchain_path.is_absolute():
-                toolchain_path = config['root_dir'] / toolchain_path
-            h4(f'using toolchain file: "{toolchain_path}"')
-            cmake['config_vars'].append(f'--toolchain "{os.fspath(toolchain_path)}"')
+        if 'godotcpp_profile' in config:
+            profile_path = Path(config['godotcpp_profile'])
+            if not profile_path.is_absolute():
+                profile_path = config['source_dir'] / profile_path
+            h4(f'using build profile: "{profile_path}"')
+            cmake['config_vars'].append(f'-DGODOT_BUILD_PROFILE="{os.fspath(profile_path)}"')
 
         console.set_window_title('Prepare - {name}')
         stats['prepare'] = timer.time_function( config, func=cmake_configure )
@@ -143,43 +145,6 @@ def process_script( script:str ) -> str:
 # │            ██ ███ ██ ██ ██  ██ ██ ██   ██ ██    ██ ██ ███ ██      ██       │
 # │             ███ ███  ██ ██   ████ ██████   ██████   ███ ███  ███████       │
 # ╘════════════════════════════════════════════════════════════════════════════╛
-
-"""
-## Platforms
-### Windows
-#### Toolchains:
-- msvc
-    - archs [x86_32, x86_64, arm64]
-    - using clang-cl
-- llvm
-- mingw-llvm
-    - archs [x86_32, x86_64, arm64]
-- mingw64
-    - archs [x86_32, x86_64]
-- clion( mingw64 )
-- msys64.ucrt64
-- msys64.mingw32
-- msys64.mingw64
-- msys64.clang32
-- msys64.clang64
-- msys64.clangarm64
-
-### Android
-#### Toolchains:
-- android
-    - arch [arm32, arm64, x86_32, x86_64]
-    
-### Web
-#### Toolchains
-- emsdk
-
-## Variations
-- Thread/noThread
-- Profile/NoProfile
-- Precision single/double
-- Hot Re-Load ON/OFF
-- Exceptions ON/OFF
-"""
 
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │ __      ___         _                                                      │
@@ -385,98 +350,42 @@ def add_web():
 
 add_web()
 
+def filter_config( config:SimpleNamespace )-> list:
+    match config.toolchain.name:
+        case 'emsdk':
+            config.cmake['generator'] = 'Ninja'
+            config.cmake['config_varas'] = '-DCMAKE_BUILD_TYPE=Release'
 
+    return[config]
 
-# MARK: Linux
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │                      ██      ██ ███    ██ ██    ██ ██   ██                 │
-# │                      ██      ██ ████   ██ ██    ██  ██ ██                  │
-# │                      ██      ██ ██ ██  ██ ██    ██   ███                   │
-# │                      ██      ██ ██  ██ ██ ██    ██  ██ ██                  │
-# │                      ███████ ██ ██   ████  ██████  ██   ██                 │
-# ╘════════════════════════════════════════════════════════════════════════════╛
-"""
-== Platforms ==
-- Linux
-- MacOS
-- iOS
-- Windows
-- Android
-- Web
-== Toolchains ==
-- OSXCross
-- cctools(for iOS)
-- gcc
-- clang
-- riscv
-- mingw32
-- android(clang)
-- emsdk(clang)
-"""
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _    _                                                                    │
-# │ | |  (_)_ _ _  ___ __                                                      │
-# │ | |__| | ' \ || \ \ /                                                      │
-# │ |____|_|_||_\_,_/_\_\                                                      │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+def generate_configs():
+    build_base = SimpleNamespace(**{
+        'name' : '',
+        'script': cmake_script,
+        'verbs':['source','configure', 'fresh', 'build', 'test'],
+        'godotcpp_profile':'extern/godot-cpp-profile.json',
+        'cmake':{
+            'build_dir':'build-cmake',
+            'config_vars':[],
+            'build_vars':[],
+            'targets':['orchestrator'],
+        },
+        # Variables for testing
+        'godot_tr':'C:/build/godot/w64.msvc/bin/godot.windows.template_release.x86_64.console.exe',
+        'godot_td':'C:/build/godot/w64.msvc/bin/godot.windows.template_debug.x86_64.console.exe',
+        'godot_e':'C:/build/godot/w64.msvc/bin/godot.windows.editor.x86_64.console.exe',
+        # Variables to clean the logs
+        # 'clean_log':clean_log
+    })
 
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │    _           _         _    _                                            │
-# │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
-# │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
-# │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+    configs = expand_host_env( build_base )
+    for cfg in configs:
+        cfg.name = f'{cfg.host}.{cfg.toolchain.name}.{cfg.arch}'
 
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │ __      __   _                                                             │
-# │ \ \    / /__| |__                                                          │
-# │  \ \/\/ / -_) '_ \                                                         │
-# │   \_/\_/\___|_.__/                                                         │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+    configs = expand( configs, filter_config )
 
-# MARK: MacOS
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │                   ███    ███  █████   ██████  ██████  ███████              │
-# │                   ████  ████ ██   ██ ██      ██    ██ ██                   │
-# │                   ██ ████ ██ ███████ ██      ██    ██ ███████              │
-# │                   ██  ██  ██ ██   ██ ██      ██    ██      ██              │
-# │                   ██      ██ ██   ██  ██████  ██████  ███████              │
-# ╘════════════════════════════════════════════════════════════════════════════╛
-"""
-== Platforms ==
-- MacOS
+    for config in configs:
+        project_config.build_configs[config.name] = config
 
-- android
-- web
-== Toolchains ==
-- appleclang
-- android(clang)
-- emsdk(clang)
-"""
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  __  __          ___  ___                                                  │
-# │ |  \/  |__ _ __ / _ \/ __|                                                 │
-# │ | |\/| / _` / _| (_) \__ \                                                 │
-# │ |_|  |_\__,_\__|\___/|___/                                                 │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _  ___  ___                                                               │
-# │ (_)/ _ \/ __|                                                              │
-# │ | | (_) \__ \                                                              │
-# │ |_|\___/|___/                                                              │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │    _           _         _    _                                            │
-# │   /_\  _ _  __| |_ _ ___(_)__| |                                           │
-# │  / _ \| ' \/ _` | '_/ _ \ / _` |                                           │
-# │ /_/ \_\_||_\__,_|_| \___/_\__,_|                                           │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │ __      __   _                                                             │
-# │ \ \    / /__| |__                                                          │
-# │  \ \/\/ / -_) '_ \                                                         │
-# │   \_/\_/\___|_.__/                                                         │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+project_config.build_configs = {}
+generate_configs()

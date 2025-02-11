@@ -68,7 +68,7 @@ def write_toolchain( toolchain:SimpleNamespace, script:StringIO ):
     script.write( centre("[ Start Of Toolchain ]", left("\n#", fill("- ", 80))) )
     script.write('\n')
 
-    if 'write' in getattr( toolchain, 'verbs', [] ):
+    if 'script' in toolchain.__dict__:
         script.write( func_as_script( toolchain.script ) )
     else:
         script.write( "# No Toolchain additions" )

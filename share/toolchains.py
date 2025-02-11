@@ -6,6 +6,15 @@ from rich.console import Console
 from share.format import *
 from share.run import stream_command
 
+# Since these things are getting a little complicated lets try to make a little example for myself.
+example = SimpleNamespace(**{
+    'name'      :'name of the compiler, keep short',
+    'desc'      :'description of the compiler, can be any length',
+    'shell'     :[ "bash", "-c", """ "echo \"shell and script to pass to shell, can be a little awkward to write due to escaping\"" """ ],
+    'arch'      :['list','of', 'target', 'architectures', 'like', 'x86_64', 'arm64', 'etc'],
+    'platform'  :['list','of', 'target', 'platforms', 'matches', 'values', 'from', 'sys.platform']
+})
+
 # MARK: Windows
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │            ██     ██ ██ ███    ██ ██████   ██████  ██     ██ ███████       │
@@ -29,7 +38,8 @@ windows_toolchains.append( SimpleNamespace(**{
     'desc':'# Microsoft Visual Studio',
     'shell':[ "pwsh", "-Command",
         """ "&{Import-Module 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'};" """ ],
-    "arch":['x86_64','x86_32']
+    "arch":['x86_64'],
+    'platform':['win32']
 }))
 
 # MARK: LLVM
@@ -46,6 +56,7 @@ windows_toolchains.append( SimpleNamespace(**{
     'name':'llvm',
     'desc':'# Use Clang-Cl from llvm.org',
     "arch":['x86_64', 'x86_32', 'arm64'],
+    'platform':['win32'],
     'env': env
 }))
 
@@ -62,6 +73,7 @@ windows_toolchains.append( SimpleNamespace(**{
     'name':"llvm-mingw",
     'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
     "arch":['x86_64', 'x86_32', 'arm32', 'arm64'],
+    'platform':['win32'],
     'env': env
 }))
 
@@ -78,6 +90,7 @@ windows_toolchains.append( SimpleNamespace(**{
     'name':"mingw64",
     'desc':'[mingw](https://github.com/niXman/mingw-builds-binaries/releases,), This is also the default toolchain for clion',
     "arch":['x86_64'],
+    'platform':['win32'],
     'env': env
 }))
 
@@ -92,28 +105,32 @@ windows_toolchains.append( SimpleNamespace(**{
     'name':"msys2-mingw32",
     'desc':'i686      gcc linking against msvcrt',
     'shell': [ "C:/msys64/msys2_shell.cmd", "-mingw32", "-defterm", "-no-start", "-c"],
-    "arch":['x86_32']
+    "arch":['x86_32'],
+    'platform':['win32'],
 }))
 
 windows_toolchains.append( SimpleNamespace(**{
     'name':"msys2-mingw64",
     'desc':'x86_64    gcc linking against msvcrt',
     'shell': ["C:/msys64/msys2_shell.cmd", "-mingw64", "-defterm", "-no-start", "-c"],
-    "arch":['x86_64']
+    "arch":['x86_64'],
+    'platform':['win32'],
 }))
 
 windows_toolchains.append( SimpleNamespace(**{
     'name':"msys2-ucrt64",
     'desc':'x86_64    gcc linking against ucrt',
     'shell': ["C:/msys64/msys2_shell.cmd", "-ucrt64", "-defterm", "-no-start", "-c"],
-    "arch":['x86_64']
+    "arch":['x86_64'],
+    'platform':['win32'],
 }))
 
 windows_toolchains.append( SimpleNamespace(**{
     'name':"msys2-clang64",
     'desc':'x86_64    clang linking against ucrt',
     'shell': ["C:/msys64/msys2_shell.cmd", "-clang64", "-defterm", "-no-start", "-c"],
-    "arch":['x86_64']
+    "arch":['x86_64'],
+    'platform':['win32'],
 }))
 
 # MARK: Android
@@ -148,6 +165,7 @@ windows_toolchains.append( SimpleNamespace(**{
     'verbs':['update'],
     'update':android_update,
     'arch':['x86_64', 'x86_32', 'arm64'],
+    'platform':['android'],
     'cmake':{
         'toolchain':'C:/androidsdk/ndk/23.2.8568313/build/cmake/android.toolchain.cmake',
         'config_vars':[
@@ -181,23 +199,24 @@ def emsdk_script( config:dict, toolchain:dict ):
 
     emsdk_path = Path(toolchain['path'])
     emsdk_version = toolchain['version']
-    #FIXME, I don't see why I don't change the stream_command to use shell
-    # In this instance since I'm always calling to shell anyway
+
+    # FIXME use this? os.fspath( pathlike )
     match sys.platform:
         case 'win32':
-            emsdk_tool = f'pwsh -Command {str(emsdk_path / 'emsdk.ps1')} '
+            cmd_prefix = f'pwsh -Command'
+            emsdk_tool = f'{(emsdk_path / 'emsdk.ps1').as_posix()}'
         case 'darwin':
-            emsdk_tool = f'{os.environ['shell']} -c {str(emsdk_path / 'emsdk')} '
+            cmd_prefix = f'{os.environ['shell']} -c'
+            emsdk_tool = f'{(emsdk_path / 'emsdk').as_posix()}'
         case _:
             print("Error: There are some things to fix")
             exit(1)
 
-    def emsdk_is_active() -> bool:
-        return True if 'EMSDK' in os.environ else False
+
 
     def emsdk_check( sdk_version ) -> bool:
         output = StringIO()
-        stream_command( emsdk_tool + 'list', quiet=True, dry=config['dry'],
+        stream_command( f'{cmd_prefix} "{emsdk_tool} list"', quiet=True, dry=config['dry'],
             stdout_handler=lambda text : output.write(text + '\n') )
         output.seek(0)
         for line in output:
@@ -205,24 +224,15 @@ def emsdk_script( config:dict, toolchain:dict ):
             if 'INSTALLED' in line: return True
         return False
 
-    def emsdk_activate( sdk_version ):
-        print(figlet("EMSDK Activate", {"font": "small"}))
-        stream_command( emsdk_tool + f'activate {sdk_version}', dry=config['dry'] )
-
-    def emsdk_install( sdk_version ):
-        print(figlet("EMSDK Install", {"font": "small"}))
-        stream_command( emsdk_tool + f'install {sdk_version}', dry=config['dry'] )
-
     # Because the emsdk has no means to change the current environnment from within
     # python, I am just going to run the script again, but after activating it.
-    if not emsdk_is_active():
+    if not ('EMSDK' in os.environ):
         if emsdk_check( emsdk_version ):
             print(figlet("EMSDK Activate", {"font": "small"}))
-            stream_command( emsdk_tool + f'activate {emsdk_version}; python {config['script_path']}', dry=config['dry'] )
+            stream_command( f'{cmd_prefix} "{emsdk_tool} activate {emsdk_version}; python {config['script_path']}"', dry=config['dry'] )
         else:
             print(figlet("EMSDK Install", {"font": "small"}))
-            stream_command( emsdk_tool + f'install {emsdk_version}; python {config['script_path']}', dry=config['dry'] )
-            emsdk_install( emsdk_version )
+            stream_command( f'{cmd_prefix} "{emsdk_tool} install {emsdk_version}; python {config['script_path']}"', dry=config['dry'] )
         quit()
 
 windows_toolchains.append( SimpleNamespace(**{
@@ -234,8 +244,10 @@ windows_toolchains.append( SimpleNamespace(**{
     'update':emsdk_update,
     'script':emsdk_script,
     "arch":['wasm32'], #wasm64
+    'platform':['emscripten'],
     'cmake':{
-        'toolchain':'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
+        'toolchain':'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake',
+        'generators':['Ninja','Ninja Multi-Config']
     }
 }))
 
@@ -261,7 +273,8 @@ darwin_toolchains:list = []
 darwin_toolchains.append( SimpleNamespace(**{
     'name':"appleclang",
     'desc':"Default toolchain on MacOS",
-    'arch':['x86_64','arm64']
+    'arch':['x86_64','arm64'],
+    'platform':['darwin',],
     # Use clang -print-target-triple to get the host triple
 }))
 
@@ -282,6 +295,7 @@ darwin_toolchains.append( SimpleNamespace(**{
     'update':emsdk_update,
     'script':emsdk_script,
     "arch":['wasm32'], #wasm64
+    'platform':['emscripten'],
     'cmake':{
         'toolchain':'/Users/enetheru/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
     }

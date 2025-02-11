@@ -8,7 +8,7 @@ import rich
 
 from share.actions import git_checkout
 from share.format import *
-from share.expand_config import expand_config
+from share.expand_config import expand_host_env
 
 project_config = SimpleNamespace(**{
     'name'      : 'godot-cpp-test',
@@ -296,13 +296,14 @@ def expand( configs:list, func ) -> list:
     return configs_out
         
 def generate_configs():
-    configs:list = expand_config( base_config() )
+    configs:list = expand_host_env( base_config() )
+
     configs = expand( configs, platforms )
     configs = expand( configs, variants )
     configs = expand( configs, build_tools )
 
+
     for config in configs:
         project_config.build_configs[config.name] = config
-
 
 generate_configs()
