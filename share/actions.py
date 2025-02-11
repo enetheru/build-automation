@@ -1,4 +1,3 @@
-import inspect
 from pathlib import Path
 
 from share.format import *

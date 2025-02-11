@@ -1,6 +1,5 @@
 import copy
 import inspect
-from textwrap import indent
 from types import SimpleNamespace
 
 import rich
