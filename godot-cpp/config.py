@@ -283,145 +283,32 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
 # │                     |___/                                                  │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-variations = ['default',
+variations = ['',
     'double',
     'nothreads',
     'hotreload'
     'exceptions']
 
 # MARK: Variant
-def configure_variant( config:SimpleNamespace ) -> bool:
-    match config.build_tool:
+def configure_and_filter( cfg:SimpleNamespace ) -> list:
+    match cfg.buildtool:
         case 'scons':
             pass
         case 'cmake':
             # -DGODOT_USE_STATIC_CPP=OFF '-DGODOT_DEBUG_CRT=ON'
-            config.cmake["config_vars"].append('-DGODOT_ENABLE_TESTING=ON')
+            cfg.cmake["config_vars"].append('-DGODOT_ENABLE_TESTING=ON')
 
 
-    match config.variant:
-        case 'default':
-            pass
+    match cfg.variant:
         case 'double':
-            if config.arch not in ['x86_64', 'arm64']: return False
-            match config.build_tool:
+            if cfg.arch not in ['x86_64', 'arm64']: return []
+            match cfg.buildtool:
                 case 'scons':
-                    config.scons["build_vars"].append("precision=double")
+                    cfg.scons["build_vars"].append("precision=double")
                 case 'cmake':
-                    config.cmake["config_vars"].append("-DGODOT_PRECISION=double")
+                    cfg.cmake["config_vars"].append("-DGODOT_PRECISION=double")
                     pass
-        case _:
-            return False
-    return True
-
-# MARK: CMake
-def expand_cmake( config:SimpleNamespace ) -> list:
-    config.name += ".cmake"
-
-    setattr(config, 'script', cmake_script )
-    setattr(config, 'verbs', ['source', 'configure', 'fresh', 'build', 'test'] )
-    setattr(config, 'cmake', {
-        'build_dir':'build-cmake',
-        'godot_build_profile':'test/build_profile.json',
-        'config_vars':[],
-        'build_vars':[],
-        'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
-    })
-
-    configs_out:list = []
-    for generator in ['msvc', 'ninja', 'ninja-multi', 'mingw']:
-        cfg = copy.deepcopy(config)
-
-        setattr( cfg, 'gen', generator )
-        if generator != cfg.toolchain.name:
-            cfg.name += f".{generator}"
-
-        match generator:
-            case 'msvc':
-                _A = {'x86_32':'Win32', 'x86_64':'x64', 'arm64':'ARM64'}
-                if cfg.toolchain.name != generator: continue
-                cfg.cmake['generator'] = 'Visual Studio 17 2022'
-                cfg.cmake['config_vars'].append( f'-A {_A[cfg.arch]}')
-                cfg.cmake['build_vars'].append('--config Release')
-                cfg.cmake['tool_vars'] = ['-nologo', '-verbosity:normal', "-consoleLoggerParameters:'ShowCommandLine;ForceNoAlign'"]
-
-            case 'ninja':
-                cfg.cmake['generator'] = 'Ninja'
-                cfg.cmake['config_vars'].append('-DCMAKE_BUILD_TYPE=Release')
-
-            case 'ninja-multi':
-                cfg.cmake['generator'] = 'Ninja Multi-Config'
-                cfg.cmake['build_vars'].append('--config Release')
-
-            case 'mingw':
-                if cfg.toolchain.name != 'mingw64': continue
-                cfg.cmake['generator'] = 'MinGW Makefiles'
-                cfg.cmake['config_vars'].append('-DCMAKE_BUILD_TYPE=Release')
-            case _:
-                print( f"unknown generator: {generator}" )
-                continue
-
-        if not configure_variant( cfg ): continue
-
-        configs_out.append( cfg )
-    return configs_out
-
-# MARK: SCons
-def expand_scons( config:SimpleNamespace ) -> list:
-    configs_out:list = []
-    # Add base options
-    cfg = copy.deepcopy(config)
-    cfg.name += ".scons"
-    setattr(cfg, 'script', scons_script )
-    setattr(cfg, 'verbs', ['source', 'clean', 'build', 'test'] )
-    setattr(cfg, 'scons', {
-        'build_dir':'test',
-        'build_vars':['build_profile=build_profile.json'],
-        'targets':['template_release','template_debug','editor'],
-    })
-    # Add the arch
-    cfg.scons['build_vars'].append(f'arch={cfg.arch}')
-
-    match cfg.toolchain.name:
-        case "msvc" | 'emsdk' | 'android':
-            pass
-
-        case "llvm":
-            cfg.scons["build_vars"].append("use_llvm=yes")
-
-        case "llvm-mingw" | "msys2-clang64":
-            cfg.scons["build_vars"].append("use_mingw=yes")
-            cfg.scons["build_vars"].append("use_llvm=yes")
-
-        case "mingw64" | "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
-            cfg.scons["build_vars"].append("use_mingw=yes")
-
-        case _:
-            print( f"skipping toolchain: {cfg.name}" )
-            return []
-
-    if not configure_variant(cfg):
-        return []
-
     return [cfg]
-
-# MARK: Tool
-def expand_build_tools( config:SimpleNamespace ) -> list:
-    configs_out:list = []
-    for tool in ['scons','cmake']:
-        cfg = copy.deepcopy(config)
-        setattr( cfg, 'build_tool', tool )
-
-        match tool:
-            case 'scons':
-                configs_out += expand_scons( cfg )
-            case 'cmake':
-                configs_out += expand_cmake( cfg )
-            case _:
-                print( f"unknown build_tool: {tool}" )
-                continue
-
-    return configs_out
 
 # MARK: Variant
 def expand_variant( config:SimpleNamespace ) -> list:
@@ -430,8 +317,6 @@ def expand_variant( config:SimpleNamespace ) -> list:
         cfg = copy.deepcopy(config)
 
         setattr( cfg, 'variant', variant )
-        if variant != 'default':
-            cfg.name += f'.{variant}'
 
         # TODO If I want to test against multiple binaries then I need to specify multiple.
         '{root}/godot/{host}.{toolchain}.{platform}.{arch}.{variant}/bin/godot.{platform}.{target}[.double].{arch}[.llvm].console.exe'
@@ -440,7 +325,7 @@ def expand_variant( config:SimpleNamespace ) -> list:
         setattr(cfg, 'godot_tr', Path('C:/build/godot/w64.msvc.windows.x86_64/bin/godot.windows.template_release.x86_64.console'))
         setattr(cfg, 'godot_td', Path('C:/build/godot/w64.msvc.windows.x86_64/bin/godot.windows.template_debug.x86_64.console'))
 
-        configs_out += expand_build_tools( cfg )
+        configs_out.append( cfg )
     return configs_out
 
 # MARK: Platform
@@ -489,10 +374,34 @@ def expand_platforms( config:SimpleNamespace ) -> list:
 def expand_generators( config:SimpleNamespace ) -> list:
     configs_out:list = []
 
-    for generator in ['']:
+    for generator in  ['msvc', 'ninja', 'ninja-multi', 'mingw']:
         cfg = copy.deepcopy(config)
 
-        cfg.cmake['generator'] = cfg
+        cfg.buildtool += f'.{generator}'
+
+        match generator:
+            case 'msvc':
+                _A = {'x86_32':'Win32', 'x86_64':'x64', 'arm64':'ARM64'}
+                if cfg.toolchain.name != generator: continue
+                cfg.cmake['generator'] = 'Visual Studio 17 2022'
+                cfg.cmake['config_vars'].append( f'-A {_A[cfg.arch]}')
+                cfg.cmake['build_vars'].append('--config Release')
+                cfg.cmake['tool_vars'] = ['-nologo', '-verbosity:normal', "-consoleLoggerParameters:'ShowCommandLine;ForceNoAlign'"]
+
+            case 'ninja':
+                cfg.cmake['generator'] = 'Ninja'
+                cfg.cmake['config_vars'].append('-DCMAKE_BUILD_TYPE=Release')
+
+            case 'ninja-multi':
+                cfg.cmake['generator'] = 'Ninja Multi-Config'
+                cfg.cmake['build_vars'].append('--config Release')
+
+            case 'mingw':
+                if cfg.toolchain.name != 'mingw64': continue
+                cfg.cmake['generator'] = 'MinGW Makefiles'
+                cfg.cmake['config_vars'].append('-DCMAKE_BUILD_TYPE=Release')
+            case _:
+                continue
 
         configs_out.append( cfg )
     return configs_out
@@ -514,10 +423,29 @@ def expand_buildtools( config:SimpleNamespace ) -> list:
                 })
                 configs_out.append( cfg )
 
+                cfg.scons['build_vars'].append(f'arch={cfg.arch}')
+
+                match cfg.toolchain.name:
+                    case "msvc" | 'emsdk' | 'android':
+                        pass
+
+                    case "llvm":
+                        cfg.scons["build_vars"].append("use_llvm=yes")
+
+                    case "llvm-mingw" | "msys2-clang64":
+                        cfg.scons["build_vars"].append("use_mingw=yes")
+                        cfg.scons["build_vars"].append("use_llvm=yes")
+
+                    case "mingw64" | "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
+                        cfg.scons["build_vars"].append("use_mingw=yes")
+
+                    case _:
+                        continue
+
             case 'cmake':
                 cfg.verbs += ['build','configure','fresh', 'test']
                 setattr(cfg, 'script', cmake_script)
-                setattr(config, 'cmake', {
+                setattr(cfg, 'cmake', {
                     'build_dir':'build-cmake',
                     'godot_build_profile':'test/build_profile.json',
                     'config_vars':[],
@@ -536,17 +464,19 @@ def generate_configs():
         'verbs':['source'],
     })
 
+    # Host environment toolchain and build tools
     configs = expand_host_env( config_base )
     configs = expand( configs, expand_buildtools )
 
+    # target and variants
+    configs = expand( configs, expand_platforms )
+    configs = expand( configs, expand_variant )
+
+    # setup all the things.
+    configs = expand( configs, configure_and_filter )
+
     for cfg in configs:
-        cfg.name = f'{cfg.host}.{cfg.toolchain.name}.{cfg.arch}'
-
-    configs = expand( configs, expand_variations )
-
-    configs = expand( configs, filter_configs )
-
-    for cfg in configs:
+        cfg.name = f'{cfg.host}.{cfg.toolchain.name}.{cfg.arch}.{cfg.variant}.{cfg.buildtool}'
         project_config.build_configs[cfg.name] = cfg
 
 generate_configs()
