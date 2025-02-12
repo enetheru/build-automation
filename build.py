@@ -414,9 +414,11 @@ with open( "last_config_dump.json", 'w' ) as file:
 
     class MyEncoder(JSONEncoder):
         def default(self, o):
-            if type(o) is SimpleNamespace:
+            if isinstance( o, SimpleNamespace ):
                 return o.__dict__
-            return f"Unable to dump '{type(o).__name__}'"
+            if isinstance( o, pathlib.WindowsPath ):
+                return os.fspath( o )
+            return f"*** CANT JSON DUMP THIS '{type(o).__name__}'"
 
     json.JSONEncoder = MyEncoder
 

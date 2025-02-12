@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import rich
 
 from share.actions import git_checkout
+from share.expand_config import expand_host_env, expand
 from share.run import stream_command
 from share.toolchains import toolchains
 from share.format import *
@@ -273,18 +274,14 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
     if not timer.ok():
         exit(1)
 
-def process_script( script:str ) -> str:
-    print( 'processing script' )
-    return script.replace('%replaceme%', inspect.getsource(git_checkout))
-
-# MARK: Windows
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │            ██     ██ ██ ███    ██ ██████   ██████  ██     ██ ███████       │
-# │            ██     ██ ██ ████   ██ ██   ██ ██    ██ ██     ██ ██            │
-# │            ██  █  ██ ██ ██ ██  ██ ██   ██ ██    ██ ██  █  ██ ███████       │
-# │            ██ ███ ██ ██ ██  ██ ██ ██   ██ ██    ██ ██ ███ ██      ██       │
-# │             ███ ███  ██ ██   ████ ██████   ██████   ███ ███  ███████       │
-# ╘════════════════════════════════════════════════════════════════════════════╛
+# MARK: Configs
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │   ___           __ _                                                       │
+# │  / __|___ _ _  / _(_)__ _ ___                                              │
+# │ | (__/ _ \ ' \|  _| / _` (_-<                                              │
+# │  \___\___/_||_|_| |_\__, /__/                                              │
+# │                     |___/                                                  │
+# ╰────────────────────────────────────────────────────────────────────────────╯
 
 variations = ['default',
     'double',
@@ -488,63 +485,73 @@ def expand_platforms( config:SimpleNamespace ) -> list:
         configs_out += expand_variant( cfg )
     return configs_out
 
-# MARK: Arch
-def expand_arch( config:SimpleNamespace ) -> list:
+# MARK: Generators
+def expand_generators( config:SimpleNamespace ) -> list:
     configs_out:list = []
 
-    for arch in config.toolchain.arch:
+    for generator in ['']:
         cfg = copy.deepcopy(config)
 
-        cfg.name += f".{arch}"
-        setattr( cfg, 'arch', arch )
+        cfg.cmake['generator'] = cfg
 
-        configs_out += expand_platforms( cfg )
+        configs_out.append( cfg )
     return configs_out
 
-# MARK: Toolchain
-def expand_toolchains( config:SimpleNamespace ) -> list:
+# MARK: BuildTools
+def expand_buildtools( config:SimpleNamespace ) -> list:
     configs_out:list = []
-    for toolchain in toolchains.values():
+    for buildtool in ['scons', 'cmake']:
         cfg = copy.deepcopy(config)
 
-        cfg.name += f".{toolchain.name}"
-        setattr(cfg, 'toolchain', toolchain )
+        setattr(cfg, 'buildtool', buildtool )
+        match buildtool:
+            case 'scons':
+                cfg.verbs += ['build','test','clean']
+                setattr(cfg, 'script', scons_script)
+                setattr(cfg, 'scons', {
+                    "targets": ["template_release", "template_debug", "editor"],
+                    "build_vars":["compiledb=yes"]
+                })
+                configs_out.append( cfg )
 
-        configs_out += expand_arch( cfg )
+            case 'cmake':
+                cfg.verbs += ['build','configure','fresh', 'test']
+                setattr(cfg, 'script', cmake_script)
+                setattr(config, 'cmake', {
+                    'build_dir':'build-cmake',
+                    'godot_build_profile':'test/build_profile.json',
+                    'config_vars':[],
+                    'build_vars':[],
+                    'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
+                })
+                configs_out += expand_generators( cfg )
+
+        configs_out.append( cfg )
 
     return configs_out
-
-# MARK: Base
-def base_config() -> SimpleNamespace:
-    import platform
-    host = 'unknown'
-    match platform.system():
-        case 'Windows':
-            host  = 'w'
-            if platform.architecture()[0] == '64bit':
-                host += '64'
-            else:
-                host += '32'
-        case 'Darwin':
-            host = 'macos'
-
-    if host == 'unknown':
-        print( "Failed to match host platform")
-        exit(1)
-
-    return SimpleNamespace( **{
-        "name": host,
-        "host": host,
-    })
-
-def expand_configs() -> list:
-    return expand_toolchains( base_config() )
 
 def generate_configs():
-    for cfg in expand_configs():
+    config_base = SimpleNamespace(**{
+        'name':'',
+        'verbs':['source'],
+    })
+
+    configs = expand_host_env( config_base )
+    configs = expand( configs, expand_buildtools )
+
+    for cfg in configs:
+        cfg.name = f'{cfg.host}.{cfg.toolchain.name}.{cfg.arch}'
+
+    configs = expand( configs, expand_variations )
+
+    configs = expand( configs, filter_configs )
+
+    for cfg in configs:
         project_config.build_configs[cfg.name] = cfg
 
 generate_configs()
+
+
 # MARK: End of generation
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │ __      ___         _                                                      │

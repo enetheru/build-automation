@@ -2,21 +2,7 @@
 import copy
 from types import SimpleNamespace
 import rich
-from share.expand_config import expand_host_env
-
-def expand( configs:list, func ) -> list:
-    configs_out:list = []
-    for config in configs:
-        configs_out += func( config )
-    return configs_out
-
-# ╒════════════════════════════════════════════════════════════════════════════╕
-# │                    ██████   ██████  ██████   ██████  ████████              │
-# │                   ██       ██    ██ ██   ██ ██    ██    ██                 │
-# │                   ██   ███ ██    ██ ██   ██ ██    ██    ██                 │
-# │                   ██    ██ ██    ██ ██   ██ ██    ██    ██                 │
-# │                    ██████   ██████  ██████   ██████     ██                 │
-# ╘════════════════════════════════════════════════════════════════════════════╛
+from share.expand_config import expand_host_env, expand
 
 project_config = SimpleNamespace(
     **{"gitUrl": "https://github.com/godotengine/godot.git/", "build_configs": {}}
