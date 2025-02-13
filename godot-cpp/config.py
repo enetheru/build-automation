@@ -1,16 +1,12 @@
 import copy
-import inspect
-import itertools
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import rich
 
-from share.actions import git_checkout
 from share.expand_config import expand_host_env, expand
 from share.run import stream_command
-from share.toolchains import toolchains
 from share.format import *
 
 project_config = SimpleNamespace(**{
@@ -148,7 +144,7 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
 
     from share.Timer import Timer
     from share.format import h4
-    from share.actions import git_checkout, cmake_configure, cmake_build
+    from share.actions import git_checkout
 
     from actions import godotcpp_test
 
@@ -283,40 +279,100 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
 # │                     |___/                                                  │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-variations = ['',
+def scons_base( cfg:SimpleNamespace ) -> bool:
+    cfg.verbs += ['build','test','clean']
+    setattr(cfg, 'script', scons_script)
+    setattr(cfg, 'scons', {
+        "build_vars":["compiledb=yes"],
+        "targets": ["template_release", "template_debug", "editor"],
+    } )
+
+    cfg.scons['build_vars'].append(f'arch={cfg.arch}')
+
+    match cfg.toolchain.name:
+        case "msvc" | 'emsdk' | 'android' | 'appleclang':
+            pass
+
+        case "llvm":
+            cfg.scons["build_vars"].append("use_llvm=yes")
+
+        case "llvm-mingw" | "msys2-clang64":
+            cfg.scons["build_vars"].append("use_mingw=yes")
+            cfg.scons["build_vars"].append("use_llvm=yes")
+
+        case "mingw64" | "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
+            cfg.scons["build_vars"].append("use_mingw=yes")
+
+        case _:
+            return False
+
+    return True
+
+def cmake_base( cfg:SimpleNamespace ) -> bool:
+    cfg.verbs += ['configure','fresh', 'build', 'test']
+    setattr(cfg, 'script', cmake_script)
+    setattr(cfg, 'cmake', {
+        'build_dir':'build-cmake',
+        'godot_build_profile':'test/build_profile.json',
+        'config_vars':['-DGODOT_ENABLE_TESTING=ON'],
+        'build_vars':[],
+        'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
+    } )
+
+    return True
+
+build_tools = {
+    'scons': scons_base,
+    'cmake': cmake_base
+}
+
+variations = ['default',
     'double',
     'nothreads',
-    'hotreload'
+    'hotreload',
     'exceptions']
+# -DGODOT_USE_STATIC_CPP=OFF '-DGODOT_DEBUG_CRT=ON'
 
-# MARK: Variant
-def configure_and_filter( cfg:SimpleNamespace ) -> list:
+def variant_default( cfg:SimpleNamespace ) -> bool:
+    return True
+
+# MARK: double
+def variant_double( cfg:SimpleNamespace ) -> bool:
+    setattr( cfg, 'variant', 'double' )
+    if cfg.arch not in ['x86_64', 'arm64']: return False
     match cfg.buildtool:
         case 'scons':
-            pass
+            cfg.scons["build_vars"].append("precision=double")
         case 'cmake':
-            # -DGODOT_USE_STATIC_CPP=OFF '-DGODOT_DEBUG_CRT=ON'
-            cfg.cmake["config_vars"].append('-DGODOT_ENABLE_TESTING=ON')
+            cfg.cmake["config_vars"].append("-DGODOT_PRECISION=double")
+    return True
 
+variance = {
+    'default':variant_default,
+    'double':variant_double
+}
 
-    match cfg.variant:
-        case 'double':
-            if cfg.arch not in ['x86_64', 'arm64']: return []
-            match cfg.buildtool:
-                case 'scons':
-                    cfg.scons["build_vars"].append("precision=double")
-                case 'cmake':
-                    cfg.cmake["config_vars"].append("-DGODOT_PRECISION=double")
-                    pass
+# MARK: ConfigureFilter
+def configure_and_filter( cfg:SimpleNamespace ) -> list:
+    cfg.name = f'{cfg.host}.{cfg.toolchain.name}'
+
+    if cfg.arch != 'wasm32':
+        cfg.name += f'.{cfg.arch}'
+
+    cfg.name += f'.{cfg.variant}'
+    cfg.name += f'.{cfg.buildtool}'
+
     return [cfg]
 
 # MARK: Variant
 def expand_variant( config:SimpleNamespace ) -> list:
     configs_out:list = []
-    for variant in variations:
+    for variant, configure_func in variance.items():
         cfg = copy.deepcopy(config)
 
         setattr( cfg, 'variant', variant )
+        if not configure_func( cfg ): continue
+
 
         # TODO If I want to test against multiple binaries then I need to specify multiple.
         '{root}/godot/{host}.{toolchain}.{platform}.{arch}.{variant}/bin/godot.{platform}.{target}[.double].{arch}[.llvm].console.exe'
@@ -409,52 +465,19 @@ def expand_generators( config:SimpleNamespace ) -> list:
 # MARK: BuildTools
 def expand_buildtools( config:SimpleNamespace ) -> list:
     configs_out:list = []
-    for buildtool in ['scons', 'cmake']:
+    for buildtool, configure_func in build_tools.items():
         cfg = copy.deepcopy(config)
 
         setattr(cfg, 'buildtool', buildtool )
+        if not configure_func( cfg ):
+            continue
+
         match buildtool:
             case 'scons':
-                cfg.verbs += ['build','test','clean']
-                setattr(cfg, 'script', scons_script)
-                setattr(cfg, 'scons', {
-                    "targets": ["template_release", "template_debug", "editor"],
-                    "build_vars":["compiledb=yes"]
-                })
                 configs_out.append( cfg )
 
-                cfg.scons['build_vars'].append(f'arch={cfg.arch}')
-
-                match cfg.toolchain.name:
-                    case "msvc" | 'emsdk' | 'android':
-                        pass
-
-                    case "llvm":
-                        cfg.scons["build_vars"].append("use_llvm=yes")
-
-                    case "llvm-mingw" | "msys2-clang64":
-                        cfg.scons["build_vars"].append("use_mingw=yes")
-                        cfg.scons["build_vars"].append("use_llvm=yes")
-
-                    case "mingw64" | "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
-                        cfg.scons["build_vars"].append("use_mingw=yes")
-
-                    case _:
-                        continue
-
             case 'cmake':
-                cfg.verbs += ['build','configure','fresh', 'test']
-                setattr(cfg, 'script', cmake_script)
-                setattr(cfg, 'cmake', {
-                    'build_dir':'build-cmake',
-                    'godot_build_profile':'test/build_profile.json',
-                    'config_vars':[],
-                    'build_vars':[],
-                    'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
-                })
                 configs_out += expand_generators( cfg )
-
-        configs_out.append( cfg )
 
     return configs_out
 
@@ -475,8 +498,7 @@ def generate_configs():
     # setup all the things.
     configs = expand( configs, configure_and_filter )
 
-    for cfg in configs:
-        cfg.name = f'{cfg.host}.{cfg.toolchain.name}.{cfg.arch}.{cfg.variant}.{cfg.buildtool}'
+    for cfg in sorted( configs, key=lambda value: value.name ):
         project_config.build_configs[cfg.name] = cfg
 
 generate_configs()
