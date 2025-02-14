@@ -56,7 +56,7 @@ env['PATH'] = f'C:/Program Files/LLVM/bin;{os.environ['PATH']}'
 windows_toolchains.append( SimpleNamespace(**{
     'name':'llvm',
     'desc':'# Use Clang-Cl from llvm.org',
-    "arch":['x86_64', 'x86_32', 'arm64'],
+    "arch":['x86_64'], # TODO support more architectures
     'platform':['win32'],
     'env': env,
     'cmake':{

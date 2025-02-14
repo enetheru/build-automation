@@ -34,6 +34,17 @@ project_config = SimpleNamespace(**{
 # But in the github action runner, it's 3.1.64
 # And all of the issues related show 3.1.64
 
+# Platform Mapping from python 3.13 to what godot-cpp scons expects
+godot_platforms = {
+    'android':'android',
+    'ios':'ios',
+    'linux':'linux',
+    'emscripten':'web',
+    'darwin':'macos',
+    'win32':'windows'
+    # aix, cygwin, wasi, are unsupported
+}
+
 # MARK: Scripts
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
 # ║                 ███████  ██████ ██████  ██ ██████  ████████ ███████                    ║
@@ -288,23 +299,30 @@ def configure_scons( cfg:SimpleNamespace ) -> bool:
         "targets": ["template_release", "template_debug", "editor"],
     } )
 
-    cfg.scons['build_vars'].append(f'arch={cfg.arch}')
+    cfg.scons["build_vars"].append(f'platform={godot_platforms[cfg.platform]}')
+
+    # Set arch value
+    if cfg.toolchain.name == 'android':
+        android_abi = {
+            'armeabi-v7a': 'arm32',
+            'arm64-v8a':'arm64',
+            'x86':'x86_32',
+            'x86_64':'x86_64'
+        }
+        cfg.scons["build_vars"].append(f'arch={android_abi[cfg.arch]}')
+    elif cfg.toolchain.name == 'emsdk':
+        pass
+    else:
+        cfg.scons['build_vars'].append(f'arch={cfg.arch}')
+
 
     match cfg.toolchain.name:
-        case 'android':
-            android_abi = {
-                'armeabi-v7a': 'arm32',
-                'arm64-v8a':'arch=arm64',
-                'x86':'x86_32',
-                'x86_64':'x86_64'
-            }
-            cfg.scons["build_vars"].append(f'arch={android_abi[cfg.arch]}')
-
-        case "msvc" | 'emsdk' | 'appleclang':
+        case "msvc" | 'emsdk' | 'appleclang' | 'android':
             pass
 
         case "llvm":
             cfg.scons["build_vars"].append("use_llvm=yes")
+            if cfg.arch != 'x86_64': return False
 
         case "llvm-mingw" | "msys2-clang64":
             cfg.scons["build_vars"].append("use_mingw=yes")
@@ -393,17 +411,7 @@ def configure_and_filter( cfg:SimpleNamespace ) -> list:
         case _:
             cfg.name += f'.{cfg.toolchain.name}'
 
-    match cfg.platform:
-        case 'android' | 'ios' | 'linux':
-            cfg.name += f'.{cfg.platform}'
-        case 'emscripten':
-            cfg.name += '.web'
-        case 'darwin':
-            cfg.name += '.macos'
-        case 'win32':
-            cfg.name += '.windows'
-        case _: # aix, cygwin, wasi
-            return []
+    cfg.name += f'.{godot_platforms[cfg.platform]}'
 
     match cfg.arch:
         case 'wasm32':
