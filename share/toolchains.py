@@ -1,3 +1,4 @@
+import platform
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -57,7 +58,10 @@ windows_toolchains.append( SimpleNamespace(**{
     'desc':'# Use Clang-Cl from llvm.org',
     "arch":['x86_64', 'x86_32', 'arm64'],
     'platform':['win32'],
-    'env': env
+    'env': env,
+    'cmake':{
+        'toolchain':'C:/build/share/w64-llvm.cmake',
+    }
 }))
 
 # MARK: LLVM-MinGW
@@ -164,13 +168,12 @@ windows_toolchains.append( SimpleNamespace(**{
     'path':Path('C:/androidsdk'),
     'verbs':['update'],
     'update':android_update,
-    'arch':['x86_64', 'x86_32', 'arm64'],
+    'arch':['armeabi-v7a','arm64-v8a','x86','x86_64'],
     'platform':['android'],
     'cmake':{
         'toolchain':'C:/androidsdk/ndk/23.2.8568313/build/cmake/android.toolchain.cmake',
-        'config_vars':[
-            "-DANDROID_PLATFORM=latest",
-            "-DANDROID_ABI=x86_64"]
+        'ANDROID_PLATFORM': 'latest',
+        'ANDROID_ABI':platform.machine()
     }
 }))
 

@@ -1,3 +1,9 @@
+Shared Files
+============
+So long as there is no config.py in the folder then it wont be picked up.
+This is a place to put all the infra that I need to share between scripts.
+
+
 Toolchains
 ==========
 

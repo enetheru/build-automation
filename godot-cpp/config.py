@@ -270,27 +270,37 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
     if not timer.ok():
         exit(1)
 
-# MARK: Configs
+# MARK: Configure
 # ╭────────────────────────────────────────────────────────────────────────────╮
-# │   ___           __ _                                                       │
-# │  / __|___ _ _  / _(_)__ _ ___                                              │
-# │ | (__/ _ \ ' \|  _| / _` (_-<                                              │
-# │  \___\___/_||_|_| |_\__, /__/                                              │
-# │                     |___/                                                  │
+# │  ██████  ██████  ███    ██ ███████ ██  ██████  ██    ██ ██████  ███████    │
+# │ ██      ██    ██ ████   ██ ██      ██ ██       ██    ██ ██   ██ ██         │
+# │ ██      ██    ██ ██ ██  ██ █████   ██ ██   ███ ██    ██ ██████  █████      │
+# │ ██      ██    ██ ██  ██ ██ ██      ██ ██    ██ ██    ██ ██   ██ ██         │
+# │  ██████  ██████  ██   ████ ██      ██  ██████   ██████  ██   ██ ███████    │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-def scons_base( cfg:SimpleNamespace ) -> bool:
+def configure_scons( cfg:SimpleNamespace ) -> bool:
     cfg.verbs += ['build','test','clean']
     setattr(cfg, 'script', scons_script)
     setattr(cfg, 'scons', {
-        "build_vars":["compiledb=yes"],
+        'build_dir':'test',
+        "build_vars":["compiledb=yes", 'build_profile=build_profile.json'],
         "targets": ["template_release", "template_debug", "editor"],
     } )
 
     cfg.scons['build_vars'].append(f'arch={cfg.arch}')
 
     match cfg.toolchain.name:
-        case "msvc" | 'emsdk' | 'android' | 'appleclang':
+        case 'android':
+            android_abi = {
+                'armeabi-v7a': 'arm32',
+                'arm64-v8a':'arch=arm64',
+                'x86':'x86_32',
+                'x86_64':'x86_64'
+            }
+            cfg.scons["build_vars"].append(f'arch={android_abi[cfg.arch]}')
+
+        case "msvc" | 'emsdk' | 'appleclang':
             pass
 
         case "llvm":
@@ -308,7 +318,7 @@ def scons_base( cfg:SimpleNamespace ) -> bool:
 
     return True
 
-def cmake_base( cfg:SimpleNamespace ) -> bool:
+def configure_cmake( cfg:SimpleNamespace ) -> bool:
     cfg.verbs += ['configure','fresh', 'build', 'test']
     setattr(cfg, 'script', cmake_script)
     setattr(cfg, 'cmake', {
@@ -319,22 +329,38 @@ def cmake_base( cfg:SimpleNamespace ) -> bool:
         'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
     } )
 
+    if cfg.toolchain.name == 'android':
+        cfg.cmake['config_vars'] += ['-DANDROID_PLATFORM=latest', f'-DANDROID_ABI={cfg.arch}' ]
+
     return True
 
 build_tools = {
-    'scons': scons_base,
-    'cmake': cmake_base
+    'scons': configure_scons,
+    'cmake': configure_cmake
 }
 
-variations = ['default',
-    'double',
-    'nothreads',
-    'hotreload',
-    'exceptions']
-# -DGODOT_USE_STATIC_CPP=OFF '-DGODOT_DEBUG_CRT=ON'
+# MARK: Variant Config
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │ __   __        _          _      ___           __ _                        │
+# │ \ \ / /_ _ _ _(_)__ _ _ _| |_   / __|___ _ _  / _(_)__ _                   │
+# │  \ V / _` | '_| / _` | ' \  _| | (__/ _ \ ' \|  _| / _` |                  │
+# │   \_/\__,_|_| |_\__,_|_||_\__|  \___\___/_||_|_| |_\__, |                  │
+# │                                                    |___/                   │
+# ╰────────────────────────────────────────────────────────────────────────────╯
 
 def variant_default( cfg:SimpleNamespace ) -> bool:
+    """
+
+    :type cfg: object
+    """
     return True
+
+def variant_skip( cfg:SimpleNamespace ) -> bool:
+    """
+
+    :type cfg: object
+    """
+    return False
 
 # MARK: double
 def variant_double( cfg:SimpleNamespace ) -> bool:
@@ -347,27 +373,69 @@ def variant_double( cfg:SimpleNamespace ) -> bool:
             cfg.cmake["config_vars"].append("-DGODOT_PRECISION=double")
     return True
 
-variance = {
+variations = {
     'default':variant_default,
-    'double':variant_double
+    'double':variant_double,
+    'nothreads':variant_skip,
+    'hotreload':variant_skip,
+    'exceptions':variant_skip,
+    'staticcpp':variant_skip,
+    'debugcrt':variant_skip,
 }
 
 # MARK: ConfigureFilter
 def configure_and_filter( cfg:SimpleNamespace ) -> list:
-    cfg.name = f'{cfg.host}.{cfg.toolchain.name}'
+    cfg.name = f'{cfg.host}'
 
-    if cfg.arch != 'wasm32':
-        cfg.name += f'.{cfg.arch}'
+    match cfg.toolchain.name:
+        case 'android' | 'emsdk':
+            pass
+        case _:
+            cfg.name += f'.{cfg.toolchain.name}'
+
+    match cfg.platform:
+        case 'android' | 'ios' | 'linux':
+            cfg.name += f'.{cfg.platform}'
+        case 'emscripten':
+            cfg.name += '.web'
+        case 'darwin':
+            cfg.name += '.macos'
+        case 'win32':
+            cfg.name += '.windows'
+        case _: # aix, cygwin, wasi
+            return []
+
+    match cfg.arch:
+        case 'wasm32':
+            pass # skip for emscripten
+        # Android arches
+        case 'armeabi-v7a':
+            cfg.name += f'.arm32'
+        case 'arm64-v8a':
+            cfg.name += f'.arm64'
+        case 'x86':
+            cfg.name += f'.x86_32'
+        case _:
+            cfg.name += f'.{cfg.arch}'
 
     cfg.name += f'.{cfg.variant}'
     cfg.name += f'.{cfg.buildtool}'
 
     return [cfg]
 
+# MARK: Expansion
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │ ███████ ██   ██ ██████   █████  ███    ██ ███████ ██  ██████  ███    ██    │
+# │ ██       ██ ██  ██   ██ ██   ██ ████   ██ ██      ██ ██    ██ ████   ██    │
+# │ █████     ███   ██████  ███████ ██ ██  ██ ███████ ██ ██    ██ ██ ██  ██    │
+# │ ██       ██ ██  ██      ██   ██ ██  ██ ██      ██ ██ ██    ██ ██  ██ ██    │
+# │ ███████ ██   ██ ██      ██   ██ ██   ████ ███████ ██  ██████  ██   ████    │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
 # MARK: Variant
 def expand_variant( config:SimpleNamespace ) -> list:
     configs_out:list = []
-    for variant, configure_func in variance.items():
+    for variant, configure_func in variations.items():
         cfg = copy.deepcopy(config)
 
         setattr( cfg, 'variant', variant )
@@ -481,6 +549,14 @@ def expand_buildtools( config:SimpleNamespace ) -> list:
 
     return configs_out
 
+# MARK: Generate
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ██████  ███████ ███    ██ ███████ ██████   █████  ████████ ███████        │
+# │ ██       ██      ████   ██ ██      ██   ██ ██   ██    ██    ██             │
+# │ ██   ███ █████   ██ ██  ██ █████   ██████  ███████    ██    █████          │
+# │ ██    ██ ██      ██  ██ ██ ██      ██   ██ ██   ██    ██    ██             │
+# │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
+# ╰────────────────────────────────────────────────────────────────────────────╯
 def generate_configs():
     config_base = SimpleNamespace(**{
         'name':'',
@@ -492,7 +568,6 @@ def generate_configs():
     configs = expand( configs, expand_buildtools )
 
     # target and variants
-    configs = expand( configs, expand_platforms )
     configs = expand( configs, expand_variant )
 
     # setup all the things.

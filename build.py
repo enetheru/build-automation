@@ -146,6 +146,8 @@ show_heading()
 if bargs.list:
     exit()
 
+# TODO if help in any of the system verbs then display a list of verb help items.
+
 # Remove the project filter attributes from the args as we no longer need them.
 delattr(bargs, 'project')
 delattr(bargs, 'filter')
