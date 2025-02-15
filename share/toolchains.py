@@ -76,12 +76,13 @@ env['PATH'] = f'C:/llvm-mingw/bin;{os.environ['PATH']}'
 windows_toolchains.append( SimpleNamespace(**{
     'name':"llvm-mingw",
     'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
+    'sysroot':'C:/llvm-mingw',
     "arch":['i686', 'x86_64', 'armv7', 'aarch64'],
     'platform':['win32'],
     'env': env,
     'cmake': {
         'toolchain':'share\\toolchain-llvm-mingw.cmake',
-        # 'build_vars':'-DLLVM_MINGW_PROCESSOR='
+        # 'build_vars':'-DLLVM_MINGW_PROCESSOR={arch}'
     },
 }))
 
@@ -97,6 +98,7 @@ env['PATH'] = f'C:/mingw64/bin;{os.environ['PATH']}'
 windows_toolchains.append( SimpleNamespace(**{
     'name':"mingw64",
     'desc':'[mingw](https://github.com/niXman/mingw-builds-binaries/releases,), This is also the default toolchain for clion',
+    'sysroot':'C:/mingw64',
     "arch":['x86_64'],
     'platform':['win32'],
     'env': env,

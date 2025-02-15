@@ -198,7 +198,6 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
         ]
 
         if 'cmake' in toolchain:
-            toolchain_file = config["root_dir"] / toolchain['cmake']['toolchain']
             tc = toolchain['cmake']
             if 'toolchain' in tc:
                 toolchain_file = config["root_dir"] / toolchain['cmake']['toolchain']
@@ -324,7 +323,7 @@ def configure_scons( cfg:SimpleNamespace ) -> bool:
             cfg.scons["build_vars"].append("use_llvm=yes")
             cfg.scons['build_vars'].append(f'arch={cfg.arch}')
 
-        case "llvm-mingw" | "msys2-clang64":
+        case "llvm-mingw":
             archmap = {
                 'armv7': 'arm32',
                 'aarch64':'arm64',
@@ -334,6 +333,7 @@ def configure_scons( cfg:SimpleNamespace ) -> bool:
             cfg.scons["build_vars"].append(f'arch={archmap[cfg.arch]}')
             cfg.scons["build_vars"].append("use_mingw=yes")
             cfg.scons["build_vars"].append("use_llvm=yes")
+            cfg.scons["build_vars"].append(f"mingw_prefix={cfg.toolchain.sysroot}")
 
         case "msys2-clang64":
             cfg.scons['build_vars'].append(f'arch={cfg.arch}')
