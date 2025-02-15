@@ -198,9 +198,11 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
         ]
 
         if 'cmake' in toolchain:
+            toolchain_file = config["root_dir"] / toolchain['cmake']['toolchain']
             tc = toolchain['cmake']
             if 'toolchain' in tc:
-                config_opts.append( f'--toolchain "{os.fspath(tc['toolchain'])}"' )
+                toolchain_file = config["root_dir"] / toolchain['cmake']['toolchain']
+                config_opts.append( f'--toolchain "{os.fspath(toolchain_file)}"' )
             for var in tc.get('config_vars', []):
                 config_opts.append(var)
 
@@ -301,34 +303,45 @@ def configure_scons( cfg:SimpleNamespace ) -> bool:
 
     cfg.scons["build_vars"].append(f'platform={godot_platforms[cfg.platform]}')
 
-    # Set arch value
-    if cfg.toolchain.name == 'android':
-        android_abi = {
-            'armeabi-v7a': 'arm32',
-            'arm64-v8a':'arm64',
-            'x86':'x86_32',
-            'x86_64':'x86_64'
-        }
-        cfg.scons["build_vars"].append(f'arch={android_abi[cfg.arch]}')
-    elif cfg.toolchain.name == 'emsdk':
-        pass
-    else:
-        cfg.scons['build_vars'].append(f'arch={cfg.arch}')
-
-
     match cfg.toolchain.name:
-        case "msvc" | 'emsdk' | 'appleclang' | 'android':
+        case 'android':
+            android_abi = {
+                'armeabi-v7a': 'arm32',
+                'arm64-v8a':'arm64',
+                'x86':'x86_32',
+                'x86_64':'x86_64'
+            }
+            cfg.scons["build_vars"].append(f'arch={android_abi[cfg.arch]}')
+
+        case 'emsdk':
             pass
 
+        case "msvc" | 'appleclang':
+            cfg.scons['build_vars'].append(f'arch={cfg.arch}')
+
         case "llvm":
-            cfg.scons["build_vars"].append("use_llvm=yes")
             if cfg.arch != 'x86_64': return False
+            cfg.scons["build_vars"].append("use_llvm=yes")
+            cfg.scons['build_vars'].append(f'arch={cfg.arch}')
 
         case "llvm-mingw" | "msys2-clang64":
+            archmap = {
+                'armv7': 'arm32',
+                'aarch64':'arm64',
+                'i686':'x86_32',
+                'x86_64':'x86_64'
+            }
+            cfg.scons["build_vars"].append(f'arch={archmap[cfg.arch]}')
+            cfg.scons["build_vars"].append("use_mingw=yes")
+            cfg.scons["build_vars"].append("use_llvm=yes")
+
+        case "msys2-clang64":
+            cfg.scons['build_vars'].append(f'arch={cfg.arch}')
             cfg.scons["build_vars"].append("use_mingw=yes")
             cfg.scons["build_vars"].append("use_llvm=yes")
 
         case "mingw64" | "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
+            cfg.scons['build_vars'].append(f'arch={cfg.arch}')
             cfg.scons["build_vars"].append("use_mingw=yes")
 
         case _:
@@ -349,6 +362,9 @@ def configure_cmake( cfg:SimpleNamespace ) -> bool:
 
     if cfg.toolchain.name == 'android':
         cfg.cmake['config_vars'] += ['-DANDROID_PLATFORM=latest', f'-DANDROID_ABI={cfg.arch}' ]
+
+    if cfg.toolchain.name == 'llvm-mingw':
+        cfg.cmake['config_vars'] += [f'-DLLVM_MINGW_PROCESSOR={cfg.arch}']
 
     return True
 
@@ -417,11 +433,11 @@ def configure_and_filter( cfg:SimpleNamespace ) -> list:
         case 'wasm32':
             pass # skip for emscripten
         # Android arches
-        case 'armeabi-v7a':
+        case 'armeabi-v7a' | 'armv7':
             cfg.name += f'.arm32'
-        case 'arm64-v8a':
+        case 'arm64-v8a' | 'aarch64':
             cfg.name += f'.arm64'
-        case 'x86':
+        case 'x86' | 'i686':
             cfg.name += f'.x86_32'
         case _:
             cfg.name += f'.{cfg.arch}'
