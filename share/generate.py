@@ -6,6 +6,7 @@
 # │               |_|                                                          │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 import inspect
+import json
 from io import StringIO
 from pathlib import WindowsPath, PosixPath
 from types import SimpleNamespace
@@ -20,7 +21,9 @@ def func_as_script( func ) -> str:
             src[n] = line[4:]
     return '\n'.join(src)
 
-def namespace_to_script( name:str, namespace:SimpleNamespace, script:StringIO ):
+def namespace_to_script( name:str, namespace:SimpleNamespace, script:StringIO, indent=2 ):
+    namespace_to_script.indent += indent
+    pad = ' ' * indent
     chunk = [f"{name} = {{"]
     skip_keys = []
     if 'skip_keys' in namespace.__dict__.keys():
@@ -28,22 +31,28 @@ def namespace_to_script( name:str, namespace:SimpleNamespace, script:StringIO ):
 
     for k, v in namespace.__dict__.items():
         if k in skip_keys: continue
-        # Fix Windows Path Items
-        if isinstance(v, WindowsPath) or isinstance(v, PosixPath):
-            chunk.append(f"\t{repr(k)}:Path({repr(str(v))}),")
-            continue
         # Skip Functions
         if callable(v): continue
+        # Pretty print dictionaries
+        if isinstance(v, dict):
+            for line in f'{repr(k)}:{json.dumps( v, indent=2 )},'.splitlines():
+                chunk.append(f'{pad}{line}')
+            continue
+        # Fix Windows Path Items
+        if isinstance(v, WindowsPath) or isinstance(v, PosixPath):
+            chunk.append(f"{pad}{repr(k)}:Path({repr(str(v))}),")
+            continue
         # recurse over other namespaces
         if isinstance(v, SimpleNamespace):
             namespace_to_script( k, v, script )
             continue
         # Skip Multi-Line Scripts.
         if type(v) is str and '\n' in v: continue
-        chunk.append(f"\t{repr(k)}:{repr(v)},")
+        chunk.append(f"{pad}{repr(k)}:{repr(v)},")
     chunk.append("}\n")
     script.write( "\n".join(chunk) )
-
+    namespace_to_script.indent -= indent
+namespace_to_script.indent = 0
 
 
 def write_preamble(config: SimpleNamespace, script:StringIO):

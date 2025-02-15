@@ -71,12 +71,16 @@ windows_toolchains.append( SimpleNamespace(**{
 # │ | |__| |_\ V /| |\/| |___| |\/| | | ' \ (_ |\ \/\/ /  │
 # │ |____|____\_/ |_|  |_|   |_|  |_|_|_||_\___| \_/\_/   │
 # ╰───────────────────────────────────────────────────────╯
+# TODO I think that the expansion of the architectures should be here
+#   that way I can fill out the necessary cmake variables.
+# Perhaps I can simply provide the configure function here, that can be used
+# in projects. I guess I will find out when I expand the number of projects
 env = {k:v for k,v in os.environ.items()}
 env['PATH'] = f'C:/llvm-mingw/bin;{os.environ['PATH']}'
 windows_toolchains.append( SimpleNamespace(**{
     'name':"llvm-mingw",
     'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
-    'sysroot':'C:/llvm-mingw',
+    'sysroot':Path('C:/llvm-mingw'),
     "arch":['i686', 'x86_64', 'armv7', 'aarch64'],
     'platform':['win32'],
     'env': env,
