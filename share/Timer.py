@@ -1,8 +1,8 @@
 import subprocess
+import json
 from contextlib import ContextDecorator
 from datetime import datetime
 from enum import Enum
-
 
 class TaskStatus(Enum):
     PENDING = 1
@@ -32,22 +32,15 @@ class Timer(ContextDecorator):
         self.duration = str(self.end_time - self.start_time)[:-3]
         if self.status == TaskStatus.STARTED:
             self.status = TaskStatus.COMPLETED
-        import json
-        print('json:', json.dumps(self.get_dict(), default=str))
+        print('json:', json.dumps({self.name:self.get_dict()}, default=str))
         return False
 
     def get_dict(self) -> dict:
-        results:dict = {}
-
-        if self.name: results['name'] = self.name
-        else: results['name'] = 'FIXME'
-
-        results['status'] = self.status.name.capitalize()
-
-        results['duration'] = self.duration
-
+        results:dict = {
+            'status': self.status.name.capitalize(),
+            'duration': self.duration
+        }
         if self.returnvalue: results['returnvalue'] = self.returnvalue
-
         return results
 
     def time_function(self, *args, func, name=None) -> dict:

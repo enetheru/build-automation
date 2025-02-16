@@ -294,14 +294,16 @@ def process_build( build:SimpleNamespace ):
             width=120 ) )
 
     # ====================[ Run Build Script ]=====================-
-    stats = {"start_time": datetime.now(), 'subs':[]}
-    build.stats = stats
+    build.stats = stats = {}
+    stats['start_time'] = datetime.now()
+    stats['subs'] = subs = {}
+
 
     # Out little output handler which captures the lines and looks for data to
     # use in the statistics
     def test_handler( line ):
         if line.startswith('json:'):
-            stats['subs'].append( json.loads( line[6:] ) )
+            subs.update(json.loads( line[6:] ))
         else:
             print( line )
 
@@ -401,9 +403,10 @@ def show_statistics():
     column_set:set = set()
     for project in projects.values():
         for build in project.build_configs.values():
-            if 'stats' in build.__dict__:
-                for sub in build.stats['subs']:
-                    column_set.add(sub['name'])
+            if not 'stats' in build.__dict__: continue
+            if not 'subs' in build.stats: continue
+            for key in build.stats['subs'].keys():
+                column_set.add(key)
 
     table.add_column( "Commit" )
     table.add_column( "Project/Config", style="cyan", no_wrap=True )
@@ -418,33 +421,36 @@ def show_statistics():
 
     for project in projects.values():
         for build in project.build_configs.values():
-            if 'stats' in build.__dict__:
-                print( build.stats )
-                r:list = []
-                # TODO if githash is empty when updating the configuration, get latest and update field.
-                r.append(getattr(build, 'gitHash', '' )[0:7])
+            if not 'stats' in build.__dict__: continue
+            r:list = []
+            # TODO if githash is empty when updating the configuration, get latest and update field.
+            r.append(getattr(build, 'gitHash', '' )[0:7])
 
-                r.append(f"{project.name}/{build.name}")
+            r.append(f"{project.name}/{build.name}")
 
-                colour = "red" if build.stats["status"] == "Failed" else "green"
-                r.append(f"[{colour}]{build.stats['status']}[/{colour}]")
+            colour = "green"
+            status = build.stats['status']
+            if build.dry:
+                colour = "yellow"
+                status = "dry-run"
+            elif build.stats["status"] == "Failed":
+                colour = "red"
 
-                r.append(str(build.stats['duration'])[:-3])
+            r.append(f"[{colour}]{status}[/{colour}]")
 
-                for column_name in sub_columns:
-                    value = 'n/a'
-                    status = None
-                    for sub in build.stats['subs']:
-                        if sub['name'] == column_name:
-                            value = sub['duration']
-                            status = sub['status']
-                            break
-                    if status == 'Failed': r.append(f"[red]{value}[/red]")
-                    else: r.append( value )
+            r.append(str(build.stats['duration'])[:-3])
 
+            subs = build.stats.get('subs', None)
+            if not subs: continue
+            for column_name in sub_columns:
+                sub = subs.get(column_name, None )
+                if not sub: continue
+                if sub.get('status', None) == 'Failed': r.append(f"[red]{sub['duration']}[/red]")
+                else: r.append( sub['duration'] )
 
 
-                table.add_row( *r )
+
+            table.add_row( *r )
 
     print( table )
 
