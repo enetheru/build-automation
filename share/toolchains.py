@@ -240,8 +240,8 @@ def emsdk_script( config:dict, toolchain:dict ):
             if sdk_version not in line: continue
             if 'INSTALLED' in line: return True
         return False
-    
-    # It appears that darwin doesn't update the environment at all
+   
+    # Darwin 
     if sys.platform == 'darwin' and not ('EMSDK' in os.environ):
         if emsdk_check( emsdk_version ):
             print(figlet("EMSDK Activate", {"font": "small"}))
@@ -251,12 +251,11 @@ def emsdk_script( config:dict, toolchain:dict ):
             stream_command( f'{cmd_prefix} "{emsdk_tool} install {emsdk_version}"', dry=config['dry'] )
 
         env_script = emsdk_path / 'emsdk_env.sh'
-        os.chmod(env_script, stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        stream_command( f'{cmd_prefix} {env_script.as_posix()}', dry=config['dry'] )
+        os.chmod(env_script, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        stream_command( f'{cmd_prefix} "source {env_script.as_posix()}; python {config['script_path']}"', dry=config['dry'] )
+        quit()
 
-    # Because the emsdk on windows has no means to change the current
-    # environnment from within python, I am just going to run the script again,
-    # but after activating it.
+    # Windows
     if sys.platform == 'win32' and not ('EMSDK' in os.environ):
         if emsdk_check( emsdk_version ):
             print(figlet("EMSDK Activate", {"font": "small"}))
