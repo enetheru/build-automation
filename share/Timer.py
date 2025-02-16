@@ -11,7 +11,9 @@ class TaskStatus(Enum):
     FAILED = 4
 
 class Timer(ContextDecorator):
-    def __init__(self):
+    def __init__(self, name=None, push=True ):
+        self.push = push
+        self.name = name
         self.returnvalue = None
         self.status = TaskStatus.PENDING
         self.start_time = None
@@ -27,20 +29,29 @@ class Timer(ContextDecorator):
 
     def __exit__(self, *exc):
         self.end_time = datetime.now()
-        self.duration = self.end_time - self.start_time
+        self.duration = str(self.end_time - self.start_time)[:-3]
         if self.status == TaskStatus.STARTED:
             self.status = TaskStatus.COMPLETED
+        import json
+        print('json:', json.dumps(self.get_dict(), default=str))
         return False
 
     def get_dict(self) -> dict:
-        results = {
-            'status':self.status.name.capitalize(),
-            'duration':self.duration,
-        }
+        results:dict = {}
+
+        if self.name: results['name'] = self.name
+        else: results['name'] = 'FIXME'
+
+        results['status'] = self.status.name.capitalize()
+
+        results['duration'] = self.duration
+
         if self.returnvalue: results['returnvalue'] = self.returnvalue
+
         return results
 
-    def time_function(self, *args, func) -> dict:
+    def time_function(self, *args, func, name=None) -> dict:
+        self.name = name
         try:
             with self:
                 self.returnvalue = func( *args )

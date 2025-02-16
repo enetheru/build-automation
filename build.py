@@ -4,6 +4,7 @@ import importlib.util
 import multiprocessing
 import platform
 import sys
+import json
 from datetime import datetime
 from pathlib import Path
 from subprocess import CalledProcessError
@@ -293,19 +294,26 @@ def process_build( build:SimpleNamespace ):
             width=120 ) )
 
     # ====================[ Run Build Script ]=====================-
-
-    stats = {"start_time": datetime.now()}
+    stats = {"start_time": datetime.now(), 'subs':[]}
     build.stats = stats
+
+    # Out little output handler which captures the lines and looks for data to
+    # use in the statistics
+    def test_handler( line ):
+        if line.startswith('json:'):
+            stats['subs'].append( json.loads( line[6:] ) )
+        else:
+            print( line )
 
     try:
         env = getattr(build.toolchain, 'env', None )
-        proc = stream_command( build.run_cmd, env=env )
+        proc = stream_command( build.run_cmd, env=env, stdout_handler=test_handler)
     except CalledProcessError as e:
         # TODO Better execution failure handling
         proc = e
-    # TODO The evaluation of the output appears delayed, research a lower latency solution
-    # TODO I can watch for print statements here which assign statistics.  #   if line.startswith('scrape_this|'):  #     eval(line.split('|')[1], globals(), locals() )
-    # TODO create a timeout for the processing, something reasonable.  #   this should be defined in the build config as the largest possible build time that is expected.  #   that way it can trigger a check of the system if it is failing this test.
+    # TODO create a timeout for the processing, something reasonable.
+    #   this should be defined in the build config as the largest possible build time that is expected.
+    #   that way it can trigger a check of the system if it is failing this test.
 
     stats["status"] = "Completed" if not proc.returncode else "Failed"
     stats["end_time"] = datetime.now()
@@ -389,19 +397,54 @@ process_projects()
 def show_statistics():
     table = Table( title="Stats", highlight=True, min_width=80 )
 
+    # unique set of available data names
+    column_set:set = set()
+    for project in projects.values():
+        for build in project.build_configs.values():
+            if 'stats' in build.__dict__:
+                for sub in build.stats['subs']:
+                    column_set.add(sub['name'])
+
     table.add_column( "Commit" )
     table.add_column( "Project/Config", style="cyan", no_wrap=True )
     table.add_column( "Status" )
-    table.add_column( "Time" )
+    table.add_column( "Total Time" )
+
+    sub_columns:list = []
+    for action in bargs.build_actions:
+        if action in column_set:
+            sub_columns.append( action )
+            table.add_column( action )
 
     for project in projects.values():
         for build in project.build_configs.values():
             if 'stats' in build.__dict__:
-                short_hash = getattr(build, 'gitHash', '' )[0:7]
-                table.add_row(
-                    short_hash,
-                f"{project.name}/{build.name}", f"{build.stats['status']}", f"{build.stats['duration']}",
-                style="red" if build.stats["status"] == "Failed" else "green", )
+                print( build.stats )
+                r:list = []
+                # TODO if githash is empty when updating the configuration, get latest and update field.
+                r.append(getattr(build, 'gitHash', '' )[0:7])
+
+                r.append(f"{project.name}/{build.name}")
+
+                colour = "red" if build.stats["status"] == "Failed" else "green"
+                r.append(f"[{colour}]{build.stats['status']}[/{colour}]")
+
+                r.append(str(build.stats['duration'])[:-3])
+
+                for column_name in sub_columns:
+                    value = 'n/a'
+                    status = None
+                    for sub in build.stats['subs']:
+                        if sub['name'] == column_name:
+                            value = sub['duration']
+                            status = sub['status']
+                            break
+                    if status == 'Failed': r.append(f"[red]{value}[/red]")
+                    else: r.append( value )
+
+
+
+                table.add_row( *r )
 
     print( table )
 
@@ -418,7 +461,7 @@ with open( "last_config_dump.json", 'w' ) as file:
         def default(self, o):
             if isinstance( o, SimpleNamespace ):
                 return o.__dict__
-            if isinstance( o, pathlib.WindowsPath ):
+            if isinstance( o, pathlib.WindowsPath ) or isinstance(o, pathlib.PosixPath):
                 return os.fspath( o )
             return f"*** CANT JSON DUMP THIS '{type(o).__name__}'"
 

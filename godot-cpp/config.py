@@ -8,6 +8,7 @@ import rich
 from share.expand_config import expand_host_env, expand
 from share.run import stream_command
 from share.format import *
+from datetime import datetime
 
 project_config = SimpleNamespace(**{
     'gitUrl'  : "https://github.com/enetheru/godot-cpp.git/",
@@ -164,18 +165,18 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
 
     stats:dict = dict()
     cmake = config['cmake']
-    timer = Timer()
 
     #[=================================[ Fetch ]=================================]
     if want('source'):
         console.set_window_title('Source - {name}')
-        stats['source'] = timer.time_function( config, func=git_checkout )
-
+        with Timer(name='source') as timer:
+            git_checkout( config )
+        stats['source'] = timer.get_dict()
 
     #[===============================[ Configure ]===============================]
     if want('configure'):
         print(figlet("CMake Configure", {"font": "small"}))
-        console.set_window_title('Prepare - {name}')
+        console.set_window_title('Configure - {name}')
 
         source_dir = Path(config["source_dir"])
 
@@ -214,12 +215,13 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
         if 'godot_build_profile' in cmake:
             config_opts.append( f'-DGODOT_BUILD_PROFILE="{os.fspath(cmake['godot_build_profile'])}"' )
 
-        with timer:
+        with Timer(name='configure'):
             stream_command(f'cmake {' '.join(filter(None, config_opts))}', dry=config['dry'])
             print('')
 
         print(centre(" CMake Configure Completed ", fill("-")))
-        stats['prepare'] = timer.get_dict()
+        stats['configure'] = timer.get_dict()
+
 
     #[=================================[ Build ]=================================]
     if want('build') and timer.ok():
@@ -244,7 +246,7 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
         ]
         build_opts += cmake.get("build_vars", [])
 
-        with timer:
+        with Timer(name='build') as timer:
             for target in cmake["targets"]:
                 print(centre(f" Building target: {target} ", fill("~ ")))
                 target_opts = copy.copy(build_opts)
@@ -264,7 +266,9 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
 #[==================================[ Test ]==================================]
     if want('test') and timer.ok():
         console.set_window_title('Test - {name}')
-        stats['test'] = timer.time_function( config, func=godotcpp_test )
+        with Timer(name='test') as timer:
+            godotcpp_test( config )
+        stats['test'] = timer.get_dict()
 
 
     #[=================================[ Stats ]=================================]

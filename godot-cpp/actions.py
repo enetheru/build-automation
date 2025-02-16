@@ -37,7 +37,7 @@ def godotcpp_test( config:dict ) -> bool:
         except subprocess.SubprocessError as e:
             print( '[red]Godot exited abnormally during .godot folder creation')
 
-    if not dot_godot_dir.exists():
+    if not dot_godot_dir.exists() and not config['dry']:
         print('Error: Creating .godot folder')
         return True
 
@@ -73,6 +73,9 @@ def godotcpp_test( config:dict ) -> bool:
         '',
         Panel( '\n'.join( output ),  expand=False, title='Test Execution', title_align='left', width=120 ),
         '')
+
+    if config['dry']:
+        return False
 
     for line in output:
         if line.find( 'PASSED' ) > 0:
