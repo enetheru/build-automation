@@ -222,7 +222,7 @@ def emsdk_script( config:dict, toolchain:dict ):
             cmd_prefix = f'pwsh -Command'
             emsdk_tool = f'{(emsdk_path / 'emsdk.ps1').as_posix()}'
         case 'darwin':
-            cmd_prefix = f'{os.environ['shell']} -c'
+            cmd_prefix = f'{os.environ['SHELL']} -c'
             emsdk_tool = f'{(emsdk_path / 'emsdk').as_posix()}'
         case _:
             print("Error: There are some things to fix")

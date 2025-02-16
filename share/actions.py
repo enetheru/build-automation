@@ -56,7 +56,12 @@ def git_checkout(config: dict):
         h4("Update WorkTree")
 
     # Update worktree
-    os.chdir(config["source_dir"])
+    try:
+         os.chdir(config["source_dir"])
+    except FileNotFoundError as e:
+        print( f'Missing Folder {config['source_dir']}' )
+        return
+
     chunks = ['git', 'checkout', '--force']
     if 'gitHash' in config: chunks.append(f'-d {config['gitHash']}')
     stream_command(' '.join( chunks ), dry=config['dry'])
@@ -86,7 +91,11 @@ def scons_build(config: dict):
     else:
         build_dir = Path(config["source_dir"])
 
-    os.chdir(build_dir)
+    try:
+        os.chdir(build_dir)
+    except FileNotFoundError as e:
+        print( f'Missing Folder {build_dir}' )
+        return
 
     # requires SConstruct file existing in the current directory.
     if not (build_dir / "SConstruct").exists():
@@ -130,7 +139,8 @@ def cmake_configure(config: dict):
 
     # requires CMakeLists.txt file existing in the current directory.
     if not (source_dir / "CMakeLists.txt").exists():
-        raise f"Missing CMakeLists.txt in {source_dir}"
+       # raise f"Missing CMakeLists.txt in {source_dir}"
+        return
 
     # determine build directory
     if "build_dir" in cmake:

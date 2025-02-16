@@ -91,12 +91,16 @@ def scons_script( config:SimpleNamespace, console:rich.console.Console ):
     else:
         build_dir = Path(config["source_dir"])
 
-    os.chdir(build_dir)
+    try:
+        os.chdir(build_dir)
+    except FileNotFoundError as e:
+        print( f'Missing Folder {build_dir}' )
+        exit(1)
 
     # requires SConstruct file existing in the current directory.
     if not (build_dir / "SConstruct").exists():
         print(f"[red]Missing SConstruct in {build_dir}")
-        raise "Missing SConstruct"
+        exit(1)
 
     #[=================================[ Clean ]=================================]
     if want('clean'):
@@ -182,9 +186,14 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
 
         # requires CMakeLists.txt file existing in the current directory.
         if not (source_dir / "CMakeLists.txt").exists():
-            raise f"Missing CMakeLists.txt in {source_dir}"
+            print( f"Missing CMakeLists.txt in {source_dir}" )
+            exit(1)
 
-        os.chdir( source_dir )
+        try:
+            os.chdir(source_dir)
+        except FileNotFoundError as e:
+            print( f'Missing Folder {source_dir}' )
+            exit(1)
 
         # Create Build Directory
         build_dir = Path(cmake['build_dir'])
@@ -235,9 +244,13 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
         # requires CMakeLists.txt file existing in the current directory.
         if not (build_dir / "CMakeCache.txt").exists():
             print(f"Missing CMakeCache.txt in {build_dir}")
-            raise "Missing CMakeCache.txt"
+            exit(1)
 
-        os.chdir( build_dir )
+        try:
+            os.chdir( build_dir )
+        except FileNotFoundError as e:
+            print( f'Missing Folder {build_dir}' )
+            exit(1)
 
         build_opts = [
             f'--build .',
