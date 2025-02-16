@@ -63,10 +63,9 @@ godot_platforms = {
 # │                                      |_|                                   │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def scons_script( config:dict, toolchain:dict, console:rich.console.Console ):
-    from share.Timer import Timer
+    from share.Timer import Timer, TaskStatus
     from share.actions import git_checkout, scons_build
     from actions import godotcpp_test
-    from share.Timer import TaskStatus
 
     stats:dict = {}
     ok = True
@@ -99,12 +98,12 @@ def scons_script( config:dict, toolchain:dict, console:rich.console.Console ):
         os.chdir(build_dir)
     except FileNotFoundError as e:
         print( f'Missing Folder {build_dir}' )
-        ok = timer.ok()
+        ok = False
 
     # requires SConstruct file existing in the current directory.
     if not (build_dir / "SConstruct").exists():
         print(f"[red]Missing SConstruct in {build_dir}")
-        ok = timer.ok()
+        ok = False
 
     #[=================================[ Clean ]=================================]
     if want('clean'):
@@ -122,8 +121,8 @@ def scons_script( config:dict, toolchain:dict, console:rich.console.Console ):
                 print( '[red]subprocess error')
                 print( f'[red]{e}' )
                 timer.status = TaskStatus.FAILED
-            stats['clean'] = timer.get_dict()
-            ok = timer.ok()
+        stats['clean'] = timer.get_dict()
+        ok = timer.ok()
 
     #[=================================[ Build ]=================================]
     if want('build'):

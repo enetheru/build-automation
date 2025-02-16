@@ -271,7 +271,7 @@ darwin_toolchains.append( SimpleNamespace(**{
     'name':"appleclang",
     'desc':"Default toolchain on MacOS",
     'arch':['x86_64','arm64'],
-    'platform':['darwin',],
+    'platform':['darwin','ios'],
     # Use clang -print-target-triple to get the host triple
 }))
 

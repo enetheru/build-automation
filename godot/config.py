@@ -3,6 +3,8 @@ import copy
 from types import SimpleNamespace
 import rich
 from share.expand_config import expand_host_env, expand
+from share.format import *
+from share.run import stream_command
 
 project_config = SimpleNamespace(
     **{"gitUrl": "https://github.com/godotengine/godot.git/", "build_configs": {}}
@@ -20,26 +22,48 @@ project_config = SimpleNamespace(
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def scons_script( config:dict, console:rich.console.Console ):
-    from share.Timer import Timer
+    from share.Timer import Timer, TaskStatus
     from share.actions import git_checkout, scons_build
 
+    ok = True
+
     def want( action:str ) -> bool:
-        return action in config['verbs'] and action in config['actions']
+        return (ok
+                and action in config['verbs']
+                and action in config['actions'])
 
     stats:dict = dict()
-    timer = Timer()
+    name = config['name']
 
     #[=================================[ Fetch ]=================================]
     if want('source'):
-        console.set_window_title('Source - {name}')
+        console.set_window_title(f'Source - {name}')
+        with Timer(name='source') as timer:
+            git_checkout( config )
+        stats['source'] = timer.get_dict()
+        ok = timer.ok()
 
-        stats['source'] = timer.time_function( config, func=git_checkout )
+    #[=================================[ Clean ]=================================]
+    if want('clean'):
+        console.set_window_title(f'Clean - {name}')
+        print(figlet("SCons Clean", {"font": "small"}))
+
+        with Timer(name='clean', push=False) as timer:
+            try:
+                proc = stream_command( "scons --clean" , dry=config['dry'])
+                timer.status = TaskStatus.FAILED if proc.returncode else TaskStatus.COMPLETED
+            except subprocess.CalledProcessError as e:
+                timer.status = TaskStatus.FAILED
+        stats['clean'] = timer.get_dict()
+        ok = timer.ok()
 
     #[=================================[ Build ]=================================]
-    if want('build') and timer.ok():
-        console.set_window_title('Build - {name}')
-
-        stats['build'] = timer.time_function( config, func=scons_build )
+    if want('build'):
+        console.set_window_title(f'Build - {name}')
+        with Timer(name='build') as timer:
+            scons_build( config )
+        stats['build'] = timer.get_dict()
+        ok = timer.ok()
 
     #[=================================[ Stats ]=================================]
     from rich.table import Table
@@ -53,8 +77,9 @@ def scons_script( config:dict, console:rich.console.Console ):
         table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}')
 
     print( table )
-    if not timer.ok():
-        exit(1)
+    if not ok: exit(1)
+
+scons_script.verbs = ['source', 'clean', 'build']
 
 # MARK: Configs
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -78,6 +103,9 @@ def filter_configs(  cfg:SimpleNamespace ) -> list:
 
         case "mingw64" | "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
             cfg.scons["build_vars"].append("use_mingw=yes")
+
+        case 'appleclang':
+            cfg.scons['build_vars'].append('generate_bundle=yes')
 
     return [cfg]
 
@@ -108,7 +136,7 @@ def generate_configs():
     config_base = SimpleNamespace(**{
         'name':'',
         'script':scons_script,
-        'verbs':['source', 'build'],
+        'verbs':scons_script.verbs,
         "scons": {
             "targets": ["template_release", "template_debug", "editor"],
             "build_vars":["compiledb=yes"]
