@@ -63,25 +63,30 @@ godot_platforms = {
 # │ |___/\___\___/_||_/__/ |___/\__|_| |_| .__/\__|                            │
 # │                                      |_|                                   │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def scons_script( config:SimpleNamespace, console:rich.console.Console ):
+def scons_script( config:dict, toolchain:dict, console:rich.console.Console ):
     from share.Timer import Timer
     from share.actions import git_checkout, scons_build
     from actions import godotcpp_test
     from share.Timer import TaskStatus
 
+    stats:dict = {}
+    ok = True
+
     def want( action:str ) -> bool:
-        return action in config['verbs'] and action in config['actions']
+        return (ok
+                and action in config['verbs']
+                and action in config['actions'])
 
     name = config['name']
     scons: dict = config["scons"]
 
-    stats:dict = dict()
-    timer = Timer()
-
     #[=================================[ Fetch ]=================================]
     if want('source'):
         console.set_window_title(f'Source - {name}')
-        stats['source'] = timer.time_function( config, func=git_checkout )
+        with Timer(name='source') as timer:
+            git_checkout( config )
+        stats['source'] = timer.get_dict()
+        ok = timer.ok()
 
     # Check whether build path is viable.
     if "build_dir" in scons.keys():
@@ -95,19 +100,19 @@ def scons_script( config:SimpleNamespace, console:rich.console.Console ):
         os.chdir(build_dir)
     except FileNotFoundError as e:
         print( f'Missing Folder {build_dir}' )
-        exit(1)
+        ok = timer.ok()
 
     # requires SConstruct file existing in the current directory.
     if not (build_dir / "SConstruct").exists():
         print(f"[red]Missing SConstruct in {build_dir}")
-        exit(1)
+        ok = timer.ok()
 
     #[=================================[ Clean ]=================================]
     if want('clean'):
         console.set_window_title(f'Clean - {name}')
         print(figlet("SCons Clean", {"font": "small"}))
 
-        with timer:
+        with Timer(name='clean', push=False) as timer:
             try:
                 proc = stream_command( "scons --clean" , dry=config['dry'])
                 # Change status depending on the truthiness of returnvalue
@@ -119,16 +124,24 @@ def scons_script( config:SimpleNamespace, console:rich.console.Console ):
                 print( f'[red]{e}' )
                 timer.status = TaskStatus.FAILED
             stats['clean'] = timer.get_dict()
+            ok = timer.ok()
 
     #[=================================[ Build ]=================================]
-    if want('build') and timer.ok():
+    if want('build'):
         console.set_window_title(f'Build - {name}')
-        stats['build'] = timer.time_function( config, func=scons_build )
+        with Timer(name='build') as timer:
+            scons_build( config )
+        stats['build'] = timer.get_dict()
+        ok = timer.ok()
 
     #[==================================[ Test ]==================================]
-    if want('test') and timer.ok():
+    if want('test'):
         console.set_window_title(f'Test - {name}')
-        stats['test'] = timer.time_function( config, func=godotcpp_test )
+        with Timer(name='test') as timer:
+            godotcpp_test( config )
+
+        stats['test'] = timer.get_dict()
+        ok = timer.ok()
 
     #[=================================[ Stats ]=================================]
     from rich.table import Table
@@ -142,8 +155,9 @@ def scons_script( config:SimpleNamespace, console:rich.console.Console ):
         table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}')
 
     print( table )
-    if not timer.ok():
-        exit(1)
+    if not ok: exit(1)
+
+scons_script.verbs = ['source', 'clean', 'build', 'test']
 
 # MARK: CMake Script
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -153,7 +167,7 @@ def scons_script( config:SimpleNamespace, console:rich.console.Console ):
 # │  \___|_|  |_\__,_|_\_\___| |___/\__|_| |_| .__/\__|                        │
 # │                                          |_|                               │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.Console ):
+def cmake_script( config:dict, toolchain:dict, console:rich.console.Console ):
     import os
     import copy
     from pathlib import Path
@@ -164,8 +178,12 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
 
     from actions import godotcpp_test
 
+    ok = True
+
     def want( action:str ) -> bool:
-        return action in config['verbs'] and action in config['actions']
+        return (ok
+                and action in config['verbs']
+                and action in config['actions'])
 
     stats:dict = dict()
     cmake = config['cmake']
@@ -176,6 +194,7 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
         with Timer(name='source') as timer:
             git_checkout( config )
         stats['source'] = timer.get_dict()
+        ok = timer.ok()
 
     #[===============================[ Configure ]===============================]
     if want('configure'):
@@ -187,13 +206,13 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
         # requires CMakeLists.txt file existing in the current directory.
         if not (source_dir / "CMakeLists.txt").exists():
             print( f"Missing CMakeLists.txt in {source_dir}" )
-            exit(1)
+            ok = timer.ok()
 
         try:
             os.chdir(source_dir)
         except FileNotFoundError as e:
             print( f'Missing Folder {source_dir}' )
-            exit(1)
+            ok = timer.ok()
 
         # Create Build Directory
         build_dir = Path(cmake['build_dir'])
@@ -230,10 +249,11 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
 
         print(centre(" CMake Configure Completed ", fill("-")))
         stats['configure'] = timer.get_dict()
+        ok = timer.ok()
 
 
     #[=================================[ Build ]=================================]
-    if want('build') and timer.ok():
+    if want('build'):
         print(figlet("CMake Build", {"font": "small"}))
         console.set_window_title('Build - {name}')
 
@@ -244,13 +264,13 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
         # requires CMakeLists.txt file existing in the current directory.
         if not (build_dir / "CMakeCache.txt").exists():
             print(f"Missing CMakeCache.txt in {build_dir}")
-            exit(1)
+            ok = timer.ok()
 
         try:
             os.chdir( build_dir )
         except FileNotFoundError as e:
             print( f'Missing Folder {build_dir}' )
-            exit(1)
+            ok = timer.ok()
 
         build_opts = [
             f'--build .',
@@ -275,13 +295,15 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
         print(centre(" CMake Build Completed ", fill("-")))
         print('')
         stats['build'] = timer.get_dict()
+        ok = timer.ok()
 
-#[==================================[ Test ]==================================]
-    if want('test') and timer.ok():
+    #[==================================[ Test ]==================================]
+    if want('test'):
         console.set_window_title('Test - {name}')
         with Timer(name='test') as timer:
             godotcpp_test( config )
         stats['test'] = timer.get_dict()
+        ok = timer.ok()
 
 
     #[=================================[ Stats ]=================================]
@@ -296,8 +318,9 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
         table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}', style='red')
 
     print( table )
-    if not timer.ok():
-        exit(1)
+    if not ok: exit(1)
+
+cmake_script.verbs = ['configure','fresh', 'build', 'test']
 
 # MARK: Configure
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -309,8 +332,8 @@ def cmake_script( config:SimpleNamespace, toolchain:dict, console:rich.console.C
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def configure_scons( cfg:SimpleNamespace ) -> bool:
-    cfg.verbs += ['build','test','clean']
     setattr(cfg, 'script', scons_script)
+    cfg.verbs += scons_script.verbs
     setattr(cfg, 'scons', {
         'build_dir':'test',
         "build_vars":["compiledb=yes", 'build_profile=build_profile.json'],
@@ -367,8 +390,8 @@ def configure_scons( cfg:SimpleNamespace ) -> bool:
     return True
 
 def configure_cmake( cfg:SimpleNamespace ) -> bool:
-    cfg.verbs += ['configure','fresh', 'build', 'test']
     setattr(cfg, 'script', cmake_script)
+    cfg.verbs += cmake_script.verbs
     setattr(cfg, 'cmake', {
         'build_dir':'build-cmake',
         'godot_build_profile':'test/build_profile.json',
