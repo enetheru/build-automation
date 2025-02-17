@@ -334,7 +334,12 @@ def process_build( build:SimpleNamespace ):
         returncode = 1
     except KeyboardInterrupt as e:
         returncode = 1
-        sleep(3)
+        print("Cancelling current job, CTRL+C again to cancel all")
+        try:
+            sleep(3)
+        except KeyboardInterrupt as e:
+            exit()
+        print("continuing")
     # TODO create a timeout for the processing, something reasonable.
     #   this should be defined in the build config as the largest possible build time that is expected.
     #   that way it can trigger a check of the system if it is failing this test.
