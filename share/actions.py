@@ -14,12 +14,12 @@ from share.run import stream_command
 def fetch_projects( projects:dict ):
     print(figlet("Git Fetch", {"font": "small"}))
     for project in projects.values():
-        os.chdir( project.project_root )
+        os.chdir( project.project_dir )
 
         h3( project.name )
         print(f"  gitURL={project.gitUrl}")
 
-        bare_git_path = project.project_root / "git"
+        bare_git_path = project.project_dir / "git"
         if not bare_git_path.exists():
             stream_command( f'git clone --bare "{project.gitUrl}" "{bare_git_path}"', dry=project.dry )
         else:
@@ -46,7 +46,7 @@ def git_checkout(config: dict):
         h4("Create WorkTree")
         cmd_chunks = [
             "git",
-            f'--git-dir="{Path(config['project_root']) / 'git'}"',
+            f'--git-dir="{Path(config['project_dir']) / 'git'}"',
             "worktree",
             "add",
             f'-d "{config['source_dir']}"',

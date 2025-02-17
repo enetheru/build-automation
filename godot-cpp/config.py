@@ -76,7 +76,12 @@ def scons_script( config:dict, toolchain:dict, console:rich.console.Console ):
                 and action in config['actions'])
 
     name = config['name']
-    scons: dict = config["scons"]
+
+    # Use a project wide build cache
+    scons:dict = config['scons']
+    scons_cache = Path(config['project_dir']) / 'scons_cache'
+    scons['build_vars'].append(f'cache_path={scons_cache.as_posix()}')
+    scons['build_vars'].append('cache_limit=16')
 
     #[=================================[ Fetch ]=================================]
     if want('source'):

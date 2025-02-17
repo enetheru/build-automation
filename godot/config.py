@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import copy
+from pathlib import PosixPath
 from types import SimpleNamespace
 import rich
 from share.expand_config import expand_host_env, expand
@@ -22,6 +23,7 @@ project_config = SimpleNamespace(
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def scons_script( config:dict, console:rich.console.Console ):
+    from pathlib import Path
     from share.Timer import Timer, TaskStatus
     from share.actions import git_checkout, scons_build
 
@@ -34,6 +36,17 @@ def scons_script( config:dict, console:rich.console.Console ):
 
     stats:dict = dict()
     name = config['name']
+
+    # Use a project wide build cache
+    scons:dict = config['scons']
+    scons_cache = Path(config['project_dir']) / 'scons_cache'
+    scons['build_vars'].append(f'cache_path={scons_cache.as_posix()}')
+    scons['build_vars'].append('cache_limit=16')
+
+    profile_name = scons.get('build_profile', None)
+    if profile_name:
+        profile = Path( config['project_dir'] ) / 'build_profiles' / f'{profile_name}.py'
+        scons['build_vars'].append(f'build_profile={profile.as_posix()}')
 
     #[=================================[ Fetch ]=================================]
     if want('source'):
@@ -60,6 +73,7 @@ def scons_script( config:dict, console:rich.console.Console ):
     #[=================================[ Build ]=================================]
     if want('build'):
         console.set_window_title(f'Build - {name}')
+
         with Timer(name='build') as timer:
             scons_build( config )
         stats['build'] = timer.get_dict()
@@ -90,9 +104,10 @@ scons_script.verbs = ['source', 'clean', 'build']
 # │                     |___/                                                  │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-variations = ['default', 'double']
+variations = ['default', 'double', 'tracy', 'tracy_debug', 'dev_build', 'minimum']
 
 def filter_configs(  cfg:SimpleNamespace ) -> list:
+
     match cfg.toolchain.name:
         case "llvm":
             cfg.scons["build_vars"].append("use_llvm=yes")
@@ -114,16 +129,33 @@ def expand_variations( config:SimpleNamespace ) -> list:
     for variant in variations:
         cfg = copy.deepcopy(config)
 
+        cfg.name += f".{variant}"
+
         match variant:
             case "default":
                 pass
 
+            case 'dev_build':
+                cfg.scons['build_vars'].append('dev_build=yes')
+                cfg.scons['build_vars'].append('separate_debug_symbols=yes')
+
+            case 'minimum':
+                cfg.scons['build_profile'] = 'minimum'
+
             case "double":
                 # what's the point in using double precision on 32 bit architectures.
                 if cfg.arch not in ['x86_64', 'arm64']: continue
-
-                cfg.name += f".{variant}"
                 cfg.scons["build_vars"].append("precision=double")
+
+            case 'tracy':
+                setattr(cfg, 'gitUrl', 'git@github.com:godotengine/godot.git')
+                setattr(cfg, 'gitHash', '4.4-tracy')
+
+            case 'tracy_debug':
+                setattr(cfg, 'gitUrl', 'git@github.com:godotengine/godot.git')
+                setattr(cfg, 'gitHash', '4.4-tracy')
+                cfg.scons['build_vars'].append('debug_symbols=yes')
+                cfg.scons['build_vars'].append('separate_debug_symbols=yes')
 
             case _:
                 print( f"skipping variant: {variant}" )
@@ -144,9 +176,17 @@ def generate_configs():
     })
 
     configs = expand_host_env( config_base )
+    godot_platforms = {
+        'android':'android',
+        'darwin':'macos',
+        'emscripten':'web',
+        'ios':'ios',
+        'linux':'linux',
+        'win32':'windows'
+    }
     for cfg in configs:
         cfg.name = f'{cfg.host}.{cfg.toolchain.name}.{cfg.arch}'
-        cfg.scons['build_vars'].append(f'platform={cfg.platform}')
+        cfg.scons['build_vars'].append(f'platform={godot_platforms[cfg.platform]}')
         cfg.scons['build_vars'].append(f'arch={cfg.arch}')
 
     configs = expand( configs, expand_variations )

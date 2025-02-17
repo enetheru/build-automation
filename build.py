@@ -5,6 +5,7 @@ import multiprocessing
 import platform
 import sys
 from datetime import datetime
+from io import StringIO
 from pathlib import Path
 from subprocess import CalledProcessError
 from types import SimpleNamespace
@@ -21,7 +22,7 @@ from share.format import *
 from share.actions import fetch_projects
 from share.run import stream_command
 from share.toolchains import toolchains
-from share.generate import generate_build_scripts
+from share.generate import generate_build_scripts, namespace_to_script
 
 sys.stdout.reconfigure(encoding='utf-8')
 
@@ -49,11 +50,12 @@ parser = argparse.ArgumentParser(
 parser_io = parser.add_argument_group( "IO" )
 parser_io.add_argument( "-q", "--quiet", action="store_true" )  # Supress output
 parser_io.add_argument( "-v", "--verbose", action="store_true" )  # extra output
+parser_io.add_argument( "--list", action="store_true" ) # List the configs and quit
+parser_io.add_argument( "--show", action="store_true" ) # Show the configuration and quit
 
 # General or Global Options
 parser_opts = parser.add_argument_group( "Options" )
 parser_opts.add_argument( "--dry",action='store_true' )
-parser_opts.add_argument( "--list", action="store_true" )
 parser_opts.add_argument("-j", "--jobs", type=int,
     default=(multiprocessing.cpu_count() - 1) or 1)
 
@@ -142,8 +144,22 @@ def show_heading():
 
 show_heading()
 
+def show():
+    for project in projects.values():
+        h2( project.name )
+        print( figlet( project.name, {"font": "standard"} ) )
+
+        for config in project.build_configs.values():
+            print( centre( f"- {config.name} -", fill( "=", 120 ) ) )
+            print()
+            config_string = StringIO()
+            namespace_to_script('config', config, config_string )
+            print( config_string.getvalue() )
+
+if bargs.show: show()
+
 # List only.
-if bargs.list:
+if bargs.list or bargs.show:
     exit()
 
 # TODO if help in any of the system verbs then display a list of verb help items.
@@ -188,7 +204,7 @@ def update_configs():
 
 
         setattr( project, 'actions', deepcopy(bargs.project_actions ))
-        setattr( project, 'project_root', project.root_dir / project.name )
+        setattr( project, 'project_dir', project.root_dir / project.name )
 
         if not getattr(project, 'verbs', False ):
             setattr( project, 'verbs', [] )
@@ -203,8 +219,8 @@ def update_configs():
             # additional overrides
             # TODO Allow specification of the working tree in the config.
             setattr( build, 'project', project.name )
-            setattr( build, 'source_dir', build.project_root / build.name )
-            setattr( build, 'script_path', build.project_root / f"{build.name}.py" )
+            setattr( build, 'source_dir', build.project_dir / build.name )
+            setattr( build, 'script_path', build.project_dir / f"{build.name}.py" )
             setattr( build, 'actions', deepcopy( bargs.build_actions ) )
 
             # TODO Clean-up shell command with proper paths for python
@@ -264,7 +280,7 @@ def process_build( build:SimpleNamespace ):
     console.set_window_title( f"{build.project} - {build.name}" )
 
     # =====================[ stdout Logging ]======================-
-    log_path = build.project_root / f"logs-raw/{build.name}.txt"
+    log_path = build.project_dir / f"logs-raw/{build.name}.txt"
     build_log = open( file=log_path, mode='w', buffering=1, encoding="utf-8" )
     build_console = Console( file=build_log, force_terminal=True )
     console.tee( name=build.name, new_console=build_console )
@@ -272,6 +288,10 @@ def process_build( build:SimpleNamespace ):
     # =================[ Build Heading / Config ]==================-
     print( centre( f"- Starting: {build.name} -", fill( "=", 120 ) ) )
     print()
+
+    config_string = StringIO()
+    namespace_to_script('config', build, config_string )
+    print( config_string.getvalue() )
 
     # ==================[ Print Configuration ]====================-
     from rich.panel import Panel
@@ -296,7 +316,6 @@ def process_build( build:SimpleNamespace ):
     build.stats = stats = {}
     stats['start_time'] = datetime.now()
     stats['subs'] = subs = {}
-
 
     # Out little output handler which captures the lines and looks for data to
     # use in the statistics
@@ -331,7 +350,7 @@ def process_build( build:SimpleNamespace ):
     # ==================[ Output Log Processing ]==================-
     h3( "Post Run Actions" )
     h4( "Clean Log" )
-    cleanlog_path = (build.project_root / f"logs-clean/{build.name}.txt")
+    cleanlog_path = (build.project_dir / f"logs-clean/{build.name}.txt")
     if 'clean_log' in  get_interior_dict(build).keys():
         clean_log = build.clean_log
     else: clean_log = process_log_null
@@ -354,14 +373,14 @@ def process_build( build:SimpleNamespace ):
 # TODO Setup a keyboard interrupt to cancel a job and exit the loop, rather than quit the whole script.
 def process_projects():
     for project in projects.values():
-        os.chdir( project.project_root )
+        os.chdir( project.project_dir )
 
         # =====================[ stdout Logging ]======================-
-        os.makedirs( project.project_root.joinpath( f"logs-raw" ), exist_ok=True )
-        os.makedirs( project.project_root.joinpath( f"logs-clean" ), exist_ok=True )
+        os.makedirs( project.project_dir.joinpath( f"logs-raw" ), exist_ok=True )
+        os.makedirs( project.project_dir.joinpath( f"logs-clean" ), exist_ok=True )
 
         # Tee stdout to log file.
-        log_path = project.project_root / f"logs-raw/{project.name}.txt"
+        log_path = project.project_dir / f"logs-raw/{project.name}.txt"
         log_file = open( file=log_path, mode='w', buffering=1, encoding="utf-8" )
         project_console = Console( file=log_file, force_terminal=True )
         console.tee( project_console , project.name )
