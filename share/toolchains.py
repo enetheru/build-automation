@@ -285,7 +285,6 @@ darwin_toolchains.append( SimpleNamespace(**{
 # ╰────────────────────────────────────────────╯
 def darwin_emsdk_script( config:dict, toolchain:dict ):
     from pathlib import Path
-    from io import StringIO
     import stat
 
     cmd_prefix = f'{os.environ['SHELL']} -c'

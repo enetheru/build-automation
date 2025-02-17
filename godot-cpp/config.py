@@ -241,7 +241,7 @@ def cmake_script( config:dict, toolchain:dict, console:rich.console.Console ):
         if 'godot_build_profile' in cmake:
             config_opts.append( f'-DGODOT_BUILD_PROFILE="{os.fspath(cmake['godot_build_profile'])}"' )
 
-        with Timer(name='configure'):
+        with Timer(name='configure') as timer:
             stream_command(f'cmake {' '.join(filter(None, config_opts))}', dry=config['dry'])
             print('')
 
@@ -393,10 +393,11 @@ def configure_cmake( cfg:SimpleNamespace ) -> bool:
     setattr(cfg, 'cmake', {
         'build_dir':'build-cmake',
         'godot_build_profile':'test/build_profile.json',
-        'config_vars':['-DGODOT_ENABLE_TESTING=ON'],
+        'config_vars':['-DGODOT_ENABLE_TESTING=ON', '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache'],
         'build_vars':[],
         'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
     } )
+    # TODO make ccache soemthing that is detected before use.
 
     if cfg.toolchain.name == 'android':
         cfg.cmake['config_vars'] += ['-DANDROID_PLATFORM=latest', f'-DANDROID_ABI={cfg.arch}' ]

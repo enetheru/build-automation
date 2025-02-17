@@ -4,7 +4,6 @@ import importlib.util
 import multiprocessing
 import platform
 import sys
-import json
 from datetime import datetime
 from pathlib import Path
 from subprocess import CalledProcessError
