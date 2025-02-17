@@ -8,6 +8,7 @@ from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from subprocess import CalledProcessError
+from time import sleep
 from types import SimpleNamespace
 from typing import IO
 
@@ -277,7 +278,7 @@ def process_build( build:SimpleNamespace ):
         build.stats = {"status":'skipped', 'duration':'dnr'}
         return
 
-    console.set_window_title( f"{build.project} - {build.name}" )
+    console.set_window_title( f"{build.project}[{process_build.x}:{process_build.n}] - {build.name}" )
 
     # =====================[ stdout Logging ]======================-
     log_path = build.project_dir / f"logs-raw/{build.name}.txt"
@@ -325,17 +326,20 @@ def process_build( build:SimpleNamespace ):
         else:
             print( line )
 
+    returncode = 1
     try:
         env = getattr(build.toolchain, 'env', None )
-        proc = stream_command( build.run_cmd, env=env, stdout_handler=test_handler)
+        returncode = stream_command( build.run_cmd, env=env, stdout_handler=test_handler).returncode
     except CalledProcessError as e:
-        # TODO Better execution failure handling
-        proc = e
+        returncode = 1
+    except KeyboardInterrupt as e:
+        returncode = 1
+        sleep(3)
     # TODO create a timeout for the processing, something reasonable.
     #   this should be defined in the build config as the largest possible build time that is expected.
     #   that way it can trigger a check of the system if it is failing this test.
 
-    stats["status"] = "Completed" if not proc.returncode else "Failed"
+    stats["status"] = "Completed" if not returncode else "Failed"
     stats["end_time"] = datetime.now()
     stats["duration"] = stats["end_time"] - stats["start_time"]
 
@@ -396,8 +400,10 @@ def process_projects():
         print( f"  {'build_configs':14s}= ", end='' )
         pprint( [k for k in project.build_configs.keys()], expand_all=True)
 
-
+        process_build.n = len(project.build_configs)
+        process_build.x = 0
         for build in project.build_configs.values():
+            process_build.x += 1
             process_build( build )
 
         print( centre( f"[ Completed:{project.name} ]", fill( " -" ) ) )
@@ -466,10 +472,7 @@ def show_statistics():
                 if sub.get('status', None) == 'Failed': r.append(f"[red]{sub['duration']}[/red]")
                 else: r.append( sub['duration'] )
 
-
-
             table.add_row( *r )
-
     print( table )
 
 show_statistics()
