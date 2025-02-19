@@ -1,4 +1,3 @@
-import math
 import os
 import pathlib
 import re
@@ -79,24 +78,18 @@ def figlet(message:str, options:dict=None):
 # Fill Command
 def fill( filler:str=' ', width:int=columns ):
     line:str = filler
-    while len(line) < width:
-        line += filler
+    while len(line) < width: line += filler
     return line[0:width]
 
-def centre( msg:str='Centre', line:str='' ):
-    if not line: line = fill()
-    pos:int = math.floor((len(line) - len(msg)) / 2)
+def align(msg:str='align', ratio:float=0.5, line:str=fill() ):
+    if len(msg) > len(line): return msg # just return msg if we overwrite everything.
+    pos:int = round((len(line) - len(msg)) * ratio)
     if pos < 0: return msg
     return f'{line[:pos]}{msg}{line[pos+len(msg):]}'
 
-
-def left( msg:str='Left', line:str='' ):
-    if not line: line = fill()
-    return f'{msg}{line[len(msg):]}'
-
-def right( msg:str='Right', line:str='' ):
-    if not line: line = fill()
-    return f'{line[:-len(msg)]}{msg}'
+# setattr(align, 'left', 0)
+# align.right = 0.5
+# align.right = 0
 
 # MARK: HEADING
 ##################################- Headings -##################################
@@ -118,7 +111,9 @@ def h1( msg:str = 'heading 1', file:typing.IO=None ):
     return string
 
 def h2(msg:str = 'heading 2', newline=True,file:typing.IO=None):
-    string = f'{'\n' if newline else ''}{centre( f'- {msg} -' , fill('='))}'
+    from rich.align import Align
+    Align.center(f'- {msg} -')
+    string = f'{'\n' if newline else ''}{align( f'- {msg} -' , line=fill('='))}'
     if file: file.write(string)
     else: print( string )
     return string

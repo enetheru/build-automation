@@ -1,12 +1,10 @@
 import copy
-import inspect
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import rich
 
-from share.actions import git_checkout
 from share.format import *
 from share.expand_config import expand_host_env
 
@@ -72,7 +70,8 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
 
     from share.Timer import Timer
     from share.format import h4
-    from share.actions import git_checkout, cmake_configure, cmake_build
+    from share.actions_git import git_checkout
+    from share.actions_cmake import cmake_configure, cmake_build
 
     from actions import godotcpp_test
 

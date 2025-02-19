@@ -64,8 +64,9 @@ godot_platforms = {
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def scons_script( config:dict, toolchain:dict, console:rich.console.Console ):
     from share.Timer import Timer, TaskStatus
-    from share.actions import git_checkout, scons_build
     from actions import godotcpp_test
+    from share.actions_git import git_checkout
+    from share.actions_scons import scons_build
 
     stats:dict = {}
     ok = True
@@ -177,7 +178,7 @@ def cmake_script( config:dict, toolchain:dict, console:rich.console.Console ):
 
     from share.Timer import Timer
     from share.format import h4
-    from share.actions import git_checkout
+    from share.actions_git import git_checkout
 
     from actions import godotcpp_test
 
@@ -250,7 +251,7 @@ def cmake_script( config:dict, toolchain:dict, console:rich.console.Console ):
             stream_command(f'cmake {' '.join(filter(None, config_opts))}', dry=config['dry'])
             print('')
 
-        print(centre(" CMake Configure Completed ", fill("-")))
+        print(align(" CMake Configure Completed ", line=fill("-")))
         stats['configure'] = timer.get_dict()
         ok = timer.ok()
 
@@ -284,7 +285,7 @@ def cmake_script( config:dict, toolchain:dict, console:rich.console.Console ):
 
         with Timer(name='build') as timer:
             for target in cmake["targets"]:
-                print(centre(f" Building target: {target} ", fill("~ ")))
+                print(align(f" Building target: {target} ", line=fill("~ ")))
                 target_opts = copy.copy(build_opts)
                 target_opts.append(f" --target {target}")
 
@@ -295,7 +296,7 @@ def cmake_script( config:dict, toolchain:dict, console:rich.console.Console ):
                 stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=config["dry"])
                 print('')
 
-        print(centre(" CMake Build Completed ", fill("-")))
+        print(align(" CMake Build Completed ", line=fill("-")))
         print('')
         stats['build'] = timer.get_dict()
         ok = timer.ok()

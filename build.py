@@ -17,10 +17,10 @@ from rich.console import Console
 from rich.pretty import pprint
 from rich.table import Table
 
+from share import actions_git
 # Local Imports
 from share.ConsoleMultiplex import ConsoleMultiplex
 from share.format import *
-from share.actions import fetch_projects
 from share.run import stream_command
 from share.toolchains import toolchains
 from share.generate import generate_build_scripts, namespace_to_script
@@ -151,7 +151,7 @@ def show():
         print( figlet( project.name, {"font": "standard"} ) )
 
         for config in project.build_configs.values():
-            print( centre( f"- {config.name} -", fill( "=", 120 ) ) )
+            print( align( f"- {config.name} -", line=fill( "=", 120 ) ) )
             print()
             config_string = StringIO()
             namespace_to_script('config', config, config_string )
@@ -195,7 +195,7 @@ process_toolchains()
 def update_configs():
     from copy import deepcopy
 
-    h4( "Collating Configs" )
+    h3( "Updating Configs" )
     for project in projects.values():
         for k, v in get_interior_dict( bargs ).items():
             if v is None: continue
@@ -213,14 +213,14 @@ def update_configs():
         for build in project.build_configs.values():
             for k, v in get_interior_dict( project ).items():
                 if v is None: continue
-                if k in ["build_configs"]: continue
+                if k in ["build_configs"]: continue # skip keys
                 if getattr( build, k, None ) is None:
                     setattr( build, k, deepcopy(v) )
 
             # additional overrides
-            # TODO Allow specification of the working tree in the config.
             setattr( build, 'project', project.name )
-            setattr( build, 'source_dir', build.project_dir / build.name )
+            source_dir = getattr( build, 'source_dir', None)
+            if not source_dir: setattr( build, 'source_dir', build.project_dir / build.name )
             setattr( build, 'script_path', build.project_dir / f"{build.name}.py" )
             setattr( build, 'actions', deepcopy( bargs.build_actions ) )
 
@@ -236,17 +236,6 @@ def update_configs():
             #   CMake Build
 
 update_configs()
-# exit()
-
-# MARK: Generate Scripts
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │   ___                       _         ___         _      _                 │
-# │  / __|___ _ _  ___ _ _ __ _| |_ ___  / __| __ _ _(_)_ __| |_ ___           │
-# │ | (_ / -_) ' \/ -_) '_/ _` |  _/ -_) \__ \/ _| '_| | '_ \  _(_-<           │
-# │  \___\___|_||_\___|_| \__,_|\__\___| |___/\__|_| |_| .__/\__/__/           │
-# │                                                    |_|                     │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-generate_build_scripts( projects )
 
 # MARK: Git Fetch Projects
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -257,7 +246,24 @@ generate_build_scripts( projects )
 # │                                              |__/                          │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 if 'fetch' in bargs.project_actions:
-    fetch_projects( projects )
+    h3('Fetching / Updating Projects')
+
+    for project in projects.values():
+        print(f"  {project.name}" )
+        print(f"    gitURL={project.gitUrl}")
+        print(f"    gitHash={project.gitHash}")
+        actions_git.project_fetch_update( project )
+
+# MARK: Generate Scripts
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │   ___                       _         ___         _      _                 │
+# │  / __|___ _ _  ___ _ _ __ _| |_ ___  / __| __ _ _(_)_ __| |_ ___           │
+# │ | (_ / -_) ' \/ -_) '_/ _` |  _/ -_) \__ \/ _| '_| | '_ \  _(_-<           │
+# │  \___\___|_||_\___|_| \__,_|\__\___| |___/\__|_| |_| .__/\__/__/           │
+# │                                                    |_|                     │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+h3('Generating Build Scripts')
+generate_build_scripts( projects )
 
 # MARK: Build
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -287,7 +293,7 @@ def process_build( build:SimpleNamespace ):
     console.tee( name=build.name, new_console=build_console )
 
     # =================[ Build Heading / Config ]==================-
-    print( centre( f"- Starting: {build.name} -", fill( "=", 120 ) ) )
+    print( align( f"- Starting: {build.name} -", 0, fill( "=", 120 ) ) )
     print()
 
     config_string = StringIO()
@@ -326,7 +332,6 @@ def process_build( build:SimpleNamespace ):
         else:
             print( line )
 
-    returncode = 1
     try:
         env = getattr(build.toolchain, 'env', None )
         returncode = stream_command( build.run_cmd, env=env, stdout_handler=test_handler).returncode
@@ -368,7 +373,7 @@ def process_build( build:SimpleNamespace ):
           open( cleanlog_path, "w", encoding='utf-8' ) as log_clean):
         clean_log( log_raw, log_clean )
 
-    print( centre( f"[ Completed:{build.project} / {build.name} ]", fill( " -", 120 ) ) )
+    print( align( f"[ Completed:{build.project} / {build.name} ]", 0, fill( " -", 120 ) ) )
 
 
 # MARK: Project
@@ -411,7 +416,7 @@ def process_projects():
             process_build.x += 1
             process_build( build )
 
-        print( centre( f"[ Completed:{project.name} ]", fill( " -" ) ) )
+        print( align( f"[ Completed:{project.name} ]", 0, fill( " -" ) ) )
         # remove the project output log.
         console.pop( project.name )
 
@@ -453,7 +458,7 @@ def show_statistics():
             if not 'stats' in build.__dict__: continue
             r:list = []
             # TODO if githash is empty when updating the configuration, get latest and update field.
-            r.append(getattr(build, 'gitHash', '' )[0:7])
+            # r.append(getattr(build, 'gitHash', '' )[0:7])
 
             r.append(f"{project.name}/{build.name}")
 

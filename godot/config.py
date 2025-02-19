@@ -1,15 +1,19 @@
-#!/usr/bin/env python
 import copy
-from pathlib import PosixPath
 from types import SimpleNamespace
 import rich
 from share.expand_config import expand_host_env, expand
 from share.format import *
 from share.run import stream_command
 
-project_config = SimpleNamespace(
-    **{"gitUrl": "https://github.com/godotengine/godot.git/", "build_configs": {}}
-    # TODO Update Verbs
+# import git
+# repo = git.Repo('C:/Godot/src/godot')
+# repo.git.show(None or 'branch/tag/hash', '--format=%h', '-s')
+
+project_config = SimpleNamespace(**{
+        "gitUrl": "https://github.com/godotengine/godot.git/",
+        "gitHash": 'master',
+        "build_configs": {}
+    }
 )
 
 
@@ -25,7 +29,8 @@ project_config = SimpleNamespace(
 def scons_script( config:dict, console:rich.console.Console ):
     from pathlib import Path
     from share.Timer import Timer, TaskStatus
-    from share.actions import git_checkout, scons_build
+    from share.actions_git import git_checkout
+    from share.actions_scons import scons_build
 
     ok = True
 
@@ -52,6 +57,7 @@ def scons_script( config:dict, console:rich.console.Console ):
     if want('source'):
         console.set_window_title(f'Source - {name}')
         with Timer(name='source') as timer:
+
             git_checkout( config )
         stats['source'] = timer.get_dict()
         ok = timer.ok()
@@ -75,6 +81,7 @@ def scons_script( config:dict, console:rich.console.Console ):
         console.set_window_title(f'Build - {name}')
 
         with Timer(name='build') as timer:
+
             scons_build( config )
         stats['build'] = timer.get_dict()
         ok = timer.ok()
@@ -122,6 +129,11 @@ def filter_configs(  cfg:SimpleNamespace ) -> list:
         case 'appleclang':
             cfg.scons['build_vars'].append('generate_bundle=yes')
 
+    if cfg.gitHash != project_config.gitHash:
+        pass
+    if cfg.toolchain.name == 'android':
+        setattr( cfg, 'source_dir', f'{cfg.platform}.{cfg.variant}')
+
     return [cfg]
 
 def expand_variations( config:SimpleNamespace ) -> list:
@@ -129,6 +141,7 @@ def expand_variations( config:SimpleNamespace ) -> list:
     for variant in variations:
         cfg = copy.deepcopy(config)
 
+        setattr(cfg, 'variant', variant)
         cfg.name += f".{variant}"
 
         match variant:
@@ -165,10 +178,12 @@ def expand_variations( config:SimpleNamespace ) -> list:
     return configs_out
 
 def generate_configs():
+
     config_base = SimpleNamespace(**{
         'name':'',
         'script':scons_script,
         'verbs':scons_script.verbs,
+        'gitHash':None,
         "scons": {
             "targets": ["template_release", "template_debug", "editor"],
             "build_vars":["compiledb=yes"]

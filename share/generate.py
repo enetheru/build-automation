@@ -74,7 +74,10 @@ rich._console = console = Console(soft_wrap=False, width=9000)
     namespace_to_script('config', config, script )
 
 def write_toolchain( toolchain:SimpleNamespace, script:StringIO ):
-    script.write( centre("[ Start Of Toolchain ]", left("\n#", fill("- ", 80))) )
+    line = fill("- ", 80)
+    line = align("# ", 0 , line )
+    line = align("[ Start of Toolchain ]", line=line )
+    script.write( line )
     script.write('\n')
 
     toolchain_script =  getattr( toolchain, 'script', None )
@@ -86,7 +89,10 @@ def write_toolchain( toolchain:SimpleNamespace, script:StringIO ):
 
 
 def write_project( project:SimpleNamespace, script:StringIO ):
-    script.write( centre("[ Start Of Project ]", left("\n#", fill("- ", 80))) )
+    line = fill("- ", 80)
+    line = align("# ", 0, line=line )
+    line = align("[ Start Of Project ]", line=line )
+    script.write( line )
     script.write('\n')
 
     project_script =  getattr( project, 'script', None )
@@ -98,7 +104,10 @@ def write_project( project:SimpleNamespace, script:StringIO ):
 
 
 def write_build( build:SimpleNamespace, script:StringIO ):
-    script.write( centre("[ Start of Build ]", left("\n#", fill("- ", 80))) )
+    line = fill("- ", 80)
+    line = align("# ", 0, line=line )
+    line = align("[ Start Of Build ]", line=line )
+    script.write( line )
     script.write('\n')
 
     script.write( func_as_script( build.script ) )
@@ -113,7 +122,6 @@ def write_build( build:SimpleNamespace, script:StringIO ):
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def generate_build_scripts( projects:dict ):
-    h4( "Generating Build Scripts" )
     for project in projects.values():
         for build in project.build_configs.values():
             script = StringIO()
