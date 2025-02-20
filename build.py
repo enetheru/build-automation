@@ -2,7 +2,6 @@
 import argparse
 import copy
 import importlib.util
-import itertools
 import json
 import multiprocessing
 import platform
@@ -92,6 +91,13 @@ console.tee( Console( file=open( bargs.path / "build_log.txt", "w", encoding='ut
 
 # Add all the things from the command line
 parser.parse_args( namespace=bargs )
+
+# Create gitdef structure
+setattr(bargs, 'gitdef', {})
+if bargs.giturl: bargs.gitdef['url'] = bargs.giturl
+delattr(bargs, 'giturl')
+if bargs.gitref: bargs.gitdef['ref'] = bargs.gitref
+delattr(bargs, 'gitref')
 
 # MARK: Configs
 # ==================[ Import Configurations ]==================-
@@ -340,11 +346,6 @@ def process_build( build:SimpleNamespace ):
     # Skip the build config if there are no actions to perform
     project = projects[build.project]
 
-    if bargs.show:
-        print( align( f"- {build.name} -", line=fill( "=", 120 ) ) )
-        print()
-        write_namespace( pretendio, build, 'config')
-
     skip:bool=True
     for k in bargs.build_actions:
         if k in build.verbs:
@@ -365,9 +366,10 @@ def process_build( build:SimpleNamespace ):
 
     # =================[ Build Heading / Config ]==================-
     print( align( f"- Starting: {build.name} -", 0, fill( "=", 120 ) ) )
-    print()
+    newline()
 
-    write_namespace( pretendio, build,'config' )
+    if bargs.show:
+        write_namespace( pretendio, build, 'build')
 
     # ==================[ Print Configuration ]====================-
     from rich.panel import Panel

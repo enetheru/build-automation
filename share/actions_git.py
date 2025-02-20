@@ -11,7 +11,7 @@ import git
 # TODO, if the work tree is already upto date, then skip
 def git_checkout( config: dict ):
     print( figlet("Git Checkout", {"font": "small"}) )
-    project = config['project']
+    opts = config['opts']
     build = config['build']
     gitdef = build['gitdef']
 
@@ -34,7 +34,7 @@ def git_checkout( config: dict ):
         h4("Create WorkTree")
         os.chdir( gitdir )
         cmd_chunks = [ 'add', '--detach', worktree_path, gitref ]
-        if config['dry']:
+        if opts['dry']:
             print('dry-run: Skipping remaining work in git_checkout')
             return
         repo.git.worktree( *filter(None, cmd_chunks) )
@@ -45,7 +45,7 @@ def git_checkout( config: dict ):
     if short_hash != worktree_hash:
         h4("Update WorkTree")
         cmd_chunks = [ '--force', '--detach', gitref ]
-        if not config['dry']:
+        if not opts['dry']:
             worktree.git.checkout( *filter(None, cmd_chunks) )
     else:
         h4("WorkTree is Up-to-Date")

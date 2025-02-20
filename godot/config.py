@@ -48,15 +48,15 @@ def scons_script():
     scons['build_vars'].append(f'cache_path={scons_cache.as_posix()}')
     scons['build_vars'].append('cache_limit=16')
 
-    # Update source_dir with git_short_hash to differentiate
-    gitdef = build['gitdef'] = project['gitdef'] | build['gitdef'] # TODO | opts['gitdef']
+    # if we have specified a different git repository than expected, add the shorthash to the name.
+    gitdef = build['gitdef'] = project['gitdef'] | build['gitdef'] | opts['gitdef']
     remote:str = gitdef.get('remote', '')
     gitref =  f'{remote}/{gitdef['ref']}' if remote else gitdef['ref']
 
     repo = git.Repo(project['path'] / 'git')
     short_hash = repo.git.rev_parse('--short', gitref)
 
-    if remote or gitdef['ref'] != 'master':
+    if opts['gitdef']:
         build['source_dir'] += f'.{short_hash}'
 
     gitdef['worktree_path'] = build['source_path'] = project['path'] / build['source_dir']
@@ -81,7 +81,7 @@ def scons_script():
 
         with Timer(name='clean', push=False) as timer:
             try:
-                proc = stream_command( "scons --clean" , dry=config['dry'])
+                proc = stream_command( "scons --clean" , dry=opts['dry'])
                 timer.status = TaskStatus.FAILED if proc.returncode else TaskStatus.COMPLETED
             except subprocess.CalledProcessError as e:
                 timer.status = TaskStatus.FAILED
@@ -176,6 +176,7 @@ def expand_variations( config:SimpleNamespace ) -> list:
                     'url':'https://github.com/enetheru/godot.git',
                     'ref':'4.4-tracy'
                 })
+                cfg.source_dir += '.tracy'
                 cfg.scons['build_vars'].append('extra_suffix=tracy')
 
             case 'tracy_debug':
@@ -184,6 +185,7 @@ def expand_variations( config:SimpleNamespace ) -> list:
                     'url':'https://github.com/enetheru/godot.git',
                     'ref':'4.4-tracy'
                 })
+                cfg.source_dir += '.tracy'
                 cfg.scons['build_vars'].append('debug_symbols=yes')
                 cfg.scons['build_vars'].append('separate_debug_symbols=yes')
                 cfg.scons['build_vars'].append('extra_suffix=tracy.dbg')

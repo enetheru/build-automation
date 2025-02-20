@@ -1,7 +1,4 @@
-from pathlib import Path
-
-from share.format import *
-from share.run import stream_command
+from share.script_imports import *
 
 # MARK: SCons Build
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
@@ -41,7 +38,7 @@ def scons_build(config: dict):
     cmd_chunks = [
         "scons",
         f"-j {jobs}" if jobs > 0 else None,
-        "verbose=yes" if opts["quiet"] is False else None,
+        "verbose=yes" if opts["verbose"] else None,
     ]
     if "build_vars" in scons.keys():
         cmd_chunks += scons["build_vars"]
@@ -50,8 +47,7 @@ def scons_build(config: dict):
         h3(f"Building {target}")
         build_command: str = " ".join(filter(None, cmd_chunks))
         build_command += f" target={target}"
-        print( build_command )
 
-        stream_command(build_command, dry=opts['dry'])
+        stream_command(build_command, dry=opts['dry'], text=False)
 
     print(align(" SCons build finished ", line=fill("- ")))

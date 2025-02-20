@@ -76,7 +76,7 @@ def write_preamble(buffer:IO, project: SimpleNamespace):
     buffer.write( "#!/bin/env python\nimport sys\n")
     buffer.write( f"sys.path.append({repr(str(project.opts.path))})\n" )
     with open(f'{Path( __file__ ).parent}/script_imports.py') as script_imports:
-        buffer.write( script_imports.read() )
+        for line in script_imports.readlines()[1:]: buffer.write( line )
     buffer.write('\n\n')
 
 

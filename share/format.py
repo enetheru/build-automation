@@ -5,8 +5,6 @@ import shutil
 import subprocess
 import typing
 
-from rich import print
-
 # MARK: FORMAT
 ###################################- Format -###################################
 #                                                                              #
@@ -50,7 +48,7 @@ except OSError:
 # If we dont have figlet then just replace it with something else
 custom_figlet = pathlib.Path("C:/git/cmatsuoka/figlet/figlet.exe")
 
-def figlet(message:str, options:dict=None):
+def figlet(message:str, options:dict=None) -> str:
     if options is None: options = {}
 
     defaults = {
@@ -70,7 +68,7 @@ def figlet(message:str, options:dict=None):
             f'{message}']
 
     if figlet_path:
-        result = subprocess.run( args, stdout=subprocess.PIPE).stdout.decode('utf-8')
+        result:str = subprocess.run( args, stdout=subprocess.PIPE, encoding='utf-8').stdout
         # When I output text with figlet it inserts a completely useles character as the space.
         # [char] 0x2001  # [MQSP]
         # This might not be a problem in python
