@@ -1,5 +1,6 @@
-from rich.console import Console
+from io import StringIO
 
+from rich.console import Console
 
 class ConsoleMultiplex(Console):
     def __init__(self, *args, **kwargs):

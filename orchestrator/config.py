@@ -1,13 +1,11 @@
 import copy
 import inspect
+
 from types import SimpleNamespace
-
-import rich
-
-from share.actions_git import git_checkout
 from share.expand_config import expand, expand_host_env
 from share.toolchains import toolchains
-from share.format import *
+
+from share.script_imports import *
 
 project_config = SimpleNamespace(**{
     'gitdef':{
@@ -58,11 +56,6 @@ project_config = SimpleNamespace(**{
 # │                                          |_|                               │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
-    import os
-    from pathlib import Path
-
-    from share.Timer import Timer
-    from share.format import h4
     from share.actions_git import git_checkout
     from share.actions_cmake import cmake_configure, cmake_build
 
@@ -134,10 +127,6 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
     print( table )
     if not timer.ok():
         exit(1)
-
-def process_script( script:str ) -> str:
-    print( 'processing script' )
-    return script.replace('%replaceme%', inspect.getsource(git_checkout))
 
 # MARK: Windows
 # ╒════════════════════════════════════════════════════════════════════════════╕

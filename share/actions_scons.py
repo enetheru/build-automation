@@ -14,31 +14,34 @@ from share.run import stream_command
 def scons_build(config: dict):
     print(figlet("SCons Build", {"font": "small"}))
 
-    scons: dict = config["scons"]
-    jobs = config["jobs"]
+    opts:dict = config['opts']
+    jobs = opts["jobs"]
+
+    build:dict = config['build']
+    scons: dict = build["scons"]
+
 
     if "build_dir" in scons.keys():
-        build_dir = Path(scons["build_dir"])
-        if not build_dir.is_absolute():
-            build_dir = Path(config["source_dir"]) / build_dir
+        build_path = Path(build["source_path"]) / scons['build_dir']
     else:
-        build_dir = Path(config["source_dir"])
+        build_path = Path(build["source_path"])
 
     try:
-        os.chdir(build_dir)
+        os.chdir(build_path)
     except FileNotFoundError as e:
-        print( f'Missing Folder {build_dir}' )
+        print( f'Missing Folder {build_path}' )
         return
 
     # requires SConstruct file existing in the current directory.
-    if not (build_dir / "SConstruct").exists():
-        print(f"[red]Missing SConstruct in {build_dir}")
-        raise "Missing SConstruct"
+    if not (build_path / "SConstruct").exists():
+        fnf = FileNotFoundError()
+        fnf.add_note(f"[red]Missing SConstruct in {build_path}")
+        raise fnf
 
     cmd_chunks = [
         "scons",
         f"-j {jobs}" if jobs > 0 else None,
-        "verbose=yes" if config["quiet"] is False else None,
+        "verbose=yes" if opts["quiet"] is False else None,
     ]
     if "build_vars" in scons.keys():
         cmd_chunks += scons["build_vars"]
@@ -49,6 +52,6 @@ def scons_build(config: dict):
         build_command += f" target={target}"
         print( build_command )
 
-        stream_command(build_command, dry=config['dry'])
+        stream_command(build_command, dry=opts['dry'])
 
     print(align(" SCons build finished ", line=fill("- ")))

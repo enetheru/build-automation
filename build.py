@@ -2,6 +2,8 @@
 import argparse
 import copy
 import importlib.util
+import itertools
+import json
 import multiprocessing
 import platform
 import sys
@@ -18,14 +20,12 @@ from rich.console import Console
 from rich.pretty import pprint
 from rich.table import Table
 
-from share import actions_git
 # Local Imports
 from share.ConsoleMultiplex import ConsoleMultiplex
-from share.actions_git import short_hash
 from share.format import *
 from share.run import stream_command
 from share.toolchains import toolchains
-from share.generate import generate_build_scripts, namespace_to_script
+from share.generate import generate_build_scripts, write_namespace, MyEncoder
 
 sys.stdout.reconfigure(encoding='utf-8')
 
@@ -39,6 +39,12 @@ def process_log_null( raw_file: IO, clean_file: IO ):
 
     for line in raw_file:
         clean_file.write( regex.sub('', line ) )
+
+class PretendIO(StringIO):
+    def write( self, value ):
+        print( value )
+
+pretendio = PretendIO()
 
 # ================[ Setup Multiplexed Console ]================-
 console = ConsoleMultiplex()
@@ -75,14 +81,14 @@ parser_opts.add_argument( "--giturl" )  # The Url to clone from
 parser_opts.add_argument( "--gitref" )  # the Commit to checkout
 
 # Create the namespace before parsing, so we can add derived options from the system
-bargs = argparse.Namespace()
+bargs = SimpleNamespace()
 
 bargs.command = " ".join( sys.argv )
 bargs.platform = platform.system()
-bargs.root_dir = Path( __file__ ).parent
+bargs.path = Path( __file__ ).parent
 
 # Log everything to a file
-console.tee( Console( file=open( bargs.root_dir / "build_log.txt", "w", encoding='utf-8' ), force_terminal=True ), "build_log" )
+console.tee( Console( file=open( bargs.path / "build_log.txt", "w", encoding='utf-8' ), force_terminal=True ), "build_log" )
 
 # Add all the things from the command line
 parser.parse_args( namespace=bargs )
@@ -96,7 +102,7 @@ def import_projects() -> dict:
     # Import project_config files.
     config_imports: dict = {}
     project_configs: dict = {}
-    for config_file in bargs.root_dir.glob( project_glob ):
+    for config_file in bargs.path.glob( project_glob ):
         # get the name of the project
         project_name = os.path.basename( config_file.parent )
         # Create Module Spec
@@ -121,8 +127,10 @@ def import_projects() -> dict:
 
     # Update project from bargs
     for name, project in project_configs.items():
+        setattr(project, 'opts', bargs )
         setattr(project, 'name', name )
-        setattr(project, 'project_dir', bargs.root_dir / project.name )
+        setattr(project, 'path', bargs.path / project.name )
+        setattr(project, 'verbs', getattr(project, 'verbs', []) + ['fetch'])
 
     return project_configs
 
@@ -192,21 +200,23 @@ def fetch_projects():
     h3('Fetching / Updating Projects')
 
     for project in projects.values():
+        if 'fetch' not in project.verbs: continue
+
         print(f"  == {project.name}" )
 
         # Change to the git directory and instantiate a repo, some commands still
         # assume being inside a git dir.
-        os.chdir( project.project_dir )
+        os.chdir( project.path )
         gitdef = project.gitdef
-        gitdef['dir'] = project.project_dir / "git"
+        gitdef['gitdir'] = project.path / "git"
 
         # Lets clone if we dont exist
-        if not gitdef['dir'].exists():
+        if not gitdef['gitdir'].exists():
             h4( 'Cloning' )
             if project['dry']: continue
-            repo = git.Repo.clone_from( gitdef['url'], gitdef['dir'], progress=print,  bare=True, tags=True )
+            repo = git.Repo.clone_from( gitdef['url'], gitdef['gitdir'], progress=print,  bare=True, tags=True )
         else:
-            repo = git.Repo( gitdef['dir'] )
+            repo = git.Repo( gitdef['gitdir'] )
 
         # Keep a dictionary of remote:{refs,} to check for updates
         updates: dict[str, set[str]] = {'origin': {gitdef['ref']}}
@@ -247,7 +257,7 @@ def fetch_projects():
                 remote_ref:str = g.ls_remote( remotes[remote], ref )
                 if not remote_ref:
                     print( f"Unable to fetch remote ref {remote}/{ref}")
-                    exit(1)
+                    exit(1) #FIXME handle this better.
                 remote_ref = remote_ref.split()[0]
 
                 if remote == 'origin':
@@ -271,10 +281,14 @@ def fetch_projects():
             h4(f'Fetching {remote}/{ref}')
             repo.git.fetch( '--verbose', '--progress','--tags', '--force', remote, '*:*' )
 
-        newline()
+        h4( "Worktrees" )
+        repo.git.worktree('prune')
+        for line in str(repo.git.worktree('list')).splitlines():
+            print( '   ', line)
+
 
 if 'fetch' in bargs.project_actions: fetch_projects()
-
+print("  OK")
 
 # MARK: Update Configs
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -285,48 +299,24 @@ if 'fetch' in bargs.project_actions: fetch_projects()
 # │       |_|                                           |___/                  │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def update_configs():
-    from copy import deepcopy
-
     h3( "Updating Configs" )
     for project in projects.values():
-        for k, v in get_interior_dict( bargs ).items():
-            if v is None: continue
-            if k in ['toolchain_actions', 'project_actions', 'build_actions']: continue
-            if getattr( project, k, None ) is None:
-                setattr( project, k, v )
-
-
-        setattr( project, 'actions', deepcopy(bargs.project_actions ))
-        setattr( project, 'project_dir', project.root_dir / project.name )
-
-        if not getattr(project, 'verbs', False ):
-            setattr( project, 'verbs', [] )
-
         for build in project.build_configs.values():
-            for k, v in get_interior_dict( project ).items():
-                if v is None: continue
-                if k in ["build_configs"]: continue # skip keys
-                if getattr( build, k, None ) is None:
-                    setattr( build, k, deepcopy(v) )
+            setattr( build, 'project', project.name, )
+            setattr( build, 'script_path', project.path / f"{build.name}.py" )
 
-            # additional overrides
-            setattr( build, 'project', project.name )
-            setattr( build, 'git_hash_short', short_hash( build ) )
-            setattr( build, 'script_path', build.project_dir / f"{build.name}.py" )
-            setattr( build, 'actions', deepcopy( bargs.build_actions ) )
+            # all build configs need a gitdef even if empty
+            setattr(build, 'gitdef', getattr(build, 'gitdef', {}))
 
-            # TODO Clean-up shell command with proper paths for python
-            shell = getattr(build.toolchain, 'shell', False)
-            if shell: run_cmd = ' '.join(build.toolchain.shell + [f'"python {Path( build.script_path ).as_posix()}"'] )
-            else: run_cmd = f'python {Path( build.script_path ).as_posix()}'
+            script_path = build.script_path.as_posix()
+            shell:list = getattr(build.toolchain, 'shell', [])
+            if shell: run_cmd = ' '.join(shell + [f'"python {script_path}"'] )
+            else: run_cmd = f'python {script_path}'
+
             setattr( build, 'run_cmd', run_cmd )
 
-            # TODO Expand build commands so that we can inspect after the fact
-            #   SCons
-            #   CMake Configure
-            #   CMake Build
-
 update_configs()
+print("  OK")
 # MARK: Generate Scripts
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │   ___                       _         ___         _      _                 │
@@ -337,8 +327,8 @@ update_configs()
 # ╰────────────────────────────────────────────────────────────────────────────╯
 h3('Generating Build Scripts')
 generate_build_scripts( projects )
+print("  OK")
 
-quit()
 # MARK: Build
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  ___                         ___      _ _    _                             │
@@ -348,16 +338,15 @@ quit()
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def process_build( build:SimpleNamespace ):
     # Skip the build config if there are no actions to perform
+    project = projects[build.project]
 
-    if build.show:
+    if bargs.show:
         print( align( f"- {build.name} -", line=fill( "=", 120 ) ) )
         print()
-        config_string = StringIO()
-        namespace_to_script('config', build, config_string )
-        print( config_string.getvalue() )
+        write_namespace( pretendio, build, 'config')
 
     skip:bool=True
-    for k in build.actions:
+    for k in bargs.build_actions:
         if k in build.verbs:
             skip = False
 
@@ -366,10 +355,10 @@ def process_build( build:SimpleNamespace ):
         build.stats = {"status":'skipped', 'duration':'dnr'}
         return
 
-    console.set_window_title( f"{build.project}[{process_build.x}:{process_build.n}] - {build.name}" )
+    console.set_window_title( f"{project.name}[{process_build.x}:{process_build.n}] - {build.name}" )
 
     # =====================[ stdout Logging ]======================-
-    log_path = build.project_dir / f"logs-raw/{build.name}.txt"
+    log_path = project.path / f"logs-raw/{build.name}.txt"
     build_log = open( file=log_path, mode='w', buffering=1, encoding="utf-8" )
     build_console = Console( file=build_log, force_terminal=True )
     console.tee( name=build.name, new_console=build_console )
@@ -378,9 +367,7 @@ def process_build( build:SimpleNamespace ):
     print( align( f"- Starting: {build.name} -", 0, fill( "=", 120 ) ) )
     print()
 
-    config_string = StringIO()
-    namespace_to_script('config', build, config_string )
-    print( config_string.getvalue() )
+    write_namespace( pretendio, build,'config' )
 
     # ==================[ Print Configuration ]====================-
     from rich.panel import Panel
@@ -446,7 +433,7 @@ def process_build( build:SimpleNamespace ):
     # ==================[ Output Log Processing ]==================-
     h3( "Post Run Actions" )
     h4( "Clean Log" )
-    cleanlog_path = (build.project_dir / f"logs-clean/{build.name}.txt")
+    cleanlog_path = (project.path / f"logs-clean/{build.name}.txt")
     if 'clean_log' in  get_interior_dict(build).keys():
         clean_log = build.clean_log
     else: clean_log = process_log_null
@@ -455,7 +442,7 @@ def process_build( build:SimpleNamespace ):
           open( cleanlog_path, "w", encoding='utf-8' ) as log_clean):
         clean_log( log_raw, log_clean )
 
-    print( align( f"[ Completed:{build.project} / {build.name} ]", 0, fill( " -", 120 ) ) )
+    print( align( f"[ Completed:{build.project} / {build.name} ]", line=fill( " -", 120 ) ) )
 
 
 # MARK: Project
@@ -469,14 +456,14 @@ def process_build( build:SimpleNamespace ):
 # TODO Setup a keyboard interrupt to cancel a job and exit the loop, rather than quit the whole script.
 def process_projects():
     for project in projects.values():
-        os.chdir( project.project_dir )
+        os.chdir( project.path )
 
         # =====================[ stdout Logging ]======================-
-        os.makedirs( project.project_dir.joinpath( f"logs-raw" ), exist_ok=True )
-        os.makedirs( project.project_dir.joinpath( f"logs-clean" ), exist_ok=True )
+        os.makedirs( project.path / "logs-raw" , exist_ok=True )
+        os.makedirs( project.path / "logs-clean", exist_ok=True )
 
         # Tee stdout to log file.
-        log_path = project.project_dir / f"logs-raw/{project.name}.txt"
+        log_path = project.path / "logs-raw/{project.name}.txt"
         log_file = open( file=log_path, mode='w', buffering=1, encoding="utf-8" )
         project_console = Console( file=log_file, force_terminal=True )
         console.tee( project_console , project.name )
@@ -484,13 +471,7 @@ def process_projects():
         # ================[ project Heading / Config ]==================-
         h2( f'Process: {project.name}' )
         print( figlet( project.name, {"font": "standard"} ) )
-
-        print( f"  {'options':14s}= ", end='' )
-        pprint( { k:v for k,v in project.__dict__.items()
-            if k not in ['build_configs']
-        }, expand_all=True )
-        print( f"  {'build_configs':14s}= ", end='' )
-        pprint( [k for k in project.build_configs.keys()], expand_all=True)
+        write_namespace( pretendio, project, 'project')
 
         process_build.n = len(project.build_configs)
         process_build.x = 0
@@ -498,7 +479,7 @@ def process_projects():
             process_build.x += 1
             process_build( build )
 
-        print( align( f"[ Completed:{project.name} ]", 0, fill( " -" ) ) )
+        print( align( f"[ Completed:{project.name} ]", 0.02, fill( " -" ) ) )
         # remove the project output log.
         console.pop( project.name )
 
@@ -546,7 +527,7 @@ def show_statistics():
 
             colour = "green"
             status = build.stats['status']
-            if build.dry:
+            if bargs.dry:
                 colour = "yellow"
                 status = "dry-run"
             elif build.stats["status"] == "Failed":
@@ -573,17 +554,5 @@ console.pop( "build_log" )
 # Dump last config to json so we can inspect it
 # TypeError: Object of type SimpleNamespace is not JSON serializable
 with open( "last_config_dump.json", 'w' ) as file:
-    import json
-    from json import JSONEncoder
-
-    class MyEncoder(JSONEncoder):
-        def default(self, o):
-            if isinstance( o, SimpleNamespace ):
-                return o.__dict__
-            if isinstance( o, pathlib.WindowsPath ) or isinstance(o, pathlib.PosixPath):
-                return os.fspath( o )
-            return f"*** CANT JSON DUMP THIS '{type(o).__name__}'"
-
     json.JSONEncoder = MyEncoder
-
     file.write( json.dumps( projects, indent=2 ) )

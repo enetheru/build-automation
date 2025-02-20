@@ -7,28 +7,44 @@
 # ╰────────────────────────────────────────────────────────────────────────────╯
 import inspect
 import json
-from io import StringIO
+from json import JSONEncoder
 from pathlib import Path
 from types import SimpleNamespace
+from typing import IO
 
 from share.format import *
 
-def func_as_script( func ) -> str:
-    src=inspect.getsource( func ).splitlines()[1:]
-    for n in range(len(src)):
-        line = src[n]
-        if line.startswith('    '):
-            src[n] = line[4:]
-    return '\n'.join(src)
+class MyEncoder(JSONEncoder):
+    def default(self, o):
+        if isinstance( o, SimpleNamespace ):
+            return o.__dict__
+        if isinstance( o, Path ):
+            return os.fspath( o )
+        return f"*** CANT JSON DUMP THIS '{type(o).__name__}'"
 
-def namespace_to_script( name:str, namespace:SimpleNamespace, script:StringIO, indent=2, level: int = 0) -> None:
-    """Convert a SimpleNamespace to a dictionary-like script string with indentation."""
+json.JSONEncoder = MyEncoder
+
+def func_to_string( func ) -> str:
+    if func is None: return ''
+    lines:list = ['']
+    skip = True
+    for line in inspect.getsource( func ).splitlines():
+        if skip:
+            skip = '# start_script' not in line
+            continue
+        lines.append( line[4:] if line.startswith('    ') else line )
+    return '\n'.join(lines)
+
+def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, level: int = 0) -> None:
+    """Convert a SimpleNamespace to a dictionary-like buffer string with indentation."""
+
     pad = " " * (indent * level)
     inner_pad = pad + " " * indent
 
     lines = [f"{pad}{name} = {{"]
 
-    skip_keys = getattr(namespace, 'skip_keys', [])
+    skip_keys = []
+    skip_keys += getattr(namespace, 'skip_keys', [])
 
     for key, value in namespace.__dict__.items():
         if key in skip_keys or callable(value): # Skip specified keys and functions
@@ -36,71 +52,45 @@ def namespace_to_script( name:str, namespace:SimpleNamespace, script:StringIO, i
         qkey = repr(key)
 
         if isinstance(value, dict): # Pretty print dictionaries
+            if not value:
+                lines.append(f"{inner_pad}{qkey}:{{}},")
+                continue
+            if isinstance(next(iter(value.values())), SimpleNamespace): continue
             for line in f'{qkey}:{json.dumps( value, indent=indent )},'.splitlines():
                 lines.append(f'{inner_pad}{line}')
+
         elif isinstance(value, Path): # Handle Path objects
             lines.append(f"{inner_pad}{qkey}:Path({repr(str(value))}),")
-        elif isinstance(value, SimpleNamespace): # recurse over other namespaces
-            namespace_to_script( key, value, script )
+        elif isinstance(value, SimpleNamespace): # Skip other SimpleNamespaces
+            continue
         elif isinstance(value, str) and '\n' in value: # Skip Multi-Line Scripts.
             continue
         else: # Default case for simple values
             lines.append(f"{inner_pad}{qkey}:{repr(value)},")
 
     lines.append(f"{pad}}}")
-    script.write( "\n".join(lines) + '\n' )
+    buffer.write( "\n".join(lines) + '\n' )
 
 
-def write_preamble(config: SimpleNamespace, script:StringIO):
-    script.write( "#!/bin/env python" )
-    script.write( f"""
-import sys
-sys.path.append({repr(str(config.root_dir))})
+def write_preamble(buffer:IO, project: SimpleNamespace):
+    buffer.write( "#!/bin/env python\nimport sys\n")
+    buffer.write( f"sys.path.append({repr(str(project.opts.path))})\n" )
+    with open(f'{Path( __file__ ).parent}/script_imports.py') as script_imports:
+        buffer.write( script_imports.read() )
+    buffer.write('\n\n')
 
-from pathlib import Path
-import rich
-from rich.console import Console
-
-from share.format import *
-from share.run import stream_command
-
-rich._console = console = Console(soft_wrap=False, width=9000)
-
-""")
-    namespace_to_script('config', config, script )
 
 def section_heading( title ) -> str:
-    line = fill("- ", 80)
+    line:str = fill("- ", 80)
     line = align("# ", 0 , line )
-    line = align(f"[ {title} ]", line=line )
-    return line
+    return align(f"[ {title} ]", line=line ) + '\n'
 
 
-def write_toolchain( toolchain:SimpleNamespace, script:StringIO ):
-    script.writelines( [section_heading("Start of Toolchain"),'\n'] )
-
-    toolchain_script =  getattr( toolchain, 'script', None )
-    if toolchain_script:
-        script.write( func_as_script( toolchain_script ) )
-    else:
-        script.write( "# No Toolchain additions\n" )
-
-
-
-def write_project( project:SimpleNamespace, script:StringIO ):
-    script.writelines( [section_heading("Start of Project"),'\n'] )
-
-    project_script =  getattr( project, 'script', None )
-    if project_script:
-        script.write( func_as_script( project_script ) )
-    else:
-        script.write( "# No Project additions\n" )
-
-
-
-def write_build( build:SimpleNamespace, script:StringIO ):
-    script.writelines( [section_heading("Start of Build"),'\n'] )
-    script.write( func_as_script( build.script ) )
+def write_section( buffer:IO, section:SimpleNamespace, section_name:str ):
+    buffer.write( section_heading(f"Start of {section_name}") )
+    write_namespace( buffer, section, section_name )
+    buffer.write(f"config['{section_name}'] = {section_name}\n")
+    buffer.write( func_to_string( getattr( section, 'script', None ) ) )
 
 # MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -114,12 +104,11 @@ def write_build( build:SimpleNamespace, script:StringIO ):
 def generate_build_scripts( projects:dict ):
     for project in projects.values():
         for build in project.build_configs.values():
-            script = StringIO()
+            with open( build.script_path, "w", encoding='utf-8' ) as script:
+                write_preamble( script, project )
+                write_section( script, project.opts, 'opts' )
+                write_section( script, build.toolchain, 'toolchain' )
+                write_section( script, project, 'project' )
+                write_section( script, build, 'build' )
 
-            write_preamble( build, script )
-            write_toolchain( build.toolchain, script )
-            write_project( project, script )
-            write_build( build, script )
 
-            with open( build.script_path, "w", encoding='utf-8' ) as file:
-                file.write( script.getvalue() )

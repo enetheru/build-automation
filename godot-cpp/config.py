@@ -1,13 +1,10 @@
-import copy
 import sys
-from pathlib import Path
+import copy
+
 from types import SimpleNamespace
-
-import rich
-
 from share.expand_config import expand_host_env, expand
-from share.run import stream_command
-from share.format import *
+
+from share.script_imports import *
 
 project_config = SimpleNamespace(**{
     'gitdef':{
@@ -66,7 +63,6 @@ godot_platforms = {
 # │                                      |_|                                   │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def scons_script( config:dict, toolchain:dict, console:rich.console.Console ):
-    from share.Timer import Timer, TaskStatus
     from actions import godotcpp_test
     from share.actions_git import git_checkout
     from share.actions_scons import scons_build
@@ -175,12 +171,8 @@ scons_script.verbs = ['source', 'clean', 'build', 'test']
 # │                                          |_|                               │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def cmake_script( config:dict, toolchain:dict, console:rich.console.Console ):
-    import os
     import copy
-    from pathlib import Path
 
-    from share.Timer import Timer
-    from share.format import h4
     from share.actions_git import git_checkout
 
     from actions import godotcpp_test

@@ -1,10 +1,8 @@
+from share.script_imports import *
+
 import copy
 from types import SimpleNamespace
-import rich
 from share.expand_config import expand_host_env, expand
-from share.format import *
-from share.run import stream_command
-
 
 project_config = SimpleNamespace(**{
         'gitdef':{
@@ -15,7 +13,6 @@ project_config = SimpleNamespace(**{
     }
 )
 
-
 # MARK: Scripts
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  ___         _      _                                                      │
@@ -24,10 +21,14 @@ project_config = SimpleNamespace(**{
 # │ |___/\__|_| |_| .__/\__/__/                                                │
 # │               |_|                                                          │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-
-def scons_script( config:dict, console:rich.console.Console ):
-    from pathlib import Path
-    from share.Timer import Timer, TaskStatus
+def scons_script():
+    opts:dict = {}
+    toolchain:dict = {}
+    project:dict = {}
+    build:dict = {}
+    config:dict = {}
+    # start_script
+    # Scons Script
     from share.actions_git import git_checkout
     from share.actions_scons import scons_build
 
@@ -35,33 +36,40 @@ def scons_script( config:dict, console:rich.console.Console ):
 
     def want( action:str ) -> bool:
         return (ok
-                and action in config['verbs']
-                and action in config['actions'])
+                and action in build['verbs']
+                and action in opts['build_actions'])
 
     stats:dict = dict()
-    name = config['name']
+    name = build['name']
 
     # Use a project wide build cache
-    scons:dict = config['scons']
-    scons_cache = Path(config['project_dir']) / 'scons_cache'
+    scons:dict = build['scons']
+    scons_cache = project['path'] / 'scons_cache'
     scons['build_vars'].append(f'cache_path={scons_cache.as_posix()}')
     scons['build_vars'].append('cache_limit=16')
 
     # Update source_dir with git_short_hash to differentiate
-    # FIXME, this will blow up my folder tree, I have to change when and how it
-    #   appends, with just a normal ref, etc.
-    config['source_dir'] += f'.{config['git_short_hash']}'
+    gitdef = build['gitdef'] = project['gitdef'] | build['gitdef'] # TODO | opts['gitdef']
+    remote:str = gitdef.get('remote', '')
+    gitref =  f'{remote}/{gitdef['ref']}' if remote else gitdef['ref']
+
+    repo = git.Repo(project['path'] / 'git')
+    short_hash = repo.git.rev_parse('--short', gitref)
+
+    if remote or gitdef['ref'] != 'master':
+        build['source_dir'] += f'.{short_hash}'
+
+    gitdef['worktree_path'] = build['source_path'] = project['path'] / build['source_dir']
 
     profile_name = scons.get('build_profile', None)
     if profile_name:
-        profile = Path( config['project_dir'] ) / 'build_profiles' / f'{profile_name}.py'
-        scons['build_vars'].append(f'build_profile={profile.as_posix()}')
+        profile_path = project['path'] / 'build_profiles' / f'{profile_name}.py'
+        scons['build_vars'].append(f'build_profile={profile_path.as_posix()}')
 
     #[=================================[ Fetch ]=================================]
     if want('source'):
         console.set_window_title(f'Source - {name}')
         with Timer(name='source') as timer:
-
             git_checkout( config )
         stats['source'] = timer.get_dict()
         ok = timer.ok()
@@ -209,11 +217,22 @@ def generate_configs():
         'linux':'linux',
         'win32':'windows'
     }
+    godot_arch = {
+        'armv7': 'arm32',
+        'armeabi-v7a': 'arm32',
+        'arm64-v8a':'arm64',
+        'aarch64':'arm64',
+        'i686':'x86_32',
+        'x86':'x86_32',
+        'x86_32':'x86_32',
+        'x86_64':'x86_64',
+        'wasm32':'wasm32'
+    }
     for cfg in configs:
         cfg.name = f'{cfg.host}.{cfg.toolchain.name}.{cfg.arch}'
         cfg.source_dir = f'{cfg.host}.{cfg.toolchain.name}'
         cfg.scons['build_vars'].append(f'platform={godot_platforms[cfg.platform]}')
-        cfg.scons['build_vars'].append(f'arch={cfg.arch}')
+        cfg.scons['build_vars'].append(f'arch={godot_arch[cfg.arch]}')
 
     configs = expand( configs, expand_variations )
 
