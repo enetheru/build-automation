@@ -9,9 +9,10 @@ from share.format import *
 from share.expand_config import expand_host_env
 
 project_config = SimpleNamespace(**{
-    'name'      : 'godot-cpp-test',
-    'gitUrl'    : "https://github.com/enetheru/godot-cpp-test.git/",
-    'gitref'   : "main",
+    'gitdef':{
+        'url':"https://github.com/enetheru/godot-cpp-test.git/",
+        'ref':"main",
+    },
     'build_configs' : {}
 })
 

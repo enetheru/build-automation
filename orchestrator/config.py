@@ -10,8 +10,10 @@ from share.toolchains import toolchains
 from share.format import *
 
 project_config = SimpleNamespace(**{
-    'gitUrl'  : "https://github.com/enetheru/godot-orchestrator.git/",
-    'gitref':  '5db202a5c2b16ab46a57e3a2c68771777e4067ab',
+    'gitdef':{
+        'url':"https://github.com/enetheru/godot-orchestrator.git/",
+        'ref':'gdext-4.4',
+    },
     'godot':{
         'platforms':['android', 'ios', 'linux', 'macos', 'web', 'windows'],
     },

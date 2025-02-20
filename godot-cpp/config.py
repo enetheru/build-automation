@@ -10,7 +10,10 @@ from share.run import stream_command
 from share.format import *
 
 project_config = SimpleNamespace(**{
-    'gitUrl'  : "https://github.com/enetheru/godot-cpp.git/",
+    'gitdef':{
+        'url':"https://github.com/enetheru/godot-cpp.git/",
+        'ref':'master'
+    },
     'build_configs' : {}
 })
 

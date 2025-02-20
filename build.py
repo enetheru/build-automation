@@ -192,9 +192,7 @@ def fetch_projects():
     h3('Fetching / Updating Projects')
 
     for project in projects.values():
-        print(f"  {project.name}" )
-        print(f"    origin = {project.gitdef['url']}")
-        print(f"    gitref = {project.gitdef['ref']}")
+        print(f"  == {project.name}" )
 
         # Change to the git directory and instantiate a repo, some commands still
         # assume being inside a git dir.
@@ -237,15 +235,9 @@ def fetch_projects():
                 repo.create_remote(gitdef['remote'], gitdef['url'])
 
         remotes = {remote.name:remote.url for remote in repo.remotes}
-        # print( "    Remotes" )
-        # for remote,url in remotes.items():
-        #     print(f"      {remote} : {url}")
-        # newline()
-
         print("    Remotes:")
         for remote in repo.remotes:
             print(f"      {remote.name}: {remote.url}")
-        newline()
 
         h4( "Checking for updates:" )
         fetches = {}
@@ -278,6 +270,8 @@ def fetch_projects():
         for remote, ref in fetches.items():
             h4(f'Fetching {remote}/{ref}')
             repo.git.fetch( '--verbose', '--progress','--tags', '--force', remote, '*:*' )
+
+        newline()
 
 if 'fetch' in bargs.project_actions: fetch_projects()
 
@@ -333,7 +327,6 @@ def update_configs():
             #   CMake Build
 
 update_configs()
-quit()
 # MARK: Generate Scripts
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │   ___                       _         ___         _      _                 │
@@ -345,6 +338,7 @@ quit()
 h3('Generating Build Scripts')
 generate_build_scripts( projects )
 
+quit()
 # MARK: Build
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  ___                         ___      _ _    _                             │
