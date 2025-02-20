@@ -15,29 +15,77 @@ from share.format import figlet, h4, align, fill
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def project_fetch_update( project:SimpleNamespace ):
+    # get a reference to the git command so we can use it independently of a
+    # repository
+    g = git.cmd.Git()
 
+    # Change to the git directory and instantiate a repo, some commands still
+    # assume being inside a git dir.
     os.chdir( project.project_dir )
-    git_dir = project.project_dir / "git"
+    gitdef = project.gitdef
+    gitdef['dir'] = project.project_dir / "git"
 
-    if not git_dir.exists():
+    if not gitdef['dir'].exists():
         h4( 'Cloning' )
         if project['dry']: return
-        repo = git.Repo.clone_from( project.gitUrl, git_dir, progress=print,  bare=True, tags=True )
+        repo = git.Repo.clone_from( gitdef['url'], gitdef['dir'], progress=print,  bare=True, tags=True )
     else:
-        h4( 'Updating' )
-        g = git.cmd.Git()
-        refs:str = g.ls_remote( project.gitUrl, project.gitHash )
-        print( '    remote:', refs.split()[0] )
-        remote_ref = refs.split()[0]
+        repo = git.Repo( gitdef['dir'] )
 
-        repo = git.Repo( git_dir )
-        local_ref = repo.git.show( project.gitHash, '--format=%H', '-s' )
-        print( '    local:', local_ref )
+    remotes = {remote.name:remote.url for remote in repo.remotes}
 
-        if remote_ref == local_ref:
-            print( "    Repository is Up-to-Date" )
-        else:
-            repo.git.fetch( '-v', '--force', 'origin', '*:*' )
+    updatable:set = set()
+    for name, config in project.build_configs.items():
+        gitdef = getattr( config, 'gitdef', None )
+
+        # Early Out
+        if not gitdef: continue
+        if not 'url' in gitdef: continue
+        if gitdef['remote'] in updatable: continue
+
+        # What are we looking for? if it doesnt exist, then we can skip because
+        # it will fallback to to the project, and we will always update that.
+        gitref = gitdef.get( 'ref', None )
+        if not gitref: continue
+
+        print( "Comparing remote and local git references" )
+
+        remote_ref:str = g.ls_remote( gitdef['url'], gitdef['ref'] )
+
+
+        # This only gets the first occurrance.
+        local_ref = next(x for x in repo.git.show_ref().splitlines() if gitdef['ref'] in x)
+
+        if local_ref != remote_ref:
+            print( "local and remote references differ, adding to update list" )
+            print( "local ref:", local_ref )
+            print( "remote ref:", remote_ref )
+            updatable.add( gitdef['remote'] )
+
+    print( "list of remotes that have updates" )
+    print( updatable )
+
+    # Simple version with no checking.
+    # for remote in remotes:
+    #     repo.git.fetch( '-v', '--force', remote, '*:*' )
+
+    return
+
+    # Do this for all build configs and branches.
+    h4( 'Updating' )
+    g = git.cmd.Git()
+    refs:str = g.ls_remote( gitdef['url'], gitdef['ref'] )
+    print( '    remote:', refs.split()[0] )
+    remote_ref = refs.split()[0]
+
+
+    local_ref = repo.git.show( project.git['ref'], '--format=%H', '-s' )
+    print( '    local:', local_ref )
+
+    if remote_ref == local_ref:
+        print( "    Repository is Up-to-Date" )
+    else:
+        repo.git.fetch( '-v', '--force', 'origin', '*:*' )
 
     # Show the latest commit
     print( repo.git.show() )
@@ -61,8 +109,8 @@ def git_checkout(config: dict):
     # FIXME ^^, i should be able to just print the figlet title, but something is wrong.
 
     git_dir = config['project_dir'] / 'git'
-    git_hash = config.get('gitHash', None)
-    source_dir = config["source_dir"]
+    git_hash = config.get('gitref', None)
+    source_dir = config.get("source_dir", config['project_dir'] / config['name'] )
 
     if not git_dir.exists():
         fnf = FileNotFoundError()
@@ -70,7 +118,7 @@ def git_checkout(config: dict):
         raise fnf
 
     repo = git.Repo( git_dir )
-    latest = repo.git.show(config['gitHash'], '--format=%h', '-s')
+    latest = repo.git.show(config['gitref'], '--format=%h', '-s')
 
     if not source_dir.exists():
         h4("Create WorkTree")
@@ -82,7 +130,7 @@ def git_checkout(config: dict):
         repo.git.worktree( *filter(None, cmd_chunks) )
 
     worktree = git.Repo( source_dir )
-    if latest != worktree.git.show(config['gitHash'], '--format=%h', '-s'):
+    if latest != worktree.git.show(config['gitref'], '--format=%h', '-s'):
         h4("Update WorkTree")
         cmd_chunks = [ '--force', '--detach', git_hash ]
         if not config['dry']:
@@ -92,3 +140,9 @@ def git_checkout(config: dict):
 
     print( worktree.git.show() )
     print(align(" Git Checkout Finished ", line=fill("- ")))
+
+def short_hash( config:SimpleNamespace) -> str:
+    gitdef = config.gitdef
+    git_dir = config.project_dir / "git"
+    repo = git.Repo( git_dir )
+    return repo.git.show(gitdef['ref'], '--format=%h', '-s')

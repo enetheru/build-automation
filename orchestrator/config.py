@@ -11,7 +11,7 @@ from share.format import *
 
 project_config = SimpleNamespace(**{
     'gitUrl'  : "https://github.com/enetheru/godot-orchestrator.git/",
-    'gitHash':  '5db202a5c2b16ab46a57e3a2c68771777e4067ab',
+    'gitref':  '5db202a5c2b16ab46a57e3a2c68771777e4067ab',
     'godot':{
         'platforms':['android', 'ios', 'linux', 'macos', 'web', 'windows'],
     },
@@ -269,7 +269,7 @@ for toolchain in toolchains.values():
             continue
 
         case 'mingw64':
-            # cfg.gitHash = '537b787f2dc73d097a0cba7963f2e24b82ce6076'
+            # cfg.gitref = '537b787f2dc73d097a0cba7963f2e24b82ce6076'
             cfg.cmake['config_vars'] = [
                 '-G"MinGW Makefiles"',
                 '-DCMAKE_BUILD_TYPE=Release',

@@ -39,6 +39,9 @@ from rich import print
 #     $sFmt -f $num, $suffix[$index]
 # }
 
+def newline():
+    print()
+
 try:
     columns:int = os.get_terminal_size().columns
 except OSError:

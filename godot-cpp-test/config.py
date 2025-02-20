@@ -11,7 +11,7 @@ from share.expand_config import expand_host_env
 project_config = SimpleNamespace(**{
     'name'      : 'godot-cpp-test',
     'gitUrl'    : "https://github.com/enetheru/godot-cpp-test.git/",
-    'gitHash'   : "main",
+    'gitref'   : "main",
     'build_configs' : {}
 })
 

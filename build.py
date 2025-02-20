@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import copy
 import importlib.util
 import multiprocessing
 import platform
@@ -20,13 +21,13 @@ from rich.table import Table
 from share import actions_git
 # Local Imports
 from share.ConsoleMultiplex import ConsoleMultiplex
+from share.actions_git import short_hash
 from share.format import *
 from share.run import stream_command
 from share.toolchains import toolchains
 from share.generate import generate_build_scripts, namespace_to_script
 
 sys.stdout.reconfigure(encoding='utf-8')
-
 
 def get_interior_dict( subject ) -> dict:
     return {k: v for k, v in subject.__dict__.items()}
@@ -70,8 +71,8 @@ parser.add_argument('-t', '--toolchain-actions', nargs='+', default=[])
 parser.add_argument('-p', '--project-actions', nargs='+', default=[])
 parser.add_argument('-b', '--build-actions', nargs='+', default=[])
 
-parser_opts.add_argument( "--gitUrl" )  # The Url to clone from
-parser_opts.add_argument( "--gitHash" )  # the Commit to checkout
+parser_opts.add_argument( "--giturl" )  # The Url to clone from
+parser_opts.add_argument( "--gitref" )  # the Commit to checkout
 
 # Create the namespace before parsing, so we can add derived options from the system
 bargs = argparse.Namespace()
@@ -108,7 +109,6 @@ def import_projects() -> dict:
         config_imports[project_name] = config
         # Add project to project dictionary
         project = config.project_config
-        setattr(project, 'name', project_name )
         project_configs[project_name] = project
 
     # Filter the configs in the project to match the filter criteria
@@ -117,7 +117,14 @@ def import_projects() -> dict:
         project_config.build_configs = {k: v for k, v in build_configs.items() if re.search( bargs.filter, v.name )}
 
     # keep only projects which have a build config.
-    return {k: v for k, v in project_configs.items() if len( v.build_configs )}
+    project_configs = {k: v for k, v in project_configs.items() if len( v.build_configs )}
+
+    # Update project from bargs
+    for name, project in project_configs.items():
+        setattr(project, 'name', name )
+        setattr(project, 'project_dir', bargs.root_dir / project.name )
+
+    return project_configs
 
 projects = import_projects()
 
@@ -145,22 +152,8 @@ def show_heading():
 
 show_heading()
 
-def show():
-    for project in projects.values():
-        h2( project.name )
-        print( figlet( project.name, {"font": "standard"} ) )
-
-        for config in project.build_configs.values():
-            print( align( f"- {config.name} -", line=fill( "=", 120 ) ) )
-            print()
-            config_string = StringIO()
-            namespace_to_script('config', config, config_string )
-            print( config_string.getvalue() )
-
-if bargs.show: show()
-
 # List only.
-if bargs.list or bargs.show:
+if bargs.list:
     exit()
 
 # TODO if help in any of the system verbs then display a list of verb help items.
@@ -183,6 +176,111 @@ def process_toolchains():
                 getattr( toolchain, verb )( toolchain, bargs, console )
 
 process_toolchains()
+
+# MARK: Git Fetch Projects
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │   ___ _ _     ___    _      _      ___          _        _                 │
+# │  / __(_) |_  | __|__| |_ __| |_   | _ \_ _ ___ (_)___ __| |_ ___           │
+# │ | (_ | |  _| | _/ -_)  _/ _| ' \  |  _/ '_/ _ \| / -_) _|  _(_-<           │
+# │  \___|_|\__| |_|\___|\__\__|_||_| |_| |_| \___// \___\__|\__/__/           │
+# │                                              |__/                          │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+def fetch_projects():
+    import git
+    g = git.cmd.Git()
+
+    h3('Fetching / Updating Projects')
+
+    for project in projects.values():
+        print(f"  {project.name}" )
+        print(f"    origin = {project.gitdef['url']}")
+        print(f"    gitref = {project.gitdef['ref']}")
+
+        # Change to the git directory and instantiate a repo, some commands still
+        # assume being inside a git dir.
+        os.chdir( project.project_dir )
+        gitdef = project.gitdef
+        gitdef['dir'] = project.project_dir / "git"
+
+        # Lets clone if we dont exist
+        if not gitdef['dir'].exists():
+            h4( 'Cloning' )
+            if project['dry']: continue
+            repo = git.Repo.clone_from( gitdef['url'], gitdef['dir'], progress=print,  bare=True, tags=True )
+        else:
+            repo = git.Repo( gitdef['dir'] )
+
+        # Keep a dictionary of remote:{refs,} to check for updates
+        updates: dict[str, set[str]] = {'origin': {gitdef['ref']}}
+        for config in project.build_configs.values():
+            gitdef:dict = copy.copy(getattr(config, 'gitdef', None))
+            if gitdef is None: continue
+
+            gitdef.setdefault('url', project.gitdef['url'] )
+            gitdef.setdefault('ref', project.gitdef['ref'] )
+
+            if gitdef['url'] == project.gitdef['url']:
+                gitdef['remote'] = 'origin'
+            else:
+                gitdef.setdefault('remote', config.name )
+
+            # If the remote doesnt exist in the update dict add it
+            if not gitdef['remote'] in updates:
+                updates[gitdef['remote']] = set()
+
+            # Add the reference we care to update.
+            updates[gitdef['remote']].add( gitdef['ref'] )
+
+            # Finally add the remote if it doesnt already exist.
+            if gitdef['remote'] not in [remote.name for remote in repo.remotes]:
+                print('adding remote')
+                repo.create_remote(gitdef['remote'], gitdef['url'])
+
+        remotes = {remote.name:remote.url for remote in repo.remotes}
+        # print( "    Remotes" )
+        # for remote,url in remotes.items():
+        #     print(f"      {remote} : {url}")
+        # newline()
+
+        print("    Remotes:")
+        for remote in repo.remotes:
+            print(f"      {remote.name}: {remote.url}")
+        newline()
+
+        h4( "Checking for updates:" )
+        fetches = {}
+        for remote,refs in updates.items():
+            for ref in refs:
+                print( f"    {remote}/{ref}" )
+                remote_ref:str = g.ls_remote( remotes[remote], ref )
+                if not remote_ref:
+                    print( f"Unable to fetch remote ref {remote}/{ref}")
+                    exit(1)
+                remote_ref = remote_ref.split()[0]
+
+                if remote == 'origin':
+                    local_ref = repo.git.rev_parse(f"{ref}")
+                else:
+                    local_ref = repo.git.rev_parse(f"{remote}/{ref}")
+
+                if not local_ref:
+                    local_ref = 'missing'
+                    print( f"Unable to fetch local ref {remote}/{ref}")
+                else:
+                    local_ref = local_ref.split()[0]
+
+                if local_ref != remote_ref:
+                    print( "      local :", local_ref )
+                    print( "      remote:", remote_ref )
+                    print( "      local and remote references differ, adding to update list" )
+                    fetches[remote] = ref
+
+        for remote, ref in fetches.items():
+            h4(f'Fetching {remote}/{ref}')
+            repo.git.fetch( '--verbose', '--progress','--tags', '--force', remote, '*:*' )
+
+if 'fetch' in bargs.project_actions: fetch_projects()
+
 
 # MARK: Update Configs
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -219,8 +317,7 @@ def update_configs():
 
             # additional overrides
             setattr( build, 'project', project.name )
-            source_dir = getattr( build, 'source_dir', None)
-            if not source_dir: setattr( build, 'source_dir', build.project_dir / build.name )
+            setattr( build, 'git_hash_short', short_hash( build ) )
             setattr( build, 'script_path', build.project_dir / f"{build.name}.py" )
             setattr( build, 'actions', deepcopy( bargs.build_actions ) )
 
@@ -236,24 +333,7 @@ def update_configs():
             #   CMake Build
 
 update_configs()
-
-# MARK: Git Fetch Projects
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │   ___ _ _     ___    _      _      ___          _        _                 │
-# │  / __(_) |_  | __|__| |_ __| |_   | _ \_ _ ___ (_)___ __| |_ ___           │
-# │ | (_ | |  _| | _/ -_)  _/ _| ' \  |  _/ '_/ _ \| / -_) _|  _(_-<           │
-# │  \___|_|\__| |_|\___|\__\__|_||_| |_| |_| \___// \___\__|\__/__/           │
-# │                                              |__/                          │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-if 'fetch' in bargs.project_actions:
-    h3('Fetching / Updating Projects')
-
-    for project in projects.values():
-        print(f"  {project.name}" )
-        print(f"    gitURL={project.gitUrl}")
-        print(f"    gitHash={project.gitHash}")
-        actions_git.project_fetch_update( project )
-
+quit()
 # MARK: Generate Scripts
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │   ___                       _         ___         _      _                 │
@@ -274,6 +354,14 @@ generate_build_scripts( projects )
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def process_build( build:SimpleNamespace ):
     # Skip the build config if there are no actions to perform
+
+    if build.show:
+        print( align( f"- {build.name} -", line=fill( "=", 120 ) ) )
+        print()
+        config_string = StringIO()
+        namespace_to_script('config', build, config_string )
+        print( config_string.getvalue() )
+
     skip:bool=True
     for k in build.actions:
         if k in build.verbs:
@@ -400,7 +488,7 @@ def process_projects():
         console.tee( project_console , project.name )
 
         # ================[ project Heading / Config ]==================-
-        h2( project.name )
+        h2( f'Process: {project.name}' )
         print( figlet( project.name, {"font": "standard"} ) )
 
         print( f"  {'options':14s}= ", end='' )
@@ -457,8 +545,8 @@ def show_statistics():
         for build in project.build_configs.values():
             if not 'stats' in build.__dict__: continue
             r:list = []
-            # TODO if githash is empty when updating the configuration, get latest and update field.
-            # r.append(getattr(build, 'gitHash', '' )[0:7])
+            # TODO if gitref is empty when updating the configuration, get latest and update field.
+            # r.append(getattr(build, 'gitref', '' )[0:7])
 
             r.append(f"{project.name}/{build.name}")
 

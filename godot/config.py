@@ -5,13 +5,12 @@ from share.expand_config import expand_host_env, expand
 from share.format import *
 from share.run import stream_command
 
-# import git
-# repo = git.Repo('C:/Godot/src/godot')
-# repo.git.show(None or 'branch/tag/hash', '--format=%h', '-s')
 
 project_config = SimpleNamespace(**{
-        "gitUrl": "https://github.com/godotengine/godot.git/",
-        "gitHash": 'master',
+        'gitdef':{
+            'url':"https://github.com/godotengine/godot.git/",
+            'ref':'master'
+        },
         "build_configs": {}
     }
 )
@@ -47,6 +46,11 @@ def scons_script( config:dict, console:rich.console.Console ):
     scons_cache = Path(config['project_dir']) / 'scons_cache'
     scons['build_vars'].append(f'cache_path={scons_cache.as_posix()}')
     scons['build_vars'].append('cache_limit=16')
+
+    # Update source_dir with git_short_hash to differentiate
+    # FIXME, this will blow up my folder tree, I have to change when and how it
+    #   appends, with just a normal ref, etc.
+    config['source_dir'] += f'.{config['git_short_hash']}'
 
     profile_name = scons.get('build_profile', None)
     if profile_name:
@@ -129,11 +133,6 @@ def filter_configs(  cfg:SimpleNamespace ) -> list:
         case 'appleclang':
             cfg.scons['build_vars'].append('generate_bundle=yes')
 
-    if cfg.gitHash != project_config.gitHash:
-        pass
-    if cfg.toolchain.name == 'android':
-        setattr( cfg, 'source_dir', f'{cfg.platform}.{cfg.variant}')
-
     return [cfg]
 
 def expand_variations( config:SimpleNamespace ) -> list:
@@ -143,6 +142,8 @@ def expand_variations( config:SimpleNamespace ) -> list:
 
         setattr(cfg, 'variant', variant)
         cfg.name += f".{variant}"
+
+        'extra_suffix=<something?>'
 
         match variant:
             case "default":
@@ -154,6 +155,7 @@ def expand_variations( config:SimpleNamespace ) -> list:
 
             case 'minimum':
                 cfg.scons['build_profile'] = 'minimum'
+                cfg.scons['build_vars'].append('extra_suffix=min')
 
             case "double":
                 # what's the point in using double precision on 32 bit architectures.
@@ -161,14 +163,22 @@ def expand_variations( config:SimpleNamespace ) -> list:
                 cfg.scons["build_vars"].append("precision=double")
 
             case 'tracy':
-                setattr(cfg, 'gitUrl', 'git@github.com:godotengine/godot.git')
-                setattr(cfg, 'gitHash', '4.4-tracy')
+                setattr(cfg, 'gitdef', {
+                    'remote':'enetheru',
+                    'url':'https://github.com/enetheru/godot.git',
+                    'ref':'4.4-tracy'
+                })
+                cfg.scons['build_vars'].append('extra_suffix=tracy')
 
             case 'tracy_debug':
-                setattr(cfg, 'gitUrl', 'git@github.com:godotengine/godot.git')
-                setattr(cfg, 'gitHash', '4.4-tracy')
+                setattr(cfg, 'gitdef', {
+                    'remote':'enetheru',
+                    'url':'https://github.com/enetheru/godot.git',
+                    'ref':'4.4-tracy'
+                })
                 cfg.scons['build_vars'].append('debug_symbols=yes')
                 cfg.scons['build_vars'].append('separate_debug_symbols=yes')
+                cfg.scons['build_vars'].append('extra_suffix=tracy.dbg')
 
             case _:
                 print( f"skipping variant: {variant}" )
@@ -181,9 +191,9 @@ def generate_configs():
 
     config_base = SimpleNamespace(**{
         'name':'',
+        'source_dir':'',
         'script':scons_script,
         'verbs':scons_script.verbs,
-        'gitHash':None,
         "scons": {
             "targets": ["template_release", "template_debug", "editor"],
             "build_vars":["compiledb=yes"]
@@ -201,6 +211,7 @@ def generate_configs():
     }
     for cfg in configs:
         cfg.name = f'{cfg.host}.{cfg.toolchain.name}.{cfg.arch}'
+        cfg.source_dir = f'{cfg.host}.{cfg.toolchain.name}'
         cfg.scons['build_vars'].append(f'platform={godot_platforms[cfg.platform]}')
         cfg.scons['build_vars'].append(f'arch={cfg.arch}')
 
