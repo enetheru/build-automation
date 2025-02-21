@@ -1,10 +1,9 @@
-import sys
 import copy
 
 from types import SimpleNamespace
 from share.expand_config import expand_host_env, expand
 
-from share.script_imports import *
+from share.script_preamble import *
 
 project_config = SimpleNamespace(**{
     'gitdef':{
@@ -68,6 +67,57 @@ godot_arch = {
 # ║                 ███████  ██████ ██   ██ ██ ██         ██    ███████                    ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
+def source_git():
+    opts:dict = {}
+    build:dict = {}
+    config:dict = {}
+    # start_script
+
+    #[=================================[ Source ]=================================]
+    from share.actions_git import git_checkout
+
+    if config['ok'] and 'source' in build['verbs'] and 'source' in opts['build_actions']:
+        console.set_window_title(f'Source - {build['name']}')
+        with Timer(name='source') as timer:
+            git_checkout( config )
+        stats['source'] = timer.get_dict()
+        config['ok'] = timer.ok()
+
+def test_script():
+    opts:dict = {}
+    build:dict = {}
+    config:dict = {}
+    # start_script
+
+    #[==================================[ Test ]==================================]
+    from actions import godotcpp_test
+
+    if config['ok'] and 'test' in build['verbs'] and 'test' in opts['build_actions']:
+        console.set_window_title(f'Test - {build['name']}')
+        with Timer(name='test') as timer:
+            godotcpp_test( config )
+
+        stats['test'] = timer.get_dict()
+        config['ok'] = timer.ok()
+
+def stats_script():
+    config:dict = {}
+    # start_script
+
+    #[=================================[ Stats ]=================================]
+    from rich.table import Table
+    table = Table(title="Stats", highlight=True, min_width=80)
+
+    table.add_column("Section", style="cyan", no_wrap=True)
+    table.add_column("Status", style="magenta")
+    table.add_column("Duration", style="green")
+
+    for cmd_name, cmd_stats in stats.items():
+        table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}')
+
+    print( table )
+    if not config['ok']: exit(1)
+
 # MARK: SCons Script
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  ___  ___               ___         _      _                               │
@@ -76,42 +126,14 @@ godot_arch = {
 # │ |___/\___\___/_||_/__/ |___/\__|_| |_| .__/\__|                            │
 # │                                      |_|                                   │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def scons_script():
-    opts:dict = {}
-    toolchain:dict = {}
-    project:dict = {}
+
+def check_scons():
     build:dict = {}
     config:dict = {}
     # start_script
-    # Scons Script
-    from actions import godotcpp_test
-    from share.actions_git import git_checkout
-    from share.actions_scons import scons_build
 
-    stats:dict = {}
-    ok = True
-
-    def want( action:str ) -> bool:
-        return (ok
-                and action in config['verbs']
-                and action in config['actions'])
-
-    name = config['name']
-
-    # Use a project wide build cache
-    scons:dict = config['scons']
-    scons_cache = Path(config['project_dir']) / 'scons_cache'
-    scons['build_vars'].append(f'cache_path={scons_cache.as_posix()}')
-    scons['build_vars'].append('cache_limit=16')
-
-    #[=================================[ Fetch ]=================================]
-    if want('source'):
-        console.set_window_title(f'Source - {name}')
-        with Timer(name='source') as timer:
-            git_checkout( config )
-        stats['source'] = timer.get_dict()
-        ok = timer.ok()
-
+    #[=================================[ Check ]=================================]
+    scons = build['scons']
     # Check whether build path is viable.
     if "build_dir" in scons.keys():
         build_dir = Path(scons["build_dir"])
@@ -122,18 +144,43 @@ def scons_script():
 
     try:
         os.chdir(build_dir)
-    except FileNotFoundError as e:
-        print( f'Missing Folder {build_dir}' )
-        ok = False
+    except FileNotFoundError as fnf:
+        fnf.add_note(f'Missing Folder {build_dir}')
+        raise fnf
+
 
     # requires SConstruct file existing in the current directory.
     if not (build_dir / "SConstruct").exists():
         print(f"[red]Missing SConstruct in {build_dir}")
-        ok = False
+        config['ok'] = False
+
+
+def build_scons():
+    opts:dict = {}
+    build:dict = {}
+    config:dict = {}
+    # start_script
+
+    #[=================================[ Build ]=================================]
+    from share.actions_scons import scons_build
+
+    if config['ok'] and 'build' in build['verbs'] and 'build' in opts['build_actions']:
+        console.set_window_title(f'Build - {build['name']}')
+        with Timer(name='build') as timer:
+            scons_build( config )
+        stats['build'] = timer.get_dict()
+        config['ok'] = timer.ok()
+
+
+def clean_scons():
+    opts:dict = {}
+    build:dict = {}
+    config:dict = {}
+    # start_script
 
     #[=================================[ Clean ]=================================]
-    if want('clean'):
-        console.set_window_title(f'Clean - {name}')
+    if config['ok'] and 'clean' in build['verbs'] and 'clean' in opts['build_actions']:
+        console.set_window_title(f'Clean - {build['name']}')
         print(figlet("SCons Clean", {"font": "small"}))
 
         with Timer(name='clean', push=False) as timer:
@@ -148,40 +195,7 @@ def scons_script():
                 print( f'[red]{e}' )
                 timer.status = TaskStatus.FAILED
         stats['clean'] = timer.get_dict()
-        ok = timer.ok()
-
-    #[=================================[ Build ]=================================]
-    if want('build'):
-        console.set_window_title(f'Build - {name}')
-        with Timer(name='build') as timer:
-            scons_build( config )
-        stats['build'] = timer.get_dict()
-        ok = timer.ok()
-
-    #[==================================[ Test ]==================================]
-    if want('test'):
-        console.set_window_title(f'Test - {name}')
-        with Timer(name='test') as timer:
-            godotcpp_test( config )
-
-        stats['test'] = timer.get_dict()
-        ok = timer.ok()
-
-    #[=================================[ Stats ]=================================]
-    from rich.table import Table
-    table = Table(title="Stats", highlight=True, min_width=80)
-
-    table.add_column("Section", style="cyan", no_wrap=True)
-    table.add_column("Status", style="magenta")
-    table.add_column("Duration", style="green")
-
-    for cmd_name, cmd_stats in stats.items():
-        table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}')
-
-    print( table )
-    if not ok: exit(1)
-
-scons_script.verbs = ['source', 'clean', 'build', 'test']
+        config['ok'] = timer.ok()
 
 # MARK: CMake Script
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -191,55 +205,34 @@ scons_script.verbs = ['source', 'clean', 'build', 'test']
 # │  \___|_|  |_\__,_|_\_\___| |___/\__|_| |_| .__/\__|                        │
 # │                                          |_|                               │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def cmake_script():
+
+def configure_cmake():
     opts:dict = {}
     toolchain:dict = {}
-    project:dict = {}
     build:dict = {}
     config:dict = {}
     # start_script
-    # CMake Script
-    import copy
-
-    from share.actions_git import git_checkout
-
-    from actions import godotcpp_test
-
-    ok = True
-
-    def want( action:str ) -> bool:
-        return (ok
-                and action in config['verbs']
-                and action in config['actions'])
-
-    stats:dict = dict()
-    cmake = config['cmake']
-
-    #[=================================[ Fetch ]=================================]
-    if want('source'):
-        console.set_window_title('Source - {name}')
-        with Timer(name='source') as timer:
-            git_checkout( config )
-        stats['source'] = timer.get_dict()
-        ok = timer.ok()
 
     #[===============================[ Configure ]===============================]
-    if want('configure'):
-        print(figlet("CMake Configure", {"font": "small"}))
-        console.set_window_title('Configure - {name}')
+    cmake = build['cmake']
 
-        source_dir = Path(config["source_dir"])
+    if config['ok'] and 'configure' in build['verbs'] and 'configure' in opts['build_actions']:
+        print(figlet("CMake Configure", {"font": "small"}))
+        console.set_window_title(f'Configure - {build['name']}')
+
+        source_dir = build["source_dir"]
 
         # requires CMakeLists.txt file existing in the current directory.
         if not (source_dir / "CMakeLists.txt").exists():
-            print( f"Missing CMakeLists.txt in {source_dir}" )
-            ok = timer.ok()
+            fnf = FileNotFoundError()
+            fnf.add_note(f"Missing CMakeLists.txt in {source_dir}")
+            raise fnf
 
         try:
             os.chdir(source_dir)
-        except FileNotFoundError as e:
-            print( f'Missing Folder {source_dir}' )
-            ok = timer.ok()
+        except FileNotFoundError as fnf:
+            fnf.add_note(f'Missing Folder {source_dir}')
+            raise fnf
 
         # Create Build Directory
         build_dir = Path(cmake['build_dir'])
@@ -248,15 +241,15 @@ def cmake_script():
             os.mkdir(build_dir)
 
         config_opts = [
-            "--fresh" if want('fresh') else None,
-            "--log-level=VERBOSE" if not config["quiet"] else None,
+            "--fresh" if 'fresh' in opts['build_actions'] else None,
+            "--log-level=VERBOSE" if not opts["quiet"] else None,
             f'-B "{build_dir}"',
         ]
 
         if 'cmake' in toolchain:
             tc = toolchain['cmake']
             if 'toolchain' in tc:
-                toolchain_file = config["root_dir"] / toolchain['cmake']['toolchain']
+                toolchain_file = opts["path"] / toolchain['cmake']['toolchain']
                 config_opts.append( f'--toolchain "{os.fspath(toolchain_file)}"' )
             for var in tc.get('config_vars', []):
                 config_opts.append(var)
@@ -276,11 +269,20 @@ def cmake_script():
 
         print(align(" CMake Configure Completed ", line=fill("-")))
         stats['configure'] = timer.get_dict()
-        ok = timer.ok()
+        config['ok'] = timer.ok()
 
+
+def build_cmake():
+    opts:dict = {}
+    build:dict = {}
+    config:dict = {}
+    # start_script
 
     #[=================================[ Build ]=================================]
-    if want('build'):
+    import copy
+    cmake = build['cmake']
+
+    if config['ok'] and 'build' in build['verbs'] and 'build' in opts['build_actions']:
         print(figlet("CMake Build", {"font": "small"}))
         console.set_window_title('Build - {name}')
 
@@ -290,14 +292,15 @@ def cmake_script():
 
         # requires CMakeLists.txt file existing in the current directory.
         if not (build_dir / "CMakeCache.txt").exists():
-            print(f"Missing CMakeCache.txt in {build_dir}")
-            ok = timer.ok()
+            fnf = FileNotFoundError()
+            fnf.add_note(f"Missing CMakeCache.txt in {build_dir}")
+            raise fnf
 
         try:
             os.chdir( build_dir )
-        except FileNotFoundError as e:
-            print( f'Missing Folder {build_dir}' )
-            ok = timer.ok()
+        except FileNotFoundError as fnf:
+            fnf.add_note(f'Missing Folder {build_dir}')
+            raise fnf
 
         build_opts = [
             f'--build .',
@@ -322,32 +325,7 @@ def cmake_script():
         print(align(" CMake Build Completed ", line=fill("-")))
         print('')
         stats['build'] = timer.get_dict()
-        ok = timer.ok()
-
-    #[==================================[ Test ]==================================]
-    if want('test'):
-        console.set_window_title('Test - {name}')
-        with Timer(name='test') as timer:
-            godotcpp_test( config )
-        stats['test'] = timer.get_dict()
-        ok = timer.ok()
-
-
-    #[=================================[ Stats ]=================================]
-    from rich.table import Table
-    table = Table(highlight=True, min_width=80)
-
-    table.add_column("Section",no_wrap=True)
-    table.add_column("Status")
-    table.add_column("Duration")
-
-    for cmd_name, cmd_stats in stats.items():
-        table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}', style='red')
-
-    print( table )
-    if not ok: exit(1)
-
-cmake_script.verbs = ['configure','fresh', 'build', 'test']
+        config['ok'] = timer.ok()
 
 # MARK: Configure
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -358,9 +336,12 @@ cmake_script.verbs = ['configure','fresh', 'build', 'test']
 # │  ██████  ██████  ██   ████ ██      ██  ██████   ██████  ██   ██ ███████    │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-def configure_scons( cfg:SimpleNamespace ) -> bool:
-    setattr(cfg, 'script', scons_script)
-    cfg.verbs += scons_script.verbs
+def gen_scons( cfg:SimpleNamespace ) -> bool:
+    cfg.verbs += ['check', 'build', 'clean']
+    setattr(cfg, 'check_script', check_scons )
+    setattr(cfg, 'build_script', build_scons )
+    setattr(cfg, 'clean_script', clean_scons )
+
     setattr(cfg, 'scons', {
         'build_dir':'test',
         "build_vars":["compiledb=yes", 'build_profile=build_profile.json'],
@@ -416,9 +397,12 @@ def configure_scons( cfg:SimpleNamespace ) -> bool:
 
     return True
 
-def configure_cmake( cfg:SimpleNamespace ) -> bool:
-    setattr(cfg, 'script', cmake_script)
-    cfg.verbs += cmake_script.verbs
+def gen_cmake( cfg:SimpleNamespace ) -> bool:
+
+    cfg.verbs += ['configure', 'build']
+    setattr(cfg, 'configure_script', configure_cmake )
+    setattr(cfg, 'build_script', build_cmake )
+
     setattr(cfg, 'cmake', {
         'build_dir':'build-cmake',
         'godot_build_profile':'test/build_profile.json',
@@ -437,8 +421,8 @@ def configure_cmake( cfg:SimpleNamespace ) -> bool:
     return True
 
 build_tools = {
-    'scons': configure_scons,
-    'cmake': configure_cmake
+    'scons': gen_scons,
+    'cmake': gen_cmake
 }
 
 # MARK: Variant Config
@@ -585,6 +569,7 @@ def generate_configs():
         'name':'',
         'source_dir':'',
         'verbs':['source'],
+        'source_script':source_git
     })
 
     # Host environment toolchain and build tools
@@ -619,6 +604,11 @@ def generate_configs():
     configs = expand( configs, expand_variant )
 
     for cfg in configs:
+        cfg.verbs.append( 'test' )
+        setattr(cfg, 'test_script', test_script )
+        cfg.verbs.append( 'stats' )
+        setattr(cfg, 'stats_script', stats_script )
+
         cfg.name.append( cfg.buildtool )
         cfg.source_dir.append( cfg.buildtool )
 

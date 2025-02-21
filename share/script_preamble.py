@@ -14,4 +14,5 @@ import rich
 from rich.console import Console
 rich._console = console = Console(soft_wrap=False, width=9000)
 
-config:dict = {}
+stats:dict = {}
+config:dict = { 'ok': True }

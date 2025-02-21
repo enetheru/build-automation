@@ -28,12 +28,15 @@ def func_to_string( func ) -> str:
     if func is None: return ''
     lines:list = ['']
     skip = True
-    for line in inspect.getsource( func ).splitlines():
+    source = inspect.getsource( func )
+    for line in source.splitlines():
         if skip:
             skip = '# start_script' not in line
             continue
         lines.append( line[4:] if line.startswith('    ') else line )
-    return '\n'.join(lines)
+
+    # No '# start_script' was found, so assume to use the whole thing.
+    return source if skip else '\n'.join(lines)
 
 def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, level: int = 0) -> None:
     """Convert a SimpleNamespace to a dictionary-like buffer string with indentation."""
@@ -75,7 +78,7 @@ def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, l
 def write_preamble(buffer:IO, project: SimpleNamespace):
     buffer.write( "#!/bin/env python\nimport sys\n")
     buffer.write( f"sys.path.append({repr(str(project.opts.path))})\n" )
-    with open(f'{Path( __file__ ).parent}/script_imports.py') as script_imports:
+    with open(f'{Path( __file__ ).parent}/script_preamble.py') as script_imports:
         for line in script_imports.readlines()[1:]: buffer.write( line )
     buffer.write('\n\n')
 
@@ -90,7 +93,8 @@ def write_section( buffer:IO, section:SimpleNamespace, section_name:str ):
     buffer.write( section_heading(f"Start of {section_name}") )
     write_namespace( buffer, section, section_name )
     buffer.write(f"config['{section_name}'] = {section_name}\n")
-    buffer.write( func_to_string( getattr( section, 'script', None ) ) )
+    for verb in getattr( section, f'verbs', [] ):
+        buffer.write( func_to_string( getattr( section, f'{verb}_script', None ) ) )
 
 # MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮

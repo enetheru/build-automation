@@ -17,6 +17,11 @@ def scons_build(config: dict):
     build:dict = config['build']
     scons: dict = build["scons"]
 
+    # Use a project wide build cache
+    scons:dict = build['scons']
+    scons_cache = project['path'] / 'scons_cache'
+    scons['build_vars'].append(f'cache_path={scons_cache.as_posix()}')
+    scons['build_vars'].append('cache_limit=16')
 
     if "build_dir" in scons.keys():
         build_path = Path(build["source_path"]) / scons['build_dir']

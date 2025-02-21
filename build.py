@@ -355,16 +355,12 @@ def process_build( build:SimpleNamespace ):
         if k in build.verbs:
             skip = False
 
-    if skip:
-        h4( f'No matching build verbs for "{build.name}"')
-        build.stats = {"status":'skipped', 'duration':'dnr'}
-        return
-
     # =====================[ stdout Logging ]======================-
-    log_path = project.path / f"logs-raw/{build.name}.txt"
-    build_log = open( file=log_path, mode='w', buffering=1, encoding="utf-8" )
-    build_console = Console( file=build_log, force_terminal=True )
-    console.tee( name=build.name, new_console=build_console )
+    if not skip:
+        log_path = project.path / f"logs-raw/{build.name}.txt"
+        build_log = open( file=log_path, mode='w', buffering=1, encoding="utf-8" )
+        build_console = Console( file=build_log, force_terminal=True )
+        console.tee( name=build.name, new_console=build_console )
 
     # =================[ Build Heading / Config ]==================-
     print( align( f"- Starting: {build.name} -", 0, fill( "=", 120 ) ) )
@@ -393,6 +389,11 @@ def process_build( build:SimpleNamespace ):
             width=120 ) )
 
     # ====================[ Run Build Script ]=====================-
+    if skip:
+        h4( f'No matching build verbs for "{build.name}"')
+        build.stats = {"status":'skipped', 'duration':'dnr'}
+        return
+
     build.stats = stats = {}
     stats['start_time'] = datetime.now()
     stats['subs'] = subs = {}
