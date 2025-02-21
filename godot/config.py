@@ -220,13 +220,15 @@ def generate_configs():
         'win32':'windows'
     }
     godot_arch = {
+        'armv32': 'arm32',
         'armv7': 'arm32',
         'armeabi-v7a': 'arm32',
+        'arm64':'arm64',
         'arm64-v8a':'arm64',
         'aarch64':'arm64',
+        'x86_32':'x86_32',
         'i686':'x86_32',
         'x86':'x86_32',
-        'x86_32':'x86_32',
         'x86_64':'x86_64',
         'wasm32':'wasm32'
     }
