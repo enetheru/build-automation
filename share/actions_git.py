@@ -1,4 +1,4 @@
-from share.script_imports import *
+from share.script_preamble import *
 import git
 
 # MARK: Git Checkout
@@ -12,10 +12,11 @@ import git
 def git_checkout( config: dict ):
     print( figlet("Git Checkout", {"font": "small"}) )
     opts = config['opts']
+    project = config['project']
     build = config['build']
     gitdef = build['gitdef']
 
-    gitdir = Path(gitdef['gitdir'])
+    gitdir = project['path'] / 'git'
     worktree_path = gitdef["worktree_path"]
 
     if not gitdir.exists():

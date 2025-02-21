@@ -1,4 +1,5 @@
 import copy
+import os
 
 from types import SimpleNamespace
 from share.expand_config import expand_host_env, expand
@@ -69,6 +70,7 @@ godot_arch = {
 
 def source_git():
     opts:dict = {}
+    project:dict = {}
     build:dict = {}
     config:dict = {}
     # start_script
@@ -78,6 +80,21 @@ def source_git():
 
     if config['ok'] and 'source' in build['verbs'] and 'source' in opts['build_actions']:
         console.set_window_title(f'Source - {build['name']}')
+
+
+        # if we have specified a different git repository than expected, add the shorthash to the name.
+        gitdef = build['gitdef'] = project['gitdef'] | build['gitdef'] | opts['gitdef']
+        remote:str = gitdef.get('remote', '')
+        gitref =  f'{remote}/{gitdef['ref']}' if remote else gitdef['ref']
+
+        repo = git.Repo(project['path'] / 'git')
+        short_hash = repo.git.rev_parse('--short', gitref)
+
+        if opts['gitdef']:
+            build['source_dir'] += f'.{short_hash}'
+
+        gitdef['worktree_path'] = build['source_path'] = project['path'] / build['source_dir']
+
         with Timer(name='source') as timer:
             git_checkout( config )
         stats['source'] = timer.get_dict()
@@ -115,7 +132,7 @@ def stats_script():
     for cmd_name, cmd_stats in stats.items():
         table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}')
 
-    print( table )
+    rich.print( table )
     if not config['ok']: exit(1)
 
 # MARK: SCons Script
@@ -128,31 +145,31 @@ def stats_script():
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def check_scons():
+    project:dict = {}
     build:dict = {}
-    config:dict = {}
     # start_script
 
     #[=================================[ Check ]=================================]
     scons = build['scons']
-    # Check whether build path is viable.
-    if "build_dir" in scons.keys():
-        build_dir = Path(scons["build_dir"])
-        if not build_dir.is_absolute():
-            build_dir = Path(config["source_dir"]) / build_dir
-    else:
-        build_dir = Path(config["source_dir"])
 
-    try:
-        os.chdir(build_dir)
+    # Figure out the build path
+    if "build_dir" in scons.keys():
+        scons['build_path'] = project['path'] / build['source_dir'] / scons['build_dir']
+    else:
+        scons['build_path'] = project['path'] / build['source_dir']
+
+    build_path = scons['build_path']
+
+    try: os.chdir(build_path)
     except FileNotFoundError as fnf:
-        fnf.add_note(f'Missing Folder {build_dir}')
+        fnf.add_note( f'Missing Folder {build_path}' )
         raise fnf
 
-
     # requires SConstruct file existing in the current directory.
-    if not (build_dir / "SConstruct").exists():
-        print(f"[red]Missing SConstruct in {build_dir}")
-        config['ok'] = False
+    if not (build_path / "SConstruct").exists():
+        fnf = FileNotFoundError()
+        fnf.add_note(f"[red]Missing SConstruct in {build_path}")
+        raise fnf
 
 
 def build_scons():
@@ -206,11 +223,41 @@ def clean_scons():
 # │                                          |_|                               │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
+def check_cmake():
+    project:dict = {}
+    build:dict = {}
+    # start_script
+
+    #[===============================[ Check ]===============================]
+    cmake = build['cmake']
+
+    source_path = build.setdefault("source_path", project['path'] / build['source_dir'])
+
+    # requires CMakeLists.txt file existing in the current directory.
+    if not (source_path / "CMakeLists.txt").exists():
+        fnf = FileNotFoundError()
+        fnf.add_note(f"Missing CMakeLists.txt in {source_path}")
+        raise fnf
+
+    build_dir = cmake.setdefault('build_dir', f'build-{build['platform']}-{build['arch']}-{build['variant']}')
+    build_path = cmake.setdefault('build_path', source_path / build_dir )
+
+    # Create Build Directory
+    if not build_path.is_dir():
+        h4(f"Creating {cmake['build_dir']}")
+        os.mkdir(build_path)
+
+    try:
+        os.chdir(build_path)
+    except FileNotFoundError as fnf:
+        fnf.add_note(f'Missing Folder {build_path}')
+        raise fnf
+
 def configure_cmake():
+    config:dict = {}
     opts:dict = {}
     toolchain:dict = {}
     build:dict = {}
-    config:dict = {}
     # start_script
 
     #[===============================[ Configure ]===============================]
@@ -220,30 +267,11 @@ def configure_cmake():
         print(figlet("CMake Configure", {"font": "small"}))
         console.set_window_title(f'Configure - {build['name']}')
 
-        source_dir = build["source_dir"]
-
-        # requires CMakeLists.txt file existing in the current directory.
-        if not (source_dir / "CMakeLists.txt").exists():
-            fnf = FileNotFoundError()
-            fnf.add_note(f"Missing CMakeLists.txt in {source_dir}")
-            raise fnf
-
-        try:
-            os.chdir(source_dir)
-        except FileNotFoundError as fnf:
-            fnf.add_note(f'Missing Folder {source_dir}')
-            raise fnf
-
-        # Create Build Directory
-        build_dir = Path(cmake['build_dir'])
-        if not build_dir.is_dir():
-            h4(f"Creating {build_dir}")
-            os.mkdir(build_dir)
-
         config_opts = [
             "--fresh" if 'fresh' in opts['build_actions'] else None,
             "--log-level=VERBOSE" if not opts["quiet"] else None,
-            f'-B "{build_dir}"',
+            f'-S "{build['source_path']}"',
+            f'-B "{cmake['build_path']}"',
         ]
 
         if 'cmake' in toolchain:
@@ -261,10 +289,11 @@ def configure_cmake():
             config_opts += cmake["config_vars"]
 
         if 'godot_build_profile' in cmake:
-            config_opts.append( f'-DGODOT_BUILD_PROFILE="{os.fspath(cmake['godot_build_profile'])}"' )
+            profile_path:Path = build['source_path'] / cmake['godot_build_profile']
+            config_opts.append( f'-DGODOT_BUILD_PROFILE="{profile_path.as_posix()}"' )
 
         with Timer(name='configure') as timer:
-            stream_command(f'cmake {' '.join(filter(None, config_opts))}', dry=config['dry'])
+            stream_command(f'cmake {' '.join(filter(None, config_opts))}', dry=opts['dry'])
             print('')
 
         print(align(" CMake Configure Completed ", line=fill("-")))
@@ -273,9 +302,9 @@ def configure_cmake():
 
 
 def build_cmake():
+    config:dict = {}
     opts:dict = {}
     build:dict = {}
-    config:dict = {}
     # start_script
 
     #[=================================[ Build ]=================================]
@@ -286,26 +315,12 @@ def build_cmake():
         print(figlet("CMake Build", {"font": "small"}))
         console.set_window_title('Build - {name}')
 
-        build_dir = Path(cmake["build_dir"])
-        if not build_dir.is_absolute():
-            build_dir = Path(config['source_dir']) / build_dir
-
-        # requires CMakeLists.txt file existing in the current directory.
-        if not (build_dir / "CMakeCache.txt").exists():
-            fnf = FileNotFoundError()
-            fnf.add_note(f"Missing CMakeCache.txt in {build_dir}")
-            raise fnf
-
-        try:
-            os.chdir( build_dir )
-        except FileNotFoundError as fnf:
-            fnf.add_note(f'Missing Folder {build_dir}')
-            raise fnf
+        build_path:Path = cmake['build_path']
 
         build_opts = [
-            f'--build .',
-            "--verbose" if not config["quiet"] else None,
-            f"-j {config['jobs']}",
+            f'--build {build_path.as_posix()}',
+            "--verbose" if not opts["quiet"] else None,
+            f"-j {opts['jobs']}",
         ]
         build_opts += cmake.get("build_vars", [])
 
@@ -319,11 +334,11 @@ def build_cmake():
                     target_opts.append('--')
                     target_opts += cmake["tool_vars"]
 
-                stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=config["dry"])
+                stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
                 print('')
 
         print(align(" CMake Build Completed ", line=fill("-")))
-        print('')
+        newline()
         stats['build'] = timer.get_dict()
         config['ok'] = timer.ok()
 
@@ -398,13 +413,12 @@ def gen_scons( cfg:SimpleNamespace ) -> bool:
     return True
 
 def gen_cmake( cfg:SimpleNamespace ) -> bool:
-
-    cfg.verbs += ['configure', 'build']
+    cfg.verbs += ['check', 'configure', 'build']
+    setattr(cfg, 'check_script', check_cmake )
     setattr(cfg, 'configure_script', configure_cmake )
     setattr(cfg, 'build_script', build_cmake )
 
     setattr(cfg, 'cmake', {
-        'build_dir':'build-cmake',
         'godot_build_profile':'test/build_profile.json',
         'config_vars':['-DGODOT_ENABLE_TESTING=ON', '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache'],
         'build_vars':[],

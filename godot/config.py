@@ -42,12 +42,6 @@ def scons_script():
     stats:dict = dict()
     name = build['name']
 
-    # Use a project wide build cache
-    scons:dict = build['scons']
-    scons_cache = project['path'] / 'scons_cache'
-    scons['build_vars'].append(f'cache_path={scons_cache.as_posix()}')
-    scons['build_vars'].append('cache_limit=16')
-
     # if we have specified a different git repository than expected, add the shorthash to the name.
     gitdef = build['gitdef'] = project['gitdef'] | build['gitdef'] | opts['gitdef']
     remote:str = gitdef.get('remote', '')
