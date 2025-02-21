@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from typing import IO
 
 import rich
+from git import GitCommandError
 from rich.console import Console
 from rich.pretty import pprint
 from rich.table import Table
@@ -269,7 +270,10 @@ def fetch_projects():
                 if remote == 'origin':
                     local_ref = repo.git.rev_parse(f"{ref}")
                 else:
-                    local_ref = repo.git.rev_parse(f"{remote}/{ref}")
+                    try:
+                        local_ref = repo.git.rev_parse(f"{remote}/{ref}")
+                    except GitCommandError as e:
+                        local_ref = None
 
                 if not local_ref:
                     local_ref = 'missing'
