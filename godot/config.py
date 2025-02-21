@@ -1,96 +1,61 @@
-from share.script_imports import *
+from share.script_preamble import *
 
 import copy
 from types import SimpleNamespace
 from share.expand_config import expand_host_env, expand
 
-project_config = SimpleNamespace(**{
-        'gitdef':{
-            'url':"https://github.com/godotengine/godot.git/",
-            'ref':'master'
-        },
-        "build_configs": {}
+project_base:dict = {
+    'name':'godot',
+    'gitdef':{
+        'url':"https://github.com/godotengine/godot.git/",
+        'ref':'master'
     }
-)
+}
 
 # MARK: Scripts
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  ___         _      _                                                      │
-# │ / __| __ _ _(_)_ __| |_ ___                                                │
-# │ \__ \/ _| '_| | '_ \  _(_-<                                                │
-# │ |___/\__|_| |_| .__/\__/__/                                                │
-# │               |_|                                                          │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-def scons_script():
+# ╓────────────────────────────────────────────────────────────────────────────────────────╖
+# ║                 ███████  ██████ ██████  ██ ██████  ████████ ███████                    ║
+# ║                 ██      ██      ██   ██ ██ ██   ██    ██    ██                         ║
+# ║                 ███████ ██      ██████  ██ ██████     ██    ███████                    ║
+# ║                      ██ ██      ██   ██ ██ ██         ██         ██                    ║
+# ║                 ███████  ██████ ██   ██ ██ ██         ██    ███████                    ║
+# ╙────────────────────────────────────────────────────────────────────────────────────────╜
+
+def source_git():
     opts:dict = {}
-    toolchain:dict = {}
     project:dict = {}
     build:dict = {}
-    config:dict = {}
     # start_script
-    # Scons Script
+
+    #[=================================[ Source ]=================================]
     from share.actions_git import git_checkout
-    from share.actions_scons import scons_build
-
-    ok = True
-
-    def want( action:str ) -> bool:
-        return (ok
-                and action in build['verbs']
-                and action in opts['build_actions'])
-
-    stats:dict = dict()
-    name = build['name']
-
-    # if we have specified a different git repository than expected, add the shorthash to the name.
-    gitdef = build['gitdef'] = project['gitdef'] | build['gitdef'] | opts['gitdef']
-    remote:str = gitdef.get('remote', '')
-    gitref =  f'{remote}/{gitdef['ref']}' if remote else gitdef['ref']
 
     repo = git.Repo(project['path'] / 'git')
-    short_hash = repo.git.rev_parse('--short', gitref)
 
-    if opts['gitdef']:
-        build['source_dir'] += f'.{short_hash}'
+    if config['ok'] and 'source' in build['verbs'] and 'source' in opts['build_actions']:
+        console.set_window_title(f'Source - {build['name']}')
 
-    gitdef['worktree_path'] = build['source_path'] = project['path'] / build['source_dir']
+        # if we have specified a different git repository than expected, add the shorthash to the name.
+        gitdef = build['gitdef'] = project['gitdef'] | build['gitdef'] | opts['gitdef']
+        remote:str = gitdef.get('remote', '')
+        gitref =  f'{remote}/{gitdef['ref']}' if remote else gitdef['ref']
 
-    profile_name = scons.get('build_profile', None)
-    if profile_name:
-        profile_path = project['path'] / 'build_profiles' / f'{profile_name}.py'
-        scons['build_vars'].append(f'build_profile={profile_path.as_posix()}')
+        if opts['gitdef']:
+            short_hash = repo.git.rev_parse('--short', gitref)
+            build['source_dir'] += f'.{short_hash}'
 
-    #[=================================[ Fetch ]=================================]
-    if want('source'):
-        console.set_window_title(f'Source - {name}')
+        gitdef['worktree_path'] = build['source_path'] = project['path'] / build['source_dir']
+
         with Timer(name='source') as timer:
             git_checkout( config )
         stats['source'] = timer.get_dict()
-        ok = timer.ok()
+        config['ok'] = timer.ok()
 
-    #[=================================[ Clean ]=================================]
-    if want('clean'):
-        console.set_window_title(f'Clean - {name}')
-        print(figlet("SCons Clean", {"font": "small"}))
+    if not opts['quiet']:
+        print( repo.git.log('-1') )
 
-        with Timer(name='clean', push=False) as timer:
-            try:
-                proc = stream_command( "scons --clean" , dry=opts['dry'])
-                timer.status = TaskStatus.FAILED if proc.returncode else TaskStatus.COMPLETED
-            except subprocess.CalledProcessError as e:
-                timer.status = TaskStatus.FAILED
-        stats['clean'] = timer.get_dict()
-        ok = timer.ok()
-
-    #[=================================[ Build ]=================================]
-    if want('build'):
-        console.set_window_title(f'Build - {name}')
-
-        with Timer(name='build') as timer:
-
-            scons_build( config )
-        stats['build'] = timer.get_dict()
-        ok = timer.ok()
+def stats_script():
+    # start_script
 
     #[=================================[ Stats ]=================================]
     from rich.table import Table
@@ -103,10 +68,163 @@ def scons_script():
     for cmd_name, cmd_stats in stats.items():
         table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}')
 
-    print( table )
-    if not ok: exit(1)
+    rich.print( table )
+    if not config['ok']: exit(1)
 
-scons_script.verbs = ['source', 'clean', 'build']
+# MARK: SCons Script
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ___  ___               ___         _      _                               │
+# │ / __|/ __|___ _ _  ___ / __| __ _ _(_)_ __| |_                             │
+# │ \__ \ (__/ _ \ ' \(_-< \__ \/ _| '_| | '_ \  _|                            │
+# │ |___/\___\___/_||_/__/ |___/\__|_| |_| .__/\__|                            │
+# │                                      |_|                                   │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+def check_scons():
+    project:dict = {}
+    build:dict = {}
+    # start_script
+
+    #[=================================[ Check ]=================================]
+    scons = build['scons']
+
+    # Figure out the build path
+    if "build_dir" in scons.keys():
+        scons['build_path'] = project['path'] / build['source_dir'] / scons['build_dir']
+    else:
+        scons['build_path'] = project['path'] / build['source_dir']
+
+    build_path = scons['build_path']
+
+    try: os.chdir(build_path)
+    except FileNotFoundError as fnf:
+        fnf.add_note( f'Missing Folder {build_path}' )
+        raise fnf
+
+    # requires SConstruct file existing in the current directory.
+    if not (build_path / "SConstruct").exists():
+        fnf = FileNotFoundError()
+        fnf.add_note(f"[red]Missing SConstruct in {build_path}")
+        raise fnf
+
+def clean_scons():
+    opts:dict = {}
+    build:dict = {}
+    # start_script
+
+    #[=================================[ Clean ]=================================]
+    if config['ok'] and 'clean' in build['verbs'] and 'clean' in opts['build_actions']:
+        console.set_window_title(f'Clean - {build['name']}')
+        print(figlet("SCons Clean", {"font": "small"}))
+
+        with Timer(name='clean', push=False) as timer:
+            try:
+                proc = stream_command( "scons --clean" , dry=config['dry'])
+                # Change status depending on the truthiness of returnvalue
+                # where False is Success and True is Failure.
+                timer.status = TaskStatus.FAILED if proc.returncode else TaskStatus.COMPLETED
+            except subprocess.CalledProcessError as e:
+                # FIXME should this be more generic and handled elsewhere?
+                print( '[red]subprocess error')
+                print( f'[red]{e}' )
+                timer.status = TaskStatus.FAILED
+        stats['clean'] = timer.get_dict()
+        config['ok'] = timer.ok()
+
+def build_scons():
+    opts:dict = {}
+    project:dict = {}
+    build:dict = {}
+    # start_script
+
+    #[=================================[ Build ]=================================]
+    from share.actions_scons import scons_build
+    scons:dict = build['scons']
+
+    if config['ok'] and 'build' in build['verbs'] and 'build' in opts['build_actions']:
+        console.set_window_title(f'Build - {build['name']}')
+
+        profile_name = scons.get('build_profile', None)
+        if profile_name:
+            profile_path = project['path'] / f'build_profiles/{profile_name}.py'
+            scons['build_vars'].append(f'build_profile="{profile_path.as_posix()}"')
+
+        with Timer(name='build') as timer:
+            scons_build( config )
+        stats['build'] = timer.get_dict()
+        config['ok'] = timer.ok()
+
+# MARK: Variant Config
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │ __   __        _          _      ___           __ _                        │
+# │ \ \ / /_ _ _ _(_)__ _ _ _| |_   / __|___ _ _  / _(_)__ _                   │
+# │  \ V / _` | '_| / _` | ' \  _| | (__/ _ \ ' \|  _| / _` |                  │
+# │   \_/\__,_|_| |_\__,_|_||_\__|  \___\___/_||_|_| |_\__, |                  │
+# │                                                    |___/                   │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+variations = { 'default' :lambda cfg:True }
+
+# MARK: double
+def config_double( cfg:SimpleNamespace ) -> bool:
+    if cfg.arch not in ['x86_64', 'arm64']: return False
+    cfg.scons["build_vars"].append("precision=double")
+    return True
+variations['double'] = config_double
+
+# MARK: dev_build
+def config_dev( cfg:SimpleNamespace ) -> bool:
+    if cfg.arch not in ['x86_64', 'arm64']: return False
+    cfg.scons['build_vars'].append('dev_build=yes')
+    cfg.scons['build_vars'].append('separate_debug_symbols=yes')
+    return True
+
+variations['dev_build'] = config_dev
+
+def config_minim( cfg:SimpleNamespace ) -> bool:
+    cfg.scons['build_profile'] = 'minimum'
+    cfg.scons['build_vars'].append('extra_suffix=min')
+    return True
+
+variations['minimum'] = config_minim
+
+def tracy_script():
+    # start_script
+
+    #[=================================[ Tracy ]=================================]
+    # TODO implement the necessary details to fetch the submodules
+    print( "TODO implement the necessary details to fetch the submodules" )
+    exit(1)
+
+def config_tracy( cfg:SimpleNamespace ) -> bool:
+    cfg.verbs.append( 'tracy' )
+    setattr(cfg, 'tracy_script', tracy_script )
+
+    setattr(cfg, 'gitdef', {
+        'remote':'enetheru',
+        'url':'https://github.com/enetheru/godot.git',
+        'ref':'4.4-tracy'
+    })
+    cfg.source_dir.append( 'tracy' )
+    cfg.scons['build_vars'].append('extra_suffix=tracy')
+    return True
+
+variations['tracy'] = config_tracy
+
+def config_tracy_dbg( cfg:SimpleNamespace ) -> bool:
+    cfg.verbs.append( 'tracy' )
+    setattr(cfg, 'tracy_script', tracy_script )
+
+    setattr(cfg, 'gitdef', {
+        'remote':'enetheru',
+        'url':'https://github.com/enetheru/godot.git',
+        'ref':'4.4-tracy'
+    })
+    cfg.source_dir.append( 'tracy' )
+    cfg.scons['build_vars'].append('debug_symbols=yes')
+    cfg.scons['build_vars'].append('separate_debug_symbols=yes')
+    cfg.scons['build_vars'].append('extra_suffix=tracy.dbg')
+    return True
+
+variations['tracy_debug'] = config_tracy_dbg
 
 # MARK: Configs
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -117,10 +235,7 @@ scons_script.verbs = ['source', 'clean', 'build']
 # │                     |___/                                                  │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-variations = ['default', 'double', 'tracy', 'tracy_debug', 'dev_build', 'minimum']
-
-def filter_configs(  cfg:SimpleNamespace ) -> list:
-
+def config_toolchains( cfg:SimpleNamespace ) -> SimpleNamespace:
     match cfg.toolchain.name:
         case "llvm":
             cfg.scons["build_vars"].append("use_llvm=yes")
@@ -135,69 +250,47 @@ def filter_configs(  cfg:SimpleNamespace ) -> list:
         case 'appleclang':
             cfg.scons['build_vars'].append('generate_bundle=yes')
 
-    return [cfg]
+    return cfg
 
 def expand_variations( config:SimpleNamespace ) -> list:
     configs_out:list = []
-    for variant in variations:
+    for variant, config_func in variations.items():
         cfg = copy.deepcopy(config)
 
         setattr(cfg, 'variant', variant)
-        cfg.name += f".{variant}"
+        cfg.name.append( variant )
 
-        'extra_suffix=<something?>'
+        if config_func( cfg ): # Only keep variants who's configuration step succeeds.
+            configs_out.append( cfg )
 
-        match variant:
-            case "default":
-                pass
-
-            case 'dev_build':
-                cfg.scons['build_vars'].append('dev_build=yes')
-                cfg.scons['build_vars'].append('separate_debug_symbols=yes')
-
-            case 'minimum':
-                cfg.scons['build_profile'] = 'minimum'
-                cfg.scons['build_vars'].append('extra_suffix=min')
-
-            case "double":
-                # what's the point in using double precision on 32 bit architectures.
-                if cfg.arch not in ['x86_64', 'arm64']: continue
-                cfg.scons["build_vars"].append("precision=double")
-
-            case 'tracy':
-                setattr(cfg, 'gitdef', {
-                    'remote':'enetheru',
-                    'url':'https://github.com/enetheru/godot.git',
-                    'ref':'4.4-tracy'
-                })
-                cfg.source_dir += '.tracy'
-                cfg.scons['build_vars'].append('extra_suffix=tracy')
-
-            case 'tracy_debug':
-                setattr(cfg, 'gitdef', {
-                    'remote':'enetheru',
-                    'url':'https://github.com/enetheru/godot.git',
-                    'ref':'4.4-tracy'
-                })
-                cfg.source_dir += '.tracy'
-                cfg.scons['build_vars'].append('debug_symbols=yes')
-                cfg.scons['build_vars'].append('separate_debug_symbols=yes')
-                cfg.scons['build_vars'].append('extra_suffix=tracy.dbg')
-
-            case _:
-                print( f"skipping variant: {variant}" )
-                continue
-
-        configs_out.append( cfg )
     return configs_out
 
-def generate_configs():
+# MARK: Generate
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ██████  ███████ ███    ██ ███████ ██████   █████  ████████ ███████        │
+# │ ██       ██      ████   ██ ██      ██   ██ ██   ██    ██    ██             │
+# │ ██   ███ █████   ██ ██  ██ █████   ██████  ███████    ██    █████          │
+# │ ██    ██ ██      ██  ██ ██ ██      ██   ██ ██   ██    ██    ██             │
+# │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
+def generate( opts:SimpleNamespace ) -> dict:
+
+    project_base.update({
+        'path': opts.path / project_base['name'],
+        "build_configs": {}
+    })
+
+    project = SimpleNamespace(**project_base)
 
     config_base = SimpleNamespace(**{
-        'name':'',
-        'source_dir':'',
-        'script':scons_script,
-        'verbs':scons_script.verbs,
+        'name':[],
+        'variant':'null',
+        'source_dir':[],
+        'verbs':['source', 'check'],
+        'source_script':source_git,
+        'check_script':check_scons,
+
         "scons": {
             "targets": ["template_release", "template_debug", "editor"],
             "build_vars":["compiledb=yes"]
@@ -227,16 +320,27 @@ def generate_configs():
         'wasm32':'wasm32'
     }
     for cfg in configs:
-        cfg.name = f'{cfg.host}.{cfg.toolchain.name}.{cfg.arch}'
-        cfg.source_dir = f'{cfg.host}.{cfg.toolchain.name}'
+        cfg.name = [cfg.host, cfg.toolchain.name, cfg.arch]
+        cfg.source_dir = [cfg.host, cfg.toolchain.name]
         cfg.scons['build_vars'].append(f'platform={godot_platforms[cfg.platform]}')
         cfg.scons['build_vars'].append(f'arch={godot_arch[cfg.arch]}')
 
     configs = expand( configs, expand_variations )
 
-    configs = expand( configs, filter_configs )
+    configs = filter( None, [config_toolchains(cfg) for cfg in configs] )
     
     for cfg in configs:
-        project_config.build_configs[cfg.name] = cfg
+        cfg.verbs.append( 'build' )
+        setattr(cfg, 'build_script', build_scons )
 
-generate_configs()
+        cfg.verbs.append( 'clean' )
+        setattr(cfg, 'clean_script', clean_scons )
+
+        cfg.verbs.append( 'stats' )
+        setattr(cfg, 'stats_script', stats_script )
+
+        if isinstance(cfg.name, list): cfg.name = '.'.join(cfg.name)
+        if isinstance(cfg.source_dir, list): cfg.source_dir = '.'.join(cfg.source_dir)
+        project.build_configs[cfg.name] = cfg
+
+    return {'godot':project}

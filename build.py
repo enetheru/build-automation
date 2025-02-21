@@ -100,8 +100,43 @@ delattr(bargs, 'giturl')
 if bargs.gitref: bargs.gitdef['ref'] = bargs.gitref
 delattr(bargs, 'gitref')
 
-# MARK: Configs
-# ==================[ Import Configurations ]==================-
+# ================[ Main Heading and Options ]=================-
+def show_heading():
+    console.set_window_title( "AutoBuild" )
+    h1( "AutoBuild" )
+    h3( "Options", newline=False )
+    pprint( bargs.__dict__, expand_all=True )
+
+show_heading()
+
+# MARK: Toolchain Actions
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  _____         _    _         _          _      _   _                      │
+# │ |_   _|__  ___| |__| |_  __ _(_)_ _     /_\  __| |_(_)___ _ _  ___         │
+# │   | |/ _ \/ _ \ / _| ' \/ _` | | ' \   / _ \/ _|  _| / _ \ ' \(_-<         │
+# │   |_|\___/\___/_\__|_||_\__,_|_|_||_| /_/ \_\__|\__|_\___/_||_/__/         │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+def show_toolchains():
+    h3( "Toolchains" )
+    for name in toolchains.keys():
+        print( "  - ", name )
+
+def process_toolchains():
+    for verb in bargs.toolchain_actions:
+        for toolchain_name, toolchain in toolchains.items():
+            if verb in getattr( toolchain, 'verbs', [] ):
+                getattr( toolchain, verb )( toolchain, bargs, console )
+
+show_toolchains()
+process_toolchains()
+
+# MARK: Import Configs
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ___                     _      ___           __ _                         │
+# │ |_ _|_ __  _ __  ___ _ _| |_   / __|___ _ _  / _(_)__ _ ___                │
+# │  | || '  \| '_ \/ _ \ '_|  _| | (__/ _ \ ' \|  _| / _` (_-<                │
+# │ |___|_|_|_| .__/\___/_|  \__|  \___\___/_||_|_| |_\__, /__/                │
+# ╰───────────┤_├─────────────────────────────────────┤___/────────────────────╯
 def import_projects() -> dict:
     project_glob = f"{bargs.project}/config.py"
     h4( f"Loading Configs from files using glob: {project_glob}" )
@@ -110,19 +145,17 @@ def import_projects() -> dict:
     config_imports: dict = {}
     project_configs: dict = {}
     for config_file in bargs.path.glob( project_glob ):
-        # get the name of the project
-        project_name = os.path.basename( config_file.parent )
         # Create Module Spec
         spec = importlib.util.spec_from_file_location( name="config", location=config_file )
         # import module
-        config = importlib.util.module_from_spec( spec )
+        project_module = importlib.util.module_from_spec( spec )
         # load module
-        spec.loader.exec_module( config )
+        spec.loader.exec_module( project_module )
         # add to module to import dictionary
-        config_imports[project_name] = config
-        # Add project to project dictionary
-        project = config.project_config
-        project_configs[project_name] = project
+        module_name = os.path.basename( config_file.parent )
+        config_imports[module_name] = project_module
+        # append the project configurations
+        project_configs |= project_module.generate( bargs )
 
     # Filter the configs in the project to match the filter criteria
     for project_name, project_config in project_configs.items():
@@ -143,17 +176,7 @@ def import_projects() -> dict:
 
 projects = import_projects()
 
-# ================[ Main Heading and Options ]=================-
-def show_heading():
-    console.set_window_title( "AutoBuild" )
-    h1( "AutoBuild" )
-    h3( "Options", newline=False )
-    pprint( bargs.__dict__, expand_all=True )
-
-    h3( "Toolchains" )
-    for name in toolchains.keys():
-        print( "  - ", name )
-
+def show_summary():
     h3( "projects and Configs" )
     if not len( projects ):
         print( "[red]No project/config matches criteria[/red]" )
@@ -165,7 +188,7 @@ def show_heading():
         for build in build_configs.values():
             print( "    - ", build.name )
 
-show_heading()
+show_summary()
 
 # List only.
 if bargs.list:
@@ -177,29 +200,13 @@ if bargs.list:
 delattr(bargs, 'project')
 delattr(bargs, 'filter')
 
-# MARK: Toolchain Actions
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _____         _    _         _          _      _   _                      │
-# │ |_   _|__  ___| |__| |_  __ _(_)_ _     /_\  __| |_(_)___ _ _  ___         │
-# │   | |/ _ \/ _ \ / _| ' \/ _` | | ' \   / _ \/ _|  _| / _ \ ' \(_-<         │
-# │   |_|\___/\___/_\__|_||_\__,_|_|_||_| /_/ \_\__|\__|_\___/_||_/__/         │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-def process_toolchains():
-    for verb in bargs.toolchain_actions:
-        for toolchain_name, toolchain in toolchains.items():
-            if verb in getattr( toolchain, 'verbs', [] ):
-                getattr( toolchain, verb )( toolchain, bargs, console )
-
-process_toolchains()
-
 # MARK: Git Fetch Projects
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │   ___ _ _     ___    _      _      ___          _        _                 │
 # │  / __(_) |_  | __|__| |_ __| |_   | _ \_ _ ___ (_)___ __| |_ ___           │
 # │ | (_ | |  _| | _/ -_)  _/ _| ' \  |  _/ '_/ _ \| / -_) _|  _(_-<           │
 # │  \___|_|\__| |_|\___|\__\__|_||_| |_| |_| \___// \___\__|\__/__/           │
-# │                                              |__/                          │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+# ╰──────────────────────────────────────────────\___/─────────────────────────╯
 def fetch_projects():
     import git
     g = git.cmd.Git()
@@ -306,8 +313,7 @@ print("  OK")
 # │ | | | |_ __  __| |__ _| |_ ___   / __|___ _ _  / _(_)__ _ ___              │
 # │ | |_| | '_ \/ _` / _` |  _/ -_) | (__/ _ \ ' \|  _| / _` (_-<              │
 # │  \___/| .__/\__,_\__,_|\__\___|  \___\___/_||_|_| |_\__, /__/              │
-# │       |_|                                           |___/                  │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+# ╰───────┤_├───────────────────────────────────────────|___/──────────────────╯
 def update_configs():
     h3( "Updating Configs" )
     for project in projects.values():
@@ -327,14 +333,14 @@ def update_configs():
 
 update_configs()
 print("  OK")
+
 # MARK: Generate Scripts
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │   ___                       _         ___         _      _                 │
 # │  / __|___ _ _  ___ _ _ __ _| |_ ___  / __| __ _ _(_)_ __| |_ ___           │
 # │ | (_ / -_) ' \/ -_) '_/ _` |  _/ -_) \__ \/ _| '_| | '_ \  _(_-<           │
 # │  \___\___|_||_\___|_| \__,_|\__\___| |___/\__|_| |_| .__/\__/__/           │
-# │                                                    |_|                     │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+# ╰────────────────────────────────────────────────────┤_├─────────────────────╯
 h3('Generating Build Scripts')
 generate_build_scripts( projects )
 print("  OK")
@@ -356,8 +362,8 @@ def process_build( build:SimpleNamespace ):
             skip = False
 
     # =====================[ stdout Logging ]======================-
+    log_path = project.path / f"logs-raw/{build.name}.txt"
     if not skip:
-        log_path = project.path / f"logs-raw/{build.name}.txt"
         build_log = open( file=log_path, mode='w', buffering=1, encoding="utf-8" )
         build_console = Console( file=build_log, force_terminal=True )
         console.tee( name=build.name, new_console=build_console )
@@ -391,6 +397,7 @@ def process_build( build:SimpleNamespace ):
     # ====================[ Run Build Script ]=====================-
     if skip:
         h4( f'No matching build verbs for "{build.name}"')
+        print(f"    available verbs: {build.verbs}")
         build.stats = {"status":'skipped', 'duration':'dnr'}
         return
 
@@ -456,8 +463,7 @@ def process_build( build:SimpleNamespace ):
 # │ | _ \_ _ ___  __ ___ ______ | _ \_ _ ___ (_)___ __| |_                     │
 # │ |  _/ '_/ _ \/ _/ -_|_-<_-< |  _/ '_/ _ \| / -_) _|  _|                    │
 # │ |_| |_| \___/\__\___/__/__/ |_| |_| \___// \___\__|\__|                    │
-# │                                        |__/                                │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+# ╰────────────────────────────────────────\___/───────────────────────────────╯
 # TODO Setup a keyboard interrupt to cancel a job and exit the loop, rather than quit the whole script.
 def process_projects():
     for project in projects.values():

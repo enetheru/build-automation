@@ -81,7 +81,6 @@ def source_git():
     if config['ok'] and 'source' in build['verbs'] and 'source' in opts['build_actions']:
         console.set_window_title(f'Source - {build['name']}')
 
-
         # if we have specified a different git repository than expected, add the shorthash to the name.
         gitdef = build['gitdef'] = project['gitdef'] | build['gitdef'] | opts['gitdef']
         remote:str = gitdef.get('remote', '')
@@ -90,8 +89,7 @@ def source_git():
         repo = git.Repo(project['path'] / 'git')
         short_hash = repo.git.rev_parse('--short', gitref)
 
-        if opts['gitdef']:
-            build['source_dir'] += f'.{short_hash}'
+        if opts['gitdef']: build['source_dir'] += f'.{short_hash}'
 
         gitdef['worktree_path'] = build['source_path'] = project['path'] / build['source_dir']
 
