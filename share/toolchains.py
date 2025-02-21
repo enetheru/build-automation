@@ -198,48 +198,48 @@ windows_toolchains.append( SimpleNamespace(**{
 # │ |___|_|_|_/__/\__|_| |_| .__/\__\___|_||_| │
 # │                        |_|                 │
 # ╰────────────────────────────────────────────╯
-def emsdk_update( toolchain:SimpleNamespace, config:SimpleNamespace, console:Console ):
+def emscripten_update( toolchain:SimpleNamespace, config:SimpleNamespace, console:Console ):
     import os
     from pathlib import Path
 
     console.set_window_title('Updating Emscripten SDK')
-    print(figlet("EMSDK Update", {"font": "small"}))
+    print(figlet("Emscripten Update", {"font": "small"}))
 
-    emsdk_path = Path( toolchain.path )
-    os.chdir(emsdk_path)
+    emscripten_path = Path( toolchain.path )
+    os.chdir(emscripten_path)
     stream_command( 'git pull', dry=config.dry )
 
-def win32_emsdk_script( config:dict, toolchain:dict ):
+def win32_emscripten_script( config:dict, toolchain:dict ):
     from pathlib import Path
 
     cmd_prefix = f'pwsh -Command'
-    emsdk_tool = (Path(toolchain['path']) / 'emsdk.ps1').as_posix()
+    emscripten_tool = (Path(toolchain['path']) / 'emsdk.ps1').as_posix()
 
-    def emsdk_check( line ):
-        if toolchain['version'] in line and 'INSTALLED' in line: emsdk_check.task = 'activate'
+    def emscripten_check( line ):
+        if toolchain['version'] in line and 'INSTALLED' in line: emscripten_check.task = 'activate'
 
-    emsdk_check.task = 'install'
+    emscripten_check.task = 'install'
 
-    stream_command( f'{cmd_prefix} "{emsdk_tool} list"',
-        stdout_handler=emsdk_check,
+    stream_command( f'{cmd_prefix} "{emscripten_tool} list"',
+        stdout_handler=emscripten_check,
         quiet=True,
         dry=config['dry']
     )
 
     if not ('EMSDK' in os.environ):
-        print(figlet(f'EMSDK {emsdk_check.task.capitalize()}', {"font": "small"}))
-        stream_command( f'{cmd_prefix} "{emsdk_tool} {emsdk_check.task} {toolchain['version']}; python {config['script_path']}"',
+        print(figlet(f'Emscripten {emscripten_check.task.capitalize()}', {"font": "small"}))
+        stream_command( f'{cmd_prefix} "{emscripten_tool} {emscripten_check.task} {toolchain['version']}; python {config['script_path']}"',
             dry=config['dry'] )
         quit()
 
 windows_toolchains.append( SimpleNamespace(**{
-    'name':'emsdk',
+    'name':'emscripten',
     'desc':'[Emscripten](https://emscripten.org/)',
     'path':Path('C:/emsdk'),
     'version':'3.1.64',
     'verbs':['update', 'script'],
-    'update':emsdk_update,
-    'script':win32_emsdk_script,
+    'update':emscripten_update,
+    'script':win32_emscripten_script,
     "arch":['wasm32'], #wasm64
     'platform':['emscripten'],
     'cmake':{
@@ -283,27 +283,27 @@ darwin_toolchains.append( SimpleNamespace(**{
 # │ |___|_|_|_/__/\__|_| |_| .__/\__\___|_||_| │
 # │                        |_|                 │
 # ╰────────────────────────────────────────────╯
-def darwin_emsdk_script( config:dict, toolchain:dict ):
+def darwin_emscripten_script( config:dict, toolchain:dict ):
     from pathlib import Path
     import stat
 
     cmd_prefix = f'{os.environ['SHELL']} -c'
-    emsdk_tool = (Path(toolchain['path']) / 'emsdk').as_posix()
+    emscripten_tool = (Path(toolchain['path']) / 'emsdk').as_posix()
 
-    def emsdk_check( line ):
-        if toolchain['version'] in line and 'INSTALLED' in line: emsdk_check.task = 'activate'
+    def emscripten_check( line ):
+        if toolchain['version'] in line and 'INSTALLED' in line: emscripten_check.task = 'activate'
 
-    emsdk_check.task = 'install'
+    emscripten_check.task = 'install'
 
-    stream_command( f'{cmd_prefix} "{emsdk_tool} list"',
-        stdout_handler=emsdk_check,
+    stream_command( f'{cmd_prefix} "{emscripten_tool} list"',
+        stdout_handler=emscripten_check,
         quiet=True,
         dry=config['dry']
     )
 
     if not ('EMSDK' in os.environ):
-        print(figlet(f'EMSDK {emsdk_check.task.capitalize()}', {"font": "small"}))
-        stream_command( f'{cmd_prefix} "{emsdk_tool} {emsdk_check.task} {toolchain['version']}"',
+        print(figlet(f'Emscripten {emscripten_check.task.capitalize()}', {"font": "small"}))
+        stream_command( f'{cmd_prefix} "{emscripten_tool} {emscripten_check.task} {toolchain['version']}"',
             dry=config['dry'] )
 
         env_script = (toolchain['path'] / 'emsdk_env.sh').as_posix()
@@ -313,13 +313,13 @@ def darwin_emsdk_script( config:dict, toolchain:dict ):
 
 
 darwin_toolchains.append( SimpleNamespace(**{
-    'name':'emsdk',
+    'name':'emscripten',
     'desc':'[Emscripten](https://emscripten.org/)',
     'path':Path('/Users/enetheru/emsdk'),
     'version':'3.1.64',
     'verbs':['update', 'script'],
-    'update':emsdk_update,
-    'script':darwin_emsdk_script,
+    'update':emscripten_update,
+    'script':darwin_emscripten_script,
     "arch":['wasm32'], #wasm64
     'platform':['emscripten'],
     'cmake':{

@@ -45,6 +45,20 @@ godot_platforms = {
     # aix, cygwin, wasi, are unsupported
 }
 
+godot_arch = {
+    'armv32': 'arm32',
+    'armv7': 'arm32',
+    'armeabi-v7a': 'arm32',
+    'arm64':'arm64',
+    'arm64-v8a':'arm64',
+    'aarch64':'arm64',
+    'x86_32':'x86_32',
+    'i686':'x86_32',
+    'x86':'x86_32',
+    'x86_64':'x86_64',
+    'wasm32':'wasm32'
+}
+
 # MARK: Scripts
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
 # ║                 ███████  ██████ ██████  ██ ██████  ████████ ███████                    ║
@@ -62,7 +76,14 @@ godot_platforms = {
 # │ |___/\___\___/_||_/__/ |___/\__|_| |_| .__/\__|                            │
 # │                                      |_|                                   │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def scons_script( config:dict, toolchain:dict, console:rich.console.Console ):
+def scons_script():
+    opts:dict = {}
+    toolchain:dict = {}
+    project:dict = {}
+    build:dict = {}
+    config:dict = {}
+    # start_script
+    # Scons Script
     from actions import godotcpp_test
     from share.actions_git import git_checkout
     from share.actions_scons import scons_build
@@ -170,7 +191,14 @@ scons_script.verbs = ['source', 'clean', 'build', 'test']
 # │  \___|_|  |_\__,_|_\_\___| |___/\__|_| |_| .__/\__|                        │
 # │                                          |_|                               │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def cmake_script( config:dict, toolchain:dict, console:rich.console.Console ):
+def cmake_script():
+    opts:dict = {}
+    toolchain:dict = {}
+    project:dict = {}
+    build:dict = {}
+    config:dict = {}
+    # start_script
+    # CMake Script
     import copy
 
     from share.actions_git import git_checkout
@@ -351,7 +379,7 @@ def configure_scons( cfg:SimpleNamespace ) -> bool:
             }
             cfg.scons["build_vars"].append(f'arch={android_abi[cfg.arch]}')
 
-        case 'emsdk':
+        case 'emscripten':
             pass
 
         case "msvc" | 'appleclang':
@@ -457,36 +485,6 @@ variations = {
     'debugcrt':variant_skip,
 }
 
-# MARK: ConfigureFilter
-def configure_and_filter( cfg:SimpleNamespace ) -> list:
-    cfg.name = f'{cfg.host}'
-
-    match cfg.toolchain.name:
-        case 'android' | 'emsdk':
-            pass
-        case _:
-            cfg.name += f'.{cfg.toolchain.name}'
-
-    cfg.name += f'.{godot_platforms[cfg.platform]}'
-
-    match cfg.arch:
-        case 'wasm32':
-            pass # skip for emscripten
-        # Android arches
-        case 'armeabi-v7a' | 'armv7':
-            cfg.name += f'.arm32'
-        case 'arm64-v8a' | 'aarch64':
-            cfg.name += f'.arm64'
-        case 'x86' | 'i686':
-            cfg.name += f'.x86_32'
-        case _:
-            cfg.name += f'.{cfg.arch}'
-
-    cfg.name += f'.{cfg.variant}'
-    cfg.name += f'.{cfg.buildtool}'
-
-    return [cfg]
-
 # MARK: Expansion
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │ ███████ ██   ██ ██████   █████  ███    ██ ███████ ██  ██████  ███    ██    │
@@ -503,8 +501,10 @@ def expand_variant( config:SimpleNamespace ) -> list:
         cfg = copy.deepcopy(config)
 
         setattr( cfg, 'variant', variant )
-        if not configure_func( cfg ): continue
+        cfg.name.append( variant )
 
+        if not configure_func( cfg ): # Skip variants who's configuration step fails.
+            continue
 
         # TODO If I want to test against multiple binaries then I need to specify multiple.
         '{root}/godot/{host}.{toolchain}.{platform}.{arch}.{variant}/bin/godot.{platform}.{target}[.double].{arch}[.llvm].console.exe'
@@ -516,47 +516,6 @@ def expand_variant( config:SimpleNamespace ) -> list:
         configs_out.append( cfg )
     return configs_out
 
-# MARK: Platform
-def expand_platforms( config:SimpleNamespace ) -> list:
-    configs_out:list = []
-    for platform in ['android', 'ios', 'linux', 'macos', 'web', 'windows']:
-        cfg = copy.deepcopy(config)
-
-        setattr( cfg, 'platform', platform )
-        cfg.name = f"{cfg.host}.{cfg.toolchain.name}.{platform}.{cfg.arch}"
-
-        # Filter out host system capabilities
-        match sys.platform:
-            case 'windows':
-                if platform not in ['android', 'web','windows']: continue
-            case 'darwin':
-                if platform not in ['android', 'ios', 'macos', 'web']: continue
-            case 'linux':
-                if platform not in ['android', 'linux', 'web', 'windows']: continue
-
-        # Filter out toolchain capabilities
-        match cfg.toolchain.name:
-            case 'android':
-                if platform != 'android': continue
-            case 'emsdk':
-                if platform != 'web': continue
-
-        match platform:
-            case "windows":
-                pass
-
-            case "android":
-                if cfg.toolchain.name != 'android': continue
-                cfg.name = f"{config.host}.{platform}.{cfg.arch}"
-
-            case "web":
-                if cfg.toolchain.name != 'emsdk': continue
-                cfg.name = f"{config.host}.{platform}"
-
-            case _:
-                continue
-        configs_out += expand_variant( cfg )
-    return configs_out
 
 # MARK: Generators
 def expand_generators( config:SimpleNamespace ) -> list:
@@ -624,6 +583,7 @@ def expand_buildtools( config:SimpleNamespace ) -> list:
 def generate_configs():
     config_base = SimpleNamespace(**{
         'name':'',
+        'source_dir':'',
         'verbs':['source'],
     })
 
@@ -631,13 +591,40 @@ def generate_configs():
     configs = expand_host_env( config_base )
     configs = expand( configs, expand_buildtools )
 
+    # Naming upto now.
+    for cfg in configs:
+        # Host
+        cfg.name = [cfg.host]
+        cfg.source_dir = [cfg.host]
+
+        # Toolchain
+        if cfg.toolchain.name not in  ['android', 'emscripten']:
+            cfg.name.append(cfg.toolchain.name)
+            cfg.source_dir.append(cfg.toolchain.name)
+
+        # Platform
+        cfg.name.append(godot_platforms[cfg.platform])
+
+        if len(cfg.toolchain.platform) > 1:
+            cfg.source_dir.append(cfg.platform)
+
+        # arch
+        if cfg.arch != 'wasm32':
+            cfg.name.append( godot_arch[cfg.arch] )
+
+        if len(cfg.toolchain.arch) > 1:
+            cfg.source_dir.append( cfg.arch )
+
     # target and variants
     configs = expand( configs, expand_variant )
 
-    # setup all the things.
-    configs = expand( configs, configure_and_filter )
+    for cfg in configs:
+        cfg.name.append( cfg.buildtool )
+        cfg.source_dir.append( cfg.buildtool )
 
     for cfg in sorted( configs, key=lambda value: value.name ):
+        if isinstance(cfg.name, list): cfg.name = '.'.join(cfg.name)
+        if isinstance(cfg.source_dir, list): cfg.source_dir = '.'.join(cfg.source_dir)
         project_config.build_configs[cfg.name] = cfg
 
 generate_configs()

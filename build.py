@@ -360,8 +360,6 @@ def process_build( build:SimpleNamespace ):
         build.stats = {"status":'skipped', 'duration':'dnr'}
         return
 
-    console.set_window_title( f"{project.name}[{process_build.x}:{process_build.n}] - {build.name}" )
-
     # =====================[ stdout Logging ]======================-
     log_path = project.path / f"logs-raw/{build.name}.txt"
     build_log = open( file=log_path, mode='w', buffering=1, encoding="utf-8" )
@@ -432,7 +430,7 @@ def process_build( build:SimpleNamespace ):
     table.add_row(
         build.name, f"{stats['status']}", f"{stats['duration']}",
         style="red" if stats["status"] == "Failed" else "green", )
-    print( table )
+    rich.print( table )
 
     console.pop( build.name )
 
@@ -479,10 +477,11 @@ def process_projects():
         print( figlet( project.name, {"font": "standard"} ) )
         write_namespace( pretendio, project, 'project')
 
-        process_build.n = len(project.build_configs)
-        process_build.x = 0
+        project_total = len(project.build_configs)
+        build_num = 0
         for build in project.build_configs.values():
-            process_build.x += 1
+            build_num += 1
+            console.set_window_title( f"{project.name}[{build_num}:{project_total}] - {build.name}" )
             process_build( build )
 
         print( align( f"[ Completed:{project.name} ]", 0.02, fill( " -" ) ) )
@@ -552,7 +551,7 @@ def show_statistics():
                 else: r.append( sub['duration'] )
 
             table.add_row( *r )
-    print( table )
+    rich.print( table )
 
 show_statistics()
 console.pop( "build_log" )
