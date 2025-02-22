@@ -1,18 +1,16 @@
 import copy
-import os
-
 from types import SimpleNamespace
-from share.expand_config import expand_host_env, expand
 
+from share.expand_config import expand_host_env, expand
 from share.script_preamble import *
 
-project_config = SimpleNamespace(**{
+project_base:dict = {
+    'name':'godot-cpp',
     'gitdef':{
         'url':"https://github.com/enetheru/godot-cpp.git/",
         'ref':'master'
     },
-    'build_configs' : {}
-})
+}
 
 # MARK: Notes
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -505,9 +503,9 @@ def expand_variant( config:SimpleNamespace ) -> list:
         # TODO If I want to test against multiple binaries then I need to specify multiple.
         '{root}/godot/{host}.{toolchain}.{platform}.{arch}.{variant}/bin/godot.{platform}.{target}[.double].{arch}[.llvm].console.exe'
         # For now I will just focus on the current OS
-        setattr(cfg, 'godot_e', Path('C:/build/godot/w64.msvc.windows.x86_64/bin/godot.windows.editor.x86_64.console'))
-        setattr(cfg, 'godot_tr', Path('C:/build/godot/w64.msvc.windows.x86_64/bin/godot.windows.template_release.x86_64.console'))
-        setattr(cfg, 'godot_td', Path('C:/build/godot/w64.msvc.windows.x86_64/bin/godot.windows.template_debug.x86_64.console'))
+        setattr(cfg, 'godot_e', Path('C:/build/godot/w64.msvc/bin/godot.windows.editor.x86_64.console'))
+        setattr(cfg, 'godot_tr', Path('C:/build/godot/w64.msvc/bin/godot.windows.template_release.x86_64.console'))
+        setattr(cfg, 'godot_td', Path('C:/build/godot/w64.msvc/bin/godot.windows.template_debug.x86_64.console'))
 
         configs_out.append( cfg )
     return configs_out
@@ -576,10 +574,19 @@ def expand_buildtools( config:SimpleNamespace ) -> list:
 # │ ██    ██ ██      ██  ██ ██ ██      ██   ██ ██   ██    ██    ██             │
 # │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def generate_configs():
+def generate( opts:SimpleNamespace ) -> dict:
+
+    project_base.update({
+        'path': opts.path / project_base['name'],
+
+        'build_configs': {}
+    })
+    project = SimpleNamespace(**project_base )
+
     config_base = SimpleNamespace(**{
         'name':'',
         'source_dir':'',
+        'gitdef':{},
         'verbs':['source'],
         'source_script':source_git
     })
@@ -627,6 +634,7 @@ def generate_configs():
     for cfg in sorted( configs, key=lambda value: value.name ):
         if isinstance(cfg.name, list): cfg.name = '.'.join(cfg.name)
         if isinstance(cfg.source_dir, list): cfg.source_dir = '.'.join(cfg.source_dir)
-        project_config.build_configs[cfg.name] = cfg
 
-generate_configs()
+        project.build_configs[cfg.name] = cfg
+
+    return {project.name:project }

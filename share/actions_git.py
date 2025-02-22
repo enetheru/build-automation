@@ -34,6 +34,10 @@ def git_checkout( config: dict ):
     if not worktree_path.exists():
         h4("Create WorkTree")
         os.chdir( gitdir )
+
+        # Perhaps we deleted the worktree folder, in which case prune it
+        repo.git.worktree('prune')
+
         cmd_chunks = [ 'add', '--detach', worktree_path, gitref ]
         if opts['dry']:
             print('dry-run: Skipping remaining work in git_checkout')

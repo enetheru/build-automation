@@ -1,8 +1,8 @@
-from share.script_preamble import *
-
 import copy
 from types import SimpleNamespace
+
 from share.expand_config import expand_host_env, expand
+from share.script_preamble import *
 
 project_base:dict = {
     'name':'godot',
@@ -280,7 +280,6 @@ def generate( opts:SimpleNamespace ) -> dict:
         'path': opts.path / project_base['name'],
         "build_configs": {}
     })
-
     project = SimpleNamespace(**project_base)
 
     config_base = SimpleNamespace(**{
@@ -343,4 +342,4 @@ def generate( opts:SimpleNamespace ) -> dict:
         if isinstance(cfg.source_dir, list): cfg.source_dir = '.'.join(cfg.source_dir)
         project.build_configs[cfg.name] = cfg
 
-    return {'godot':project}
+    return {project.name:project}

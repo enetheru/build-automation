@@ -10,13 +10,15 @@ from share.script_preamble import *
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def godotcpp_test( config:dict ) -> bool:
+    opts = config['opts']
+    build = config['build']
     print( figlet( 'Testing', {'font': 'small'}) )
 
     # FIXME use fresh to delete the .godot folder
-    godot_editor = Path(config['godot_e'])
-    godot_release_template = Path(config['godot_tr'])
+    godot_editor = build['godot_e']
+    godot_release_template = build['godot_tr']
 
-    test_project_dir = Path(config['source_dir']) / 'test/project'
+    test_project_dir = build['source_path'] / 'test/project'
     dot_godot_dir = test_project_dir / '.godot'
     if not dot_godot_dir.exists():
         h4('Generating the .godot folder')
@@ -29,11 +31,11 @@ def godotcpp_test( config:dict ) -> bool:
         ]
         # TODO redirect stdout to null
         try:
-            stream_command(' '.join(cmd_chunks), dry=config['dry'])
+            stream_command(' '.join(cmd_chunks), dry=opts['dry'])
         except subprocess.SubprocessError as e:
             print( '[red]Godot exited abnormally during .godot folder creation')
 
-    if not dot_godot_dir.exists() and not config['dry']:
+    if not dot_godot_dir.exists() and not opts['dry']:
         print('Error: Creating .godot folder')
         return True
 
@@ -54,7 +56,7 @@ def godotcpp_test( config:dict ) -> bool:
     try:
         result = stream_command(
             ' '.join(cmd_chunks),
-            dry=config['dry'],
+            dry=opts['dry'],
             stdout_handler=handle_stdout,
             stderr_handler=handle_stderr )
     except subprocess.SubprocessError as e:
@@ -65,12 +67,12 @@ def godotcpp_test( config:dict ) -> bool:
         print( '    This requires investigation as it appears to only happen in cmake builds')
 
     from rich.panel import Panel
-    print(
+    rich.print(
         '',
         Panel( '\n'.join( output ),  expand=False, title='Test Execution', title_align='left', width=120 ),
         '')
 
-    if config['dry']:
+    if opts['dry']:
         return False
 
     for line in output:

@@ -29,6 +29,12 @@ from share.generate import generate_build_scripts, write_namespace, MyEncoder
 
 sys.stdout.reconfigure(encoding='utf-8')
 
+def setattrdefault[T]( namespace:SimpleNamespace, field:str, default:T ) -> T:
+    existing = getattr( namespace, field, None )
+    if existing: return existing
+    setattr(namespace, field, default)
+    return default
+
 def get_interior_dict( subject ) -> dict:
     return {k: v for k, v in subject.__dict__.items()}
 
@@ -94,10 +100,12 @@ console.tee( Console( file=open( bargs.path / "build_log.txt", "w", encoding='ut
 parser.parse_args( namespace=bargs )
 
 # Create gitdef structure
-setattr(bargs, 'gitdef', {})
-if bargs.giturl: bargs.gitdef['url'] = bargs.giturl
+setattr(bargs, 'gitdef', {
+    'override': 'yes' if (bargs.giturl or bargs.gitref) else '',
+    'url': bargs.giturl or '',
+    'ref': bargs.gitref or ''
+})
 delattr(bargs, 'giturl')
-if bargs.gitref: bargs.gitdef['ref'] = bargs.gitref
 delattr(bargs, 'gitref')
 
 # ================[ Main Heading and Options ]=================-
@@ -165,12 +173,15 @@ def import_projects() -> dict:
     # keep only projects which have a build config.
     project_configs = {k: v for k, v in project_configs.items() if len( v.build_configs )}
 
-    # Update project from bargs
+    # add or update fields for projects and buld configs.
     for name, project in project_configs.items():
         setattr(project, 'opts', bargs )
         setattr(project, 'name', name )
         setattr(project, 'path', bargs.path / project.name )
         setattr(project, 'verbs', getattr(project, 'verbs', []) + ['fetch'])
+        project.gitdef['remote'] = 'origin'
+        for build in project.build_configs.values():
+            setattrdefault(build, 'gitdef', {})
 
     return project_configs
 
@@ -211,6 +222,9 @@ def fetch_projects():
     import git
     g = git.cmd.Git()
 
+    if 'fetch' not in bargs.project_actions:
+        return
+
     h3('Fetching / Updating Projects')
 
     for project in projects.values():
@@ -221,90 +235,95 @@ def fetch_projects():
         # Change to the git directory and instantiate a repo, some commands still
         # assume being inside a git dir.
         os.chdir( project.path )
-        gitdef = project.gitdef
-        gitdef['gitdir'] = project.path / "git"
+        project.gitdef['gitdir'] = project.path / "git"
 
         # Lets clone if we dont exist
-        if not gitdef['gitdir'].exists():
+        if not project.gitdef['gitdir'].exists():
             h4( 'Cloning' )
             if project['dry']: continue
-            repo = git.Repo.clone_from( gitdef['url'], gitdef['gitdir'], progress=print,  bare=True, tags=True )
+            repo = git.Repo.clone_from( project.gitdef['url'], project.gitdef['gitdir'], progress=print,  bare=True, tags=True )
         else:
-            repo = git.Repo( gitdef['gitdir'] )
+            repo = git.Repo( project.gitdef['gitdir'] )
 
-        # Keep a dictionary of remote:{refs,} to check for updates
-        updates: dict[str, set[str]] = {'origin': {gitdef['ref']}}
+        # h4( "Worktrees" )
+        repo.git.worktree('prune')
+        # for line in str(repo.git.worktree('list')).splitlines():
+        #     print( '   ', line)
+
+        # Keep a dictionary of remote:{refs,} to skip already processed remotes.
+        h4( "Checking for updates:" )
+        fetch_list = {}
+        updates: dict[str, set[str]] = {'origin': {project.gitdef['ref']}}
         for config in project.build_configs.values():
-            gitdef:dict = copy.copy(getattr(config, 'gitdef', None))
-            if gitdef is None: continue
+            # collate the dictionaries, skipping empty keys
+            collect:dict = ({k:v for k,v in project.gitdef.items() if v}
+                            | {k:v for k,v in config.gitdef.items() if v}
+                            | {k:v for k,v in bargs.gitdef.items() if v})
 
-            gitdef.setdefault('url', project.gitdef['url'] )
-            gitdef.setdefault('ref', project.gitdef['ref'] )
 
-            if gitdef['url'] == project.gitdef['url']:
-                gitdef['remote'] = 'origin'
-            else:
-                gitdef.setdefault('remote', config.name )
+            # FIXME, also unrelated, I have to fix the print to console so that it gets multiplexed
+            #   to the logs I broke it by removing from rich import print to fix unicode printing.
 
-            # If the remote doesnt exist in the update dict add it
-            if not gitdef['remote'] in updates:
-                updates[gitdef['remote']] = set()
+            collect['remote'] = config.name
+            for r in repo.remotes:
+                if collect['url'] in r.urls:
+                    collect['remote'] = r.name # FIXME This creates rediculous remote names.
+                    break
 
-            # Add the reference we care to update.
-            updates[gitdef['remote']].add( gitdef['ref'] )
+            # Make this a SimpleNamespace so we can use dot referencing
+            gitdef:SimpleNamespace = SimpleNamespace(**collect)
 
-            # Finally add the remote if it doesnt already exist.
-            if gitdef['remote'] not in [remote.name for remote in repo.remotes]:
+            # add the remote to the repo if it doesnt already exist.
+            print( gitdef )
+            if gitdef.remote not in [remote.name for remote in repo.remotes]:
                 print('adding remote')
-                repo.create_remote(gitdef['remote'], gitdef['url'])
+                repo.create_remote(gitdef.remote, gitdef.url)
 
-        remotes = {remote.name:remote.url for remote in repo.remotes}
+            # get the list of refs from the remote that we have already checked.
+            remote_refs = updates.setdefault(gitdef.remote, set() )
+            if gitdef.ref in remote_refs: # we've already checked this remote for updates, skip it.
+                continue
+            else:
+                remote_refs.add( gitdef.ref )
+
+            # Check the remote for updates.
+            print( f"    git ls-remote {gitdef.url} {gitdef.ref}" )
+            ls_ref:str = g.ls_remote( gitdef.url, gitdef.ref )
+            if not ls_ref:
+                print( f"Unable to fetch remote ref {gitdef.remote}/{gitdef.ref}")
+                exit(1)
+                # FIXME handle this better.
+                #   strip the configurations from the list and continue?
+                # Which configurations? I only have a list of remotes.
+
+            remote_hash = ls_ref.split()[0]
+
+            if gitdef.remote == 'origin':
+                local_hash = repo.git.rev_parse(f"{gitdef.ref}")
+            else:
+                try:
+                    local_hash = repo.git.rev_parse(f"{gitdef.remote}/{gitdef.ref}")
+                except GitCommandError as e:
+                    print( f"Unable to fetch local ref {gitdef.remote}/{gitdef.ref}")
+                    local_hash = 'missing'
+
+            # Add to the list of repo's to fetch updates from
+            if local_hash != remote_hash:
+                print( "      local :", local_hash )
+                print( "      remote:", remote_hash )
+                print( "      local and remote references differ, adding to update list" )
+                fetch_list[gitdef.remote] = gitdef.ref
+
         print("    Remotes:")
         for remote in repo.remotes:
             print(f"      {remote.name}: {remote.url}")
 
-        h4( "Checking for updates:" )
-        fetches = {}
-        for remote,refs in updates.items():
-            for ref in refs:
-                print( f"    {remote}/{ref}" )
-                remote_ref:str = g.ls_remote( remotes[remote], ref )
-                if not remote_ref:
-                    print( f"Unable to fetch remote ref {remote}/{ref}")
-                    exit(1) #FIXME handle this better.
-                remote_ref = remote_ref.split()[0]
-
-                if remote == 'origin':
-                    local_ref = repo.git.rev_parse(f"{ref}")
-                else:
-                    try:
-                        local_ref = repo.git.rev_parse(f"{remote}/{ref}")
-                    except GitCommandError as e:
-                        local_ref = None
-
-                if not local_ref:
-                    local_ref = 'missing'
-                    print( f"Unable to fetch local ref {remote}/{ref}")
-                else:
-                    local_ref = local_ref.split()[0]
-
-                if local_ref != remote_ref:
-                    print( "      local :", local_ref )
-                    print( "      remote:", remote_ref )
-                    print( "      local and remote references differ, adding to update list" )
-                    fetches[remote] = ref
-
-        for remote, ref in fetches.items():
+        h4( "Fetching updates:" )
+        for remote, ref in fetch_list.items():
             h4(f'Fetching {remote}/{ref}')
             repo.git.fetch( '--verbose', '--progress','--tags', '--force', remote, '*:*' )
 
-        h4( "Worktrees" )
-        repo.git.worktree('prune')
-        for line in str(repo.git.worktree('list')).splitlines():
-            print( '   ', line)
-
-
-if 'fetch' in bargs.project_actions: fetch_projects()
+fetch_projects()
 print("  OK")
 
 # MARK: Update Configs
@@ -318,6 +337,7 @@ def update_configs():
     h3( "Updating Configs" )
     for project in projects.values():
         for build in project.build_configs.values():
+
             setattr( build, 'project', project.name, )
             setattr( build, 'script_path', project.path / f"{build.name}.py" )
 
@@ -361,6 +381,12 @@ def process_build( build:SimpleNamespace ):
         if k in build.verbs:
             skip = False
 
+    if skip:
+        # h4( f'No matching build verbs for "{build.name}"')
+        # print(f"    available verbs: {build.verbs}")
+        build.stats = {"status":'skipped', 'duration':'dnr'}
+        return
+
     # =====================[ stdout Logging ]======================-
     log_path = project.path / f"logs-raw/{build.name}.txt"
     if not skip:
@@ -395,12 +421,6 @@ def process_build( build:SimpleNamespace ):
             width=120 ) )
 
     # ====================[ Run Build Script ]=====================-
-    if skip:
-        h4( f'No matching build verbs for "{build.name}"')
-        print(f"    available verbs: {build.verbs}")
-        build.stats = {"status":'skipped', 'duration':'dnr'}
-        return
-
     build.stats = stats = {}
     stats['start_time'] = datetime.now()
     stats['subs'] = subs = {}
