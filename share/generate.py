@@ -17,7 +17,7 @@ from share.format import *
 class MyEncoder(JSONEncoder):
     def default(self, o):
         if isinstance( o, SimpleNamespace ):
-            return o.__dict__
+            return "Skipping in case of circular reference."
         if isinstance( o, Path ):
             return os.fspath( o )
         return f"*** CANT JSON DUMP THIS '{type(o).__name__}'"
@@ -80,6 +80,13 @@ def write_preamble(buffer:IO, project: SimpleNamespace):
     buffer.write( f"sys.path.append({repr(str(project.opts.path))})\n" )
     with open(f'{Path( __file__ ).parent}/script_preamble.py') as script_imports:
         for line in script_imports.readlines()[1:]: buffer.write( line )
+    lines = [
+        "sys.stdout.reconfigure(encoding='utf-8')",
+        "rich._console = console = Console(soft_wrap=False, width=9000)",
+        "stats:dict = {}",
+        "config:dict = { 'ok': True }",
+    ]
+    for line in lines: buffer.write( line )
     buffer.write('\n\n')
 
 

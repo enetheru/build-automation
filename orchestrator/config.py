@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from share.expand_config import expand, expand_host_env
 from share.toolchains import toolchains
 
-from share.script_imports import *
+from share.script_preamble import *
 
 project_config = SimpleNamespace(**{
     'gitdef':{

@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import argparse
-import copy
 import importlib.util
 import json
 import multiprocessing
@@ -15,10 +14,10 @@ from types import SimpleNamespace
 from typing import IO
 
 import rich
-from git import GitCommandError
 from rich.console import Console
 from rich.pretty import pprint
 from rich.table import Table
+from rich import print
 
 # Local Imports
 from share.ConsoleMultiplex import ConsoleMultiplex
@@ -27,13 +26,13 @@ from share.run import stream_command
 from share.toolchains import toolchains
 from share.generate import generate_build_scripts, write_namespace, MyEncoder
 
-sys.stdout.reconfigure(encoding='utf-8')
 
 def setattrdefault[T]( namespace:SimpleNamespace, field:str, default:T ) -> T:
     existing = getattr( namespace, field, None )
     if existing: return existing
     setattr(namespace, field, default)
     return default
+
 
 def get_interior_dict( subject ) -> dict:
     return {k: v for k, v in subject.__dict__.items()}
@@ -46,6 +45,7 @@ def process_log_null( raw_file: IO, clean_file: IO ):
     for line in raw_file:
         clean_file.write( regex.sub('', line ) )
 
+
 class PretendIO(StringIO):
     def write( self, value ):
         print( value )
@@ -53,6 +53,7 @@ class PretendIO(StringIO):
 pretendio = PretendIO()
 
 # ================[ Setup Multiplexed Console ]================-
+sys.stdout.reconfigure(encoding='utf-8')
 console = ConsoleMultiplex()
 rich._console = console
 
@@ -66,6 +67,7 @@ parser_io.add_argument( "-q", "--quiet", action="store_true" )  # Supress output
 parser_io.add_argument( "-v", "--verbose", action="store_true" )  # extra output
 parser_io.add_argument( "--list", action="store_true" ) # List the configs and quit
 parser_io.add_argument( "--show", action="store_true" ) # Show the configuration and quit
+parser_io.add_argument( "--debug", action="store_true" ) # dont continue on some failures.
 
 # General or Global Options
 parser_opts = parser.add_argument_group( "Options" )
@@ -87,35 +89,18 @@ parser_opts.add_argument( "--giturl" )  # The Url to clone from
 parser_opts.add_argument( "--gitref" )  # the Commit to checkout
 
 # Create the namespace before parsing, so we can add derived options from the system
-bargs = SimpleNamespace()
-
-bargs.command = " ".join( sys.argv )
-bargs.platform = platform.system()
-bargs.path = Path( __file__ ).parent
-
-# Log everything to a file
-console.tee( Console( file=open( bargs.path / "build_log.txt", "w", encoding='utf-8' ), force_terminal=True ), "build_log" )
-
-# Add all the things from the command line
-parser.parse_args( namespace=bargs )
-
-# Create gitdef structure
-setattr(bargs, 'gitdef', {
-    'override': 'yes' if (bargs.giturl or bargs.gitref) else '',
-    'url': bargs.giturl or '',
-    'ref': bargs.gitref or ''
-})
-delattr(bargs, 'giturl')
-delattr(bargs, 'gitref')
+opts = SimpleNamespace()
+opts.command = " ".join( sys.argv )
+opts.platform = platform.system()
+opts.path = Path( __file__ ).parent
 
 # ================[ Main Heading and Options ]=================-
 def show_heading():
     console.set_window_title( "AutoBuild" )
     h1( "AutoBuild" )
     h3( "Options", newline=False )
-    pprint( bargs.__dict__, expand_all=True )
+    pprint( opts.__dict__, expand_all=True )
 
-show_heading()
 
 # MARK: Toolchain Actions
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -129,14 +114,13 @@ def show_toolchains():
     for name in toolchains.keys():
         print( "  - ", name )
 
+
 def process_toolchains():
-    for verb in bargs.toolchain_actions:
+    for verb in opts.toolchain_actions:
         for toolchain_name, toolchain in toolchains.items():
             if verb in getattr( toolchain, 'verbs', [] ):
-                getattr( toolchain, verb )( toolchain, bargs, console )
+                getattr( toolchain, verb )( toolchain, opts, console )
 
-show_toolchains()
-process_toolchains()
 
 # MARK: Import Configs
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -146,48 +130,60 @@ process_toolchains()
 # │ |___|_|_|_| .__/\___/_|  \__|  \___\___/_||_|_| |_\__, /__/                │
 # ╰───────────┤_├─────────────────────────────────────┤___/────────────────────╯
 def import_projects() -> dict:
-    project_glob = f"{bargs.project}/config.py"
+    project_glob = f"{opts.project}/config.py"
     h4( f"Loading Configs from files using glob: {project_glob}" )
 
     # Import project_config files.
-    config_imports: dict = {}
-    project_configs: dict = {}
-    for config_file in bargs.path.glob( project_glob ):
+    projects: dict[str,SimpleNamespace] = {}
+    for config_file in opts.path.glob( project_glob ):
+
         # Create Module Spec
-        spec = importlib.util.spec_from_file_location( name="config", location=config_file )
+        spec = importlib.util.spec_from_file_location(
+            name=os.path.basename( config_file.parent ),
+            location=config_file )
+
         # import module
         project_module = importlib.util.module_from_spec( spec )
-        # load module
-        spec.loader.exec_module( project_module )
-        # add to module to import dictionary
-        module_name = os.path.basename( config_file.parent )
-        config_imports[module_name] = project_module
-        # append the project configurations
-        project_configs |= project_module.generate( bargs )
 
-    # Filter the configs in the project to match the filter criteria
-    for project_name, project_config in project_configs.items():
-        build_configs: dict = project_config.build_configs
-        project_config.build_configs = {k: v for k, v in build_configs.items() if re.search( bargs.filter, v.name )}
+        # Execute the module
+        try:
+            spec.loader.exec_module( project_module )
+        except Exception as e:
+            if opts.debug: raise e
+            else:
+                print( e )
+                continue
 
-    # keep only projects which have a build config.
-    project_configs = {k: v for k, v in project_configs.items() if len( v.build_configs )}
+        # generate the project configurations
+        try:
+            projects |= project_module.generate( opts )
+        except Exception as e:
+            if opts.debug: raise e
+            else: print( e )
+
+    # Filter the build configurations using --filter <regex>
+    for project in projects.values():
+        build_configs: dict = project.build_configs
+        project.build_configs = {k: v for k, v in build_configs.items() if re.search( opts.filter, v.name )}
+
+    # Cull projects after filtering build configurations
+    projects = {v.name: v for v in projects.values() if len( v.build_configs )}
 
     # add or update fields for projects and buld configs.
-    for name, project in project_configs.items():
-        setattr(project, 'opts', bargs )
+    for name, project in projects.items():
         setattr(project, 'name', name )
-        setattr(project, 'path', bargs.path / project.name )
+        setattr(project, 'opts', opts )
+        setattr(project, 'path', opts.path / project.name )
         setattr(project, 'verbs', getattr(project, 'verbs', []) + ['fetch'])
         project.gitdef['remote'] = 'origin'
         for build in project.build_configs.values():
+            setattr( build, 'project', project )
             setattrdefault(build, 'gitdef', {})
 
-    return project_configs
+    return projects
 
-projects = import_projects()
 
-def show_summary():
+def show_summary( projects:dict ):
     h3( "projects and Configs" )
     if not len( projects ):
         print( "[red]No project/config matches criteria[/red]" )
@@ -199,17 +195,6 @@ def show_summary():
         for build in build_configs.values():
             print( "    - ", build.name )
 
-show_summary()
-
-# List only.
-if bargs.list:
-    exit()
-
-# TODO if help in any of the system verbs then display a list of verb help items.
-
-# Remove the project filter attributes from the args as we no longer need them.
-delattr(bargs, 'project')
-delattr(bargs, 'filter')
 
 # MARK: Git Fetch Projects
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -218,11 +203,11 @@ delattr(bargs, 'filter')
 # │ | (_ | |  _| | _/ -_)  _/ _| ' \  |  _/ '_/ _ \| / -_) _|  _(_-<           │
 # │  \___|_|\__| |_|\___|\__\__|_||_| |_| |_| \___// \___\__|\__/__/           │
 # ╰──────────────────────────────────────────────\___/─────────────────────────╯
-def fetch_projects():
+def fetch_projects( projects:dict ):
     import git
     g = git.cmd.Git()
 
-    if 'fetch' not in bargs.project_actions:
+    if 'fetch' not in opts.project_actions:
         return
 
     h3('Fetching / Updating Projects')
@@ -258,7 +243,7 @@ def fetch_projects():
             # collate the dictionaries, skipping empty keys
             collect:dict = ({k:v for k,v in project.gitdef.items() if v}
                             | {k:v for k,v in config.gitdef.items() if v}
-                            | {k:v for k,v in bargs.gitdef.items() if v})
+                            | {k:v for k,v in opts.gitdef.items() if v})
 
 
             # FIXME, also unrelated, I have to fix the print to console so that it gets multiplexed
@@ -274,7 +259,6 @@ def fetch_projects():
             gitdef:SimpleNamespace = SimpleNamespace(**collect)
 
             # add the remote to the repo if it doesnt already exist.
-            print( gitdef )
             if gitdef.remote not in [remote.name for remote in repo.remotes]:
                 print('adding remote')
                 repo.create_remote(gitdef.remote, gitdef.url)
@@ -301,10 +285,12 @@ def fetch_projects():
             if gitdef.remote == 'origin':
                 local_hash = repo.git.rev_parse(f"{gitdef.ref}")
             else:
+                from git import GitCommandError
                 try:
                     local_hash = repo.git.rev_parse(f"{gitdef.remote}/{gitdef.ref}")
                 except GitCommandError as e:
                     print( f"Unable to fetch local ref {gitdef.remote}/{gitdef.ref}")
+                    print( e )
                     local_hash = 'missing'
 
             # Add to the list of repo's to fetch updates from
@@ -323,8 +309,6 @@ def fetch_projects():
             h4(f'Fetching {remote}/{ref}')
             repo.git.fetch( '--verbose', '--progress','--tags', '--force', remote, '*:*' )
 
-fetch_projects()
-print("  OK")
 
 # MARK: Update Configs
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -333,12 +317,11 @@ print("  OK")
 # │ | |_| | '_ \/ _` / _` |  _/ -_) | (__/ _ \ ' \|  _| / _` (_-<              │
 # │  \___/| .__/\__,_\__,_|\__\___|  \___\___/_||_|_| |_\__, /__/              │
 # ╰───────┤_├───────────────────────────────────────────|___/──────────────────╯
-def update_configs():
+def update_configs( projects:dict ):
     h3( "Updating Configs" )
     for project in projects.values():
         for build in project.build_configs.values():
 
-            setattr( build, 'project', project.name, )
             setattr( build, 'script_path', project.path / f"{build.name}.py" )
 
             # all build configs need a gitdef even if empty
@@ -351,19 +334,6 @@ def update_configs():
 
             setattr( build, 'run_cmd', run_cmd )
 
-update_configs()
-print("  OK")
-
-# MARK: Generate Scripts
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │   ___                       _         ___         _      _                 │
-# │  / __|___ _ _  ___ _ _ __ _| |_ ___  / __| __ _ _(_)_ __| |_ ___           │
-# │ | (_ / -_) ' \/ -_) '_/ _` |  _/ -_) \__ \/ _| '_| | '_ \  _(_-<           │
-# │  \___\___|_||_\___|_| \__,_|\__\___| |___/\__|_| |_| .__/\__/__/           │
-# ╰────────────────────────────────────────────────────┤_├─────────────────────╯
-h3('Generating Build Scripts')
-generate_build_scripts( projects )
-print("  OK")
 
 # MARK: Build
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -373,11 +343,11 @@ print("  OK")
 # │ |_| |_| \___/\__\___/__/__/ |___/\_,_|_|_\__,_|                            │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def process_build( build:SimpleNamespace ):
+    project = build.project
     # Skip the build config if there are no actions to perform
-    project = projects[build.project]
 
     skip:bool=True
-    for k in bargs.build_actions:
+    for k in opts.build_actions:
         if k in build.verbs:
             skip = False
 
@@ -398,14 +368,14 @@ def process_build( build:SimpleNamespace ):
     print( align( f"- Starting: {build.name} -", 0, fill( "=", 120 ) ) )
     newline()
 
-    if bargs.show:
+    if opts.show:
         write_namespace( pretendio, build, 'build')
 
     # ==================[ Print Configuration ]====================-
     from rich.panel import Panel
     from rich.syntax import Syntax
 
-    if bargs.verbose:
+    if opts.verbose:
         with open(build.script_path, "rt") as code_file:
             syntax = Syntax(code_file.read(),
                 lexer="python",
@@ -437,14 +407,18 @@ def process_build( build:SimpleNamespace ):
         env = getattr(build.toolchain, 'env', None )
         returncode = stream_command( build.run_cmd, env=env, stdout_handler=test_handler).returncode
     except CalledProcessError as e:
+        print( e )
         returncode = 1
-    except KeyboardInterrupt as e:
+    except KeyboardInterrupt:
+        print("Cancelling current job, CTRL+C to cancel project")
         returncode = 1
-        print("Cancelling current job, CTRL+C again to cancel all")
         try:
             sleep(3)
         except KeyboardInterrupt as e:
-            exit()
+            # Cleanup
+            build.stats = {"status":'cancelled', 'duration':'dnr'}
+            console.pop( build.name )
+            raise e
         print("continuing")
     # TODO create a timeout for the processing, something reasonable.
     #   this should be defined in the build config as the largest possible build time that is expected.
@@ -474,7 +448,7 @@ def process_build( build:SimpleNamespace ):
           open( cleanlog_path, "w", encoding='utf-8' ) as log_clean):
         clean_log( log_raw, log_clean )
 
-    print( align( f"[ Completed:{build.project} / {build.name} ]", line=fill( " -", 120 ) ) )
+    print( align( f"[ Completed:{build.project.name} / {build.name} ]", line=fill( " -", 120 ) ) )
 
 
 # MARK: Project
@@ -485,7 +459,7 @@ def process_build( build:SimpleNamespace ):
 # │ |_| |_| \___/\__\___/__/__/ |_| |_| \___// \___\__|\__|                    │
 # ╰────────────────────────────────────────\___/───────────────────────────────╯
 # TODO Setup a keyboard interrupt to cancel a job and exit the loop, rather than quit the whole script.
-def process_projects():
+def process_projects( projects:dict ):
     for project in projects.values():
         os.chdir( project.path )
 
@@ -509,13 +483,22 @@ def process_projects():
         for build in project.build_configs.values():
             build_num += 1
             console.set_window_title( f"{project.name}[{build_num}:{project_total}] - {build.name}" )
-            process_build( build )
+            try:
+                process_build( build )
+            except KeyboardInterrupt:
+                print( f'"Cancelling project "{project.name}", CTRL+C again to cancel all projects"')
+                try:
+                    sleep(3)
+                except KeyboardInterrupt as e:
+                    # Cleanup
+                    console.pop( project.name )
+                    raise e
+                print("continuing")
 
         print( align( f"[ Completed:{project.name} ]", 0.02, fill( " -" ) ) )
         # remove the project output log.
         console.pop( project.name )
 
-process_projects()
 
 # MARK: Statistics
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -525,7 +508,7 @@ process_projects()
 # │ |___/\__\__,_|\__|_/__/\__|_\__/__/                                        │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-def show_statistics():
+def show_statistics( projects:dict ):
     table = Table( title="Stats", highlight=True, min_width=80 )
 
     # unique set of available data names
@@ -543,7 +526,7 @@ def show_statistics():
     table.add_column( "Total Time" )
 
     sub_columns:list = []
-    for action in bargs.build_actions:
+    for action in opts.build_actions:
         if action in column_set:
             sub_columns.append( action )
             table.add_column( action )
@@ -559,7 +542,7 @@ def show_statistics():
 
             colour = "green"
             status = build.stats['status']
-            if bargs.dry:
+            if opts.dry:
                 colour = "yellow"
                 status = "dry-run"
             elif build.stats["status"] == "Failed":
@@ -580,11 +563,70 @@ def show_statistics():
             table.add_row( *r )
     rich.print( table )
 
-show_statistics()
-console.pop( "build_log" )
+# MARK: Main
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  __  __      _                                                             │
+# │ |  \/  |__ _(_)_ _                                                         │
+# │ | |\/| / _` | | ' \                                                        │
+# │ |_|  |_\__,_|_|_||_|                                                       │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+def main():
+    # Log everything to a file
+    console.tee( Console( file=open( opts.path / "build_log.txt", "w", encoding='utf-8' ), force_terminal=True ), "build_log" )
+    print( " build log" )
 
-# Dump last config to json so we can inspect it
-# TypeError: Object of type SimpleNamespace is not JSON serializable
-with open( "last_config_dump.json", 'w' ) as file:
-    json.JSONEncoder = MyEncoder
-    file.write( json.dumps( projects, indent=2 ) )
+    # Add all the things from the command line
+    parser.parse_args( namespace=opts )
+
+    # Create gitdef structure
+    setattr(opts, 'gitdef', {
+        'override': 'yes' if (opts.giturl or opts.gitref) else '',
+        'url': opts.giturl or '',
+        'ref': opts.gitref or ''
+    })
+    delattr(opts, 'giturl')
+    delattr(opts, 'gitref')
+
+    show_heading()
+    show_toolchains()
+    process_toolchains()
+    projects  = import_projects()
+
+    show_summary( projects )
+
+    # TODO if help in any of the system verbs then display a list of verb help items.
+
+    # Remove the project filter attributes from the args as we no longer need them.
+    delattr(opts, 'project')
+    delattr(opts, 'filter')
+
+    # List only.
+    if opts.list: exit()
+
+    fetch_projects( projects )
+    print("  OK")
+
+    update_configs( projects )
+    print("  OK")
+
+    h3('Generating Build Scripts')
+    generate_build_scripts( projects )
+    print("  OK")
+
+    try:
+        process_projects( projects )
+    except KeyboardInterrupt:
+        print("Processing Cancelled")
+
+    show_statistics( projects )
+
+    console.pop( "build_log" )
+
+    # Dump last config to json so we can inspect it
+    # TypeError: Object of type SimpleNamespace is not JSON serializable
+    with open( "last_config_dump.json", 'w' ) as file:
+        json.JSONEncoder = MyEncoder
+        file.write( json.dumps( projects, indent=2 ) )
+
+if __name__ == "__main__":
+    main()

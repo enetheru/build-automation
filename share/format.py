@@ -5,6 +5,8 @@ import shutil
 import subprocess
 import typing
 
+from rich import print
+
 # MARK: FORMAT
 ###################################- Format -###################################
 #                                                                              #
