@@ -17,7 +17,6 @@ import rich
 from rich.console import Console
 from rich.pretty import pprint
 from rich.table import Table
-from rich import print
 
 # Local Imports
 from share.ConsoleMultiplex import ConsoleMultiplex
@@ -534,11 +533,10 @@ def show_statistics( projects:dict ):
     for project in projects.values():
         for build in project.build_configs.values():
             if not 'stats' in build.__dict__: continue
-            r:list = []
+
+            r:list = [f"{project.name}/{build.name}"]
             # TODO if gitref is empty when updating the configuration, get latest and update field.
             # r.append(getattr(build, 'gitref', '' )[0:7])
-
-            r.append(f"{project.name}/{build.name}")
 
             colour = "green"
             status = build.stats['status']
