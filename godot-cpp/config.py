@@ -67,10 +67,12 @@ godot_arch = {
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
 def source_git():
+    console = rich.console.Console()
+    config:dict = {}
     opts:dict = {}
     project:dict = {}
     build:dict = {}
-    config:dict = {}
+    stats:dict = {}
     # start_script
 
     #[=================================[ Source ]=================================]
@@ -97,9 +99,11 @@ def source_git():
         config['ok'] = timer.ok()
 
 def test_script():
+    console = rich.console.Console()
+    config:dict = {}
     opts:dict = {}
     build:dict = {}
-    config:dict = {}
+    stats:dict = {}
     # start_script
 
     #[==================================[ Test ]==================================]
@@ -115,6 +119,7 @@ def test_script():
 
 def stats_script():
     config:dict = {}
+    stats:dict = {}
     # start_script
 
     #[=================================[ Stats ]=================================]
@@ -169,9 +174,11 @@ def check_scons():
 
 
 def build_scons():
+    console = rich.console.Console()
+    config:dict = {}
     opts:dict = {}
     build:dict = {}
-    config:dict = {}
+    stats:dict = {}
     # start_script
 
     #[=================================[ Build ]=================================]
@@ -186,15 +193,19 @@ def build_scons():
 
 
 def clean_scons():
+    console = rich.console.Console()
+    config:dict = {}
     opts:dict = {}
     build:dict = {}
-    config:dict = {}
+    stats:dict = {}
     # start_script
+
+    from subprocess import CalledProcessError
 
     #[=================================[ Clean ]=================================]
     if config['ok'] and 'clean' in build['verbs'] and 'clean' in opts['build_actions']:
         console.set_window_title(f'Clean - {build['name']}')
-        print(figlet("SCons Clean", {"font": "small"}))
+        print(h2("SCons Clean"))
 
         with Timer(name='clean', push=False) as timer:
             try:
@@ -202,7 +213,7 @@ def clean_scons():
                 # Change status depending on the truthiness of returnvalue
                 # where False is Success and True is Failure.
                 timer.status = TaskStatus.FAILED if proc.returncode else TaskStatus.COMPLETED
-            except subprocess.CalledProcessError as e:
+            except CalledProcessError as e:
                 # FIXME should this be more generic and handled elsewhere?
                 print( '[red]subprocess error')
                 print( f'[red]{e}' )
@@ -240,7 +251,7 @@ def check_cmake():
 
     # Create Build Directory
     if not build_path.is_dir():
-        h4(f"Creating {cmake['build_dir']}")
+        t3(f"Creating {cmake['build_dir']}")
         os.mkdir(build_path)
 
     try:
@@ -250,17 +261,19 @@ def check_cmake():
         raise fnf
 
 def configure_cmake():
+    console = rich.console.Console()
     config:dict = {}
     opts:dict = {}
-    toolchain:dict = {}
     build:dict = {}
+    stats:dict = {}
+    toolchain:dict = {}
     # start_script
 
     #[===============================[ Configure ]===============================]
     cmake = build['cmake']
 
     if config['ok'] and 'configure' in build['verbs'] and 'configure' in opts['build_actions']:
-        print(figlet("CMake Configure", {"font": "small"}))
+        print(h2("CMake Configure"))
         console.set_window_title(f'Configure - {build['name']}')
 
         config_opts = [
@@ -292,15 +305,17 @@ def configure_cmake():
             stream_command(f'cmake {' '.join(filter(None, config_opts))}', dry=opts['dry'])
             print('')
 
-        print(align(" CMake Configure Completed ", line=fill("-")))
+        print(send(" CMake Configure Completed "))
         stats['configure'] = timer.get_dict()
         config['ok'] = timer.ok()
 
 
 def build_cmake():
+    console = rich.console.Console()
     config:dict = {}
     opts:dict = {}
     build:dict = {}
+    stats:dict = {}
     # start_script
 
     #[=================================[ Build ]=================================]
@@ -308,7 +323,7 @@ def build_cmake():
     cmake = build['cmake']
 
     if config['ok'] and 'build' in build['verbs'] and 'build' in opts['build_actions']:
-        print(figlet("CMake Build", {"font": "small"}))
+        print(h2("CMake Build"))
         console.set_window_title('Build - {name}')
 
         build_path:Path = cmake['build_path']
@@ -322,7 +337,7 @@ def build_cmake():
 
         with Timer(name='build') as timer:
             for target in cmake["targets"]:
-                print(align(f" Building target: {target} ", line=fill("~ ")))
+                print(s2(f" Building target: {target} "))
                 target_opts = copy.copy(build_opts)
                 target_opts.append(f" --target {target}")
 
@@ -333,8 +348,7 @@ def build_cmake():
                 stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
                 print('')
 
-        print(align(" CMake Build Completed ", line=fill("-")))
-        newline()
+        print(send(" CMake Build Completed "))
         stats['build'] = timer.get_dict()
         config['ok'] = timer.ok()
 

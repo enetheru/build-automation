@@ -96,8 +96,8 @@ opts.path = Path( __file__ ).parent
 # ================[ Main Heading and Options ]=================-
 def show_heading():
     console.set_window_title( "AutoBuild" )
-    h1( "AutoBuild" )
-    h3( "Options", newline=False )
+    print( t1( "AutoBuild" ) )
+    print( t3( "Options" ) )
     pprint( opts.__dict__, expand_all=True )
 
 
@@ -109,9 +109,10 @@ def show_heading():
 # │   |_|\___/\___/_\__|_||_\__,_|_|_||_| /_/ \_\__|\__|_\___/_||_/__/         │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def show_toolchains():
-    h3( "Toolchains" )
+    print( t3( "Toolchains" ) )
     for name in toolchains.keys():
-        print( "  - ", name )
+        print( hu(name) )
+        hd()
 
 
 def process_toolchains():
@@ -130,7 +131,7 @@ def process_toolchains():
 # ╰───────────┤_├─────────────────────────────────────┤___/────────────────────╯
 def import_projects() -> dict:
     project_glob = f"{opts.project}/config.py"
-    h4( f"Loading Configs from files using glob: {project_glob}" )
+    print( h1( f"Loading Configs from files using glob: {project_glob}" ) )
 
     # Import project_config files.
     projects: dict[str,SimpleNamespace] = {}
@@ -183,16 +184,17 @@ def import_projects() -> dict:
 
 
 def show_summary( projects:dict ):
-    h3( "projects and Configs" )
     if not len( projects ):
         print( "[red]No project/config matches criteria[/red]" )
         exit()
 
     for project_name, project_config in projects.items():
         build_configs: dict = project_config.build_configs
-        print( "  - ", project_name )
+        print( hu( project_name ) )
         for build in build_configs.values():
-            print( "    - ", build.name )
+            print( hu(build.name) )
+            hd()
+        hd()
 
 
 # MARK: Git Fetch Projects
@@ -209,7 +211,7 @@ def fetch_projects( projects:dict ):
     if 'fetch' not in opts.project_actions:
         return
 
-    h3('Fetching / Updating Projects')
+    print( h1('Fetching / Updating Projects') )
 
     for project in projects.values():
         if 'fetch' not in project.verbs: continue
@@ -223,7 +225,7 @@ def fetch_projects( projects:dict ):
 
         # Lets clone if we dont exist
         if not project.gitdef['gitdir'].exists():
-            h4( 'Cloning' )
+            print( hu( 'Cloning' ) )
             if project['dry']: continue
             repo = git.Repo.clone_from( project.gitdef['url'], project.gitdef['gitdir'], progress=print,  bare=True, tags=True )
         else:
@@ -235,7 +237,7 @@ def fetch_projects( projects:dict ):
         #     print( '   ', line)
 
         # Keep a dictionary of remote:{refs,} to skip already processed remotes.
-        h4( "Checking for updates:" )
+        print( h( "Checking for updates:" ) )
         fetch_list = {}
         updates: dict[str, set[str]] = {'origin': {project.gitdef['ref']}}
         for config in project.build_configs.values():
@@ -270,7 +272,7 @@ def fetch_projects( projects:dict ):
                 remote_refs.add( gitdef.ref )
 
             # Check the remote for updates.
-            print( f"    git ls-remote {gitdef.url} {gitdef.ref}" )
+            print( hu( f"git ls-remote {gitdef.url} {gitdef.ref}" ) )
             ls_ref:str = g.ls_remote( gitdef.url, gitdef.ref )
             if not ls_ref:
                 print( f"Unable to fetch remote ref {gitdef.remote}/{gitdef.ref}")
@@ -303,9 +305,9 @@ def fetch_projects( projects:dict ):
         for remote in repo.remotes:
             print(f"      {remote.name}: {remote.url}")
 
-        h4( "Fetching updates:" )
+        print( h2( "Fetching updates:" ) )
         for remote, ref in fetch_list.items():
-            h4(f'Fetching {remote}/{ref}')
+            print( hu(f'Fetching {remote}/{ref}') )
             repo.git.fetch( '--verbose', '--progress','--tags', '--force', remote, '*:*' )
 
 
@@ -317,7 +319,7 @@ def fetch_projects( projects:dict ):
 # │  \___/| .__/\__,_\__,_|\__\___|  \___\___/_||_|_| |_\__, /__/              │
 # ╰───────┤_├───────────────────────────────────────────|___/──────────────────╯
 def update_configs( projects:dict ):
-    h3( "Updating Configs" )
+    print( h1( "Updating Configs" ) )
     for project in projects.values():
         for build in project.build_configs.values():
 
@@ -364,8 +366,7 @@ def process_build( build:SimpleNamespace ):
         console.tee( name=build.name, new_console=build_console )
 
     # =================[ Build Heading / Config ]==================-
-    print( align( f"- Starting: {build.name} -", 0, fill( "=", 120 ) ) )
-    newline()
+    print( s2("- Starting: {build.name} -") )
 
     if opts.show:
         write_namespace( pretendio, build, 'build')
@@ -436,8 +437,8 @@ def process_build( build:SimpleNamespace ):
     console.pop( build.name )
 
     # ==================[ Output Log Processing ]==================-
-    h3( "Post Run Actions" )
-    h4( "Clean Log" )
+    print( h1( "Post Run Actions" ) )
+    print( h2( "Clean Log" ) )
     cleanlog_path = (project.path / f"logs-clean/{build.name}.txt")
     if 'clean_log' in  get_interior_dict(build).keys():
         clean_log = build.clean_log
@@ -447,7 +448,7 @@ def process_build( build:SimpleNamespace ):
           open( cleanlog_path, "w", encoding='utf-8' ) as log_clean):
         clean_log( log_raw, log_clean )
 
-    print( align( f"[ Completed:{build.project.name} / {build.name} ]", line=fill( " -", 120 ) ) )
+    print( send(f"[ Completed:{build.project.name} / {build.name} ]" ) )
 
 
 # MARK: Project
@@ -473,8 +474,8 @@ def process_projects( projects:dict ):
         console.tee( project_console , project.name )
 
         # ================[ project Heading / Config ]==================-
-        h2( f'Process: {project.name}' )
-        print( figlet( project.name, {"font": "standard"} ) )
+        print( s1( f'Process: {project.name}' ) )
+        print( t2( project.name ) )
         write_namespace( pretendio, project, 'project')
 
         project_total = len(project.build_configs)
@@ -494,7 +495,7 @@ def process_projects( projects:dict ):
                     raise e
                 print("continuing")
 
-        print( align( f"[ Completed:{project.name} ]", 0.02, fill( " -" ) ) )
+        print( send( f"Completed:{project.name}" ) )
         # remove the project output log.
         console.pop( project.name )
 
@@ -588,6 +589,8 @@ def main():
     show_heading()
     show_toolchains()
     process_toolchains()
+
+    print( t3( "projects and Configs" ) )
     projects  = import_projects()
 
     show_summary( projects )
@@ -607,7 +610,7 @@ def main():
     update_configs( projects )
     print("  OK")
 
-    h3('Generating Build Scripts')
+    print(t3('Generating Build Scripts'))
     generate_build_scripts( projects )
     print("  OK")
 

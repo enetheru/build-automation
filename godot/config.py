@@ -22,9 +22,12 @@ project_base:dict = {
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
 def source_git():
+    console = rich.console.Console()
+    config:dict = {}
     opts:dict = {}
     project:dict = {}
     build:dict = {}
+    stats:dict = {}
     # start_script
 
     #[=================================[ Source ]=================================]
@@ -55,6 +58,8 @@ def source_git():
         print( repo.git.log('-1') )
 
 def stats_script():
+    config:dict = {}
+    stats:dict = {}
     # start_script
 
     #[=================================[ Stats ]=================================]
@@ -107,14 +112,18 @@ def check_scons():
         raise fnf
 
 def clean_scons():
+    console = rich.console.Console()
+    config:dict = {}
+    stats:dict = {}
     opts:dict = {}
     build:dict = {}
     # start_script
+    from subprocess import CalledProcessError
 
     #[=================================[ Clean ]=================================]
     if config['ok'] and 'clean' in build['verbs'] and 'clean' in opts['build_actions']:
         console.set_window_title(f'Clean - {build['name']}')
-        print(figlet("SCons Clean", {"font": "small"}))
+        print(h2("SCons Clean"))
 
         with Timer(name='clean', push=False) as timer:
             try:
@@ -122,7 +131,7 @@ def clean_scons():
                 # Change status depending on the truthiness of returnvalue
                 # where False is Success and True is Failure.
                 timer.status = TaskStatus.FAILED if proc.returncode else TaskStatus.COMPLETED
-            except subprocess.CalledProcessError as e:
+            except CalledProcessError as e:
                 # FIXME should this be more generic and handled elsewhere?
                 print( '[red]subprocess error')
                 print( f'[red]{e}' )
@@ -131,6 +140,9 @@ def clean_scons():
         config['ok'] = timer.ok()
 
 def build_scons():
+    console = rich.console.Console()
+    config:dict = {}
+    stats:dict = {}
     opts:dict = {}
     project:dict = {}
     build:dict = {}

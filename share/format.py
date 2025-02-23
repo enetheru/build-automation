@@ -77,11 +77,14 @@ def t3(msg:str = 'Title Three',  endl:str=os.linesep):
 
 # Sections
 def s1(msg:str = 'Section One',  endl:str=os.linesep ):
-    return f'{'\n' if endl else ''}{align( f'- {msg} -' , line=hr('='))}'
+    return f'{'\n' if endl else ''}{align( f'[ {msg} ]' , line=hr('='))}'
 
 
 def s2(msg:str = 'Section two',  endl:str=os.linesep ):
     return f'{'\n' if endl else ''}{align( f'- {msg} -' , line=hr('-'))}'
+
+def send(msg:str = 'Section two',  endl:str=os.linesep ):
+    return f'{'\n' if endl else ''}{align( f' {msg} ' , line=hr('- '))}'
 
 
 # Headings
@@ -90,7 +93,7 @@ class Headings:
         self.padchar = ' '
         self._level = 0
         self.indent = 2
-        self.bullets = ['=>', '->', '*', '-']
+        self.bullets = ['==', '--', '*', '-']
 
     @property
     def level(self):  # Getter
@@ -108,13 +111,13 @@ def h2(msg:str = 'Heading two' ):
     headings.level = 1
     return  h(msg)
 
-def hu(msg:str = 'Heading Up' ):
+def hu(msg:str = '' ) -> str:
     headings.level += 1
-    return  h(msg)
+    return  h(msg) if msg else ''
 
-def hd(msg:str = 'Heading Down' ):
+def hd(msg:str = '' ):
     headings.level -= 1
-    return  h(msg)
+    return  h(msg) if msg else ''
 
 def h(msg:str = 'Heading' ):
     level:int = headings.level

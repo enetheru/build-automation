@@ -10,9 +10,11 @@ from share.script_preamble import *
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def godotcpp_test( config:dict ) -> bool:
+    from subprocess import SubprocessError
+
     opts = config['opts']
     build = config['build']
-    print( figlet( 'Testing', {'font': 'small'}) )
+    print( h2( 'Testing') )
 
     # FIXME use fresh to delete the .godot folder
     godot_editor = build['godot_e']
@@ -21,7 +23,7 @@ def godotcpp_test( config:dict ) -> bool:
     test_project_dir = build['source_path'] / 'test/project'
     dot_godot_dir = test_project_dir / '.godot'
     if not dot_godot_dir.exists():
-        h4('Generating the .godot folder')
+        print( h1('Generating the .godot folder') )
         cmd_chunks = [
             f'"{godot_editor}"',
             '-e',
@@ -32,14 +34,14 @@ def godotcpp_test( config:dict ) -> bool:
         # TODO redirect stdout to null
         try:
             stream_command(' '.join(cmd_chunks), dry=opts['dry'])
-        except subprocess.SubprocessError as e:
+        except SubprocessError as e:
             print( '[red]Godot exited abnormally during .godot folder creation')
 
     if not dot_godot_dir.exists() and not opts['dry']:
         print('Error: Creating .godot folder')
         return True
 
-    h4("Run the test project")
+    print( h1("Run the test project") )
     cmd_chunks = [
         f'"{godot_release_template}"',
         f'--path "{test_project_dir}"',
@@ -59,7 +61,7 @@ def godotcpp_test( config:dict ) -> bool:
             dry=opts['dry'],
             stdout_handler=handle_stdout,
             stderr_handler=handle_stderr )
-    except subprocess.SubprocessError as e:
+    except SubprocessError as e:
         result = e
         # FIXME Godot seems to exit with an error code for some reason on cmake builds only.
         #   I have to investigate why that might be.
@@ -77,7 +79,7 @@ def godotcpp_test( config:dict ) -> bool:
 
     for line in output:
         if line.find( 'PASSED' ) > 0:
-            h4( 'Test Succeeded' )
+            print( h1( 'Test Succeeded' ) )
             return False
 
     return True

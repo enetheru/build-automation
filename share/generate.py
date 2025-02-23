@@ -76,24 +76,24 @@ def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, l
 
 
 def write_preamble(buffer:IO, project: SimpleNamespace):
-    buffer.write( "#!/bin/env python\nimport sys\n")
-    buffer.write( f"sys.path.append({repr(str(project.opts.path))})\n" )
-    with open(f'{Path( __file__ ).parent}/script_preamble.py') as script_imports:
-        for line in script_imports.readlines()[1:]: buffer.write( line )
     lines = [
+        "#!/bin/env python",
+        "import sys",
+        f"sys.path.append({repr(str(project.opts.path))})"]
+    with open(f'{Path( __file__ ).parent}/script_preamble.py') as script_imports:
+        for line in script_imports.readlines()[1:]: lines.append( line.rstrip() )
+    lines += [
         "sys.stdout.reconfigure(encoding='utf-8')",
         "rich._console = console = Console(soft_wrap=False, width=9000)",
         "stats:dict = {}",
         "config:dict = { 'ok': True }",
     ]
-    for line in lines: buffer.write( line )
+    buffer.write( '\n'.join( lines ) )
     buffer.write('\n\n')
 
 
 def section_heading( title ) -> str:
-    line:str = fill("- ", 80)
-    line = align("# ", 0 , line )
-    return align(f"[ {title} ]", line=line ) + '\n'
+    return align("# ", 0 , s1(title) ) + '\n'
 
 
 def write_section( buffer:IO, section:SimpleNamespace, section_name:str ):
