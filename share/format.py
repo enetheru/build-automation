@@ -1,5 +1,6 @@
 import os
 import re
+from typing import Deque
 
 from pyfiglet import Figlet
 from pyfiglet import FontNotFound
@@ -37,6 +38,23 @@ from rich import print
 #     $sFmt -f $num, $suffix[$index]
 # }
 
+# Padding
+class Padding:
+    def __init__(self):
+        self.padchar = ' '
+        self._level = 1
+        self.indent = 2
+        self.bullets = ['', '--', '*', '-']
+
+    @property
+    def level(self):  # Getter
+        return self._level
+    @level.setter
+    def level(self, value):
+        self._level = value if value >= 0 else 0
+
+pad = Padding()
+
 try:
     columns:int = os.get_terminal_size().columns
 except OSError:
@@ -60,73 +78,91 @@ def bend( start:str, end:str, line:str=hr()):
     line = align( start, ratio=0, line=line ) # Left
     return align( end, ratio=1, line=line ) # Right
 
+# MARK: Titles
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  _____ _ _   _                                                             │
+# │ |_   _(_) |_| |___ ___                                                     │
+# │   | | | |  _| / -_|_-<                                                     │
+# │   |_| |_|\__|_\___/__/                                                     │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
 # Titles
 def t1( msg:str = 'Title One', endl:str=os.linesep ):
     title = Figlet(font='standard', justify='center', width=columns).renderText(msg)
-    return endl.join( [s for s in title.splitlines() if not re.match( r'^\s*$', s)] )
+    pad.level = 1
+    print( endl.join( [s for s in title.splitlines() if not re.match( r'^\s*$', s)] ) )
 
 
 def t2(msg:str = 'Title Two',  endl:str=os.linesep ):
     title = Figlet(font='small', justify='left', width=columns).renderText(msg)
-    return endl.join( [s for s in title.splitlines() if not re.match( r'^\s*$', s)] )
+    pad.level = 1
+    print(endl.join( [s for s in title.splitlines() if not re.match( r'^\s*$', s)] ))
 
 
 def t3(msg:str = 'Title Three',  endl:str=os.linesep):
-    return  f'{'\n' if endl else ''} == {msg} =='
+    pad.level = 1
+    print(f'{'\n' if endl else ''} == {msg} ==')
 
+# MARK: Sections
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ___         _   _                                                         │
+# │ / __| ___ __| |_(_)___ _ _  ___                                            │
+# │ \__ \/ -_) _|  _| / _ \ ' \(_-<                                            │
+# │ |___/\___\__|\__|_\___/_||_/__/                                            │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
+sections:Deque = Deque[str]()
 
 # Sections
-def s1(msg:str = 'Section One',  endl:str=os.linesep ):
-    return f'{'\n' if endl else ''}{align( f'[ {msg} ]' , line=hr('='))}'
+def s1(msg:str = 'Section One'):
+    pad.level = 1
+    sections.append( msg )
+    print( align( f'[ {msg} ]' , line=hr('=', 80)) )
 
 
-def s2(msg:str = 'Section two',  endl:str=os.linesep ):
-    return f'{'\n' if endl else ''}{align( f'- {msg} -' , line=hr('-'))}'
+def s2(msg:str = 'Section two'):
+    pad.level = 1
+    sections.append( msg )
+    print( align( f'- {msg} -' , line=hr('-', 80)) )
 
-def send(msg:str = 'Section two',  endl:str=os.linesep ):
-    return f'{'\n' if endl else ''}{align( f' {msg} ' , line=hr('- '))}'
+def send():
+    pad.level = 1
+    if not len(sections): raise Exception()
+    print( align( f'> End: {sections.pop()} <' , line=hr('- ', 80)) )
 
+# MARK: Headings
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  _  _             _ _                                                      │
+# │ | || |___ __ _ __| (_)_ _  __ _ ___                                        │
+# │ | __ / -_) _` / _` | | ' \/ _` (_-<                                        │
+# │ |_||_\___\__,_\__,_|_|_||_\__, /__/                                        │
+# │                           |___/                                            │
+# ╰────────────────────────────────────────────────────────────────────────────╯
 
-# Headings
-class Headings:
-    def __init__(self):
-        self.padchar = ' '
-        self._level = 0
-        self.indent = 2
-        self.bullets = ['==', '--', '*', '-']
-
-    @property
-    def level(self):  # Getter
-        return self._level
-    @level.setter
-    def level(self, value):
-        self._level = value if value >= 0 else 0
-
-headings = Headings()
 def h1(msg:str = 'Heading One' ):
-    headings.level = 0
-    return  h(msg)
+    pad.level = 1
+    h(msg)
 
 def h2(msg:str = 'Heading two' ):
-    headings.level = 1
-    return  h(msg)
+    pad.level = 2
+    h(msg)
 
-def hu(msg:str = '' ) -> str:
-    headings.level += 1
-    return  h(msg) if msg else ''
+def hu( msg:str = '' ):
+    if msg: h(msg, pad.level + 1)
+    else: pad.level += 1
 
-def hd(msg:str = '' ):
-    headings.level -= 1
-    return  h(msg) if msg else ''
+def hd( msg:str = '' ):
+    if msg: h(msg, pad.level - 1)
+    else: pad.level -= 1
 
-def h(msg:str = 'Heading' ):
-    level:int = headings.level
-    padding:str = headings.padchar * level * headings.indent
-    if level < len( headings.bullets ):
-        bullet = headings.bullets[level]
+def h(msg:str = 'Heading', level:int=None ):
+    if level is None:level = pad.level
+    padding:str = pad.padchar * level * pad.indent
+    if level < len( pad.bullets ):
+        bullet = pad.bullets[level]
     else:
-        bullet = headings.bullets[-1]
-    return  f'{padding}{bullet} {msg}'
+        bullet = pad.bullets[-1]
+    print(  f'{padding}{bullet} {msg}' )
 
 # MARK: CodeBox
 # ╓────────────────────────────────────────────────────────────────────────────╖
@@ -233,27 +269,22 @@ print( capture.get() )""",
     stack  = align( "[ align ]", ratio=0.5, line=stack )
     print( stack )
 
-    print( t1("Title One - t1") )
-    print( t2("Title Two - t2") )
-    print( t3("Title Three - t3") )
-    # print( t4("Title Four - t4") )
+    t1("Title One - t1")
+    t2("Title Two - t2")
+    t3("Title Three - t3")
 
-    print( s1("Section One - s1") )
-    print( s2("Section Two - s2") )
-    # print( s3("Section Three - s3") )
-    # print( s4("Section Four - s4") )
+    s1("Section One - s1")
+    s2("Section Two - s2")
 
-    print( h1("Heading One - h1") )
-    print( h2("Heading Two - h2") )
-    print( hu("Heading up") )
-    print( hu("Heading up") )
-    print( hu("Heading up") )
-    print( hu("Heading up") )
-    print( hd("Heading down") )
-    print( hd("Heading down") )
-    print( hd("Heading down") )
-    # print( h3("Heading Three - h3") )
-    # print( h4("Heading Four - h4") )
+    h1("Heading One - h1")
+    h2("Heading Two - h2")
+    hu("Heading up")
+    hu("Heading up")
+    hu("Heading up")
+    hu("Heading up")
+    hd("Heading down")
+    hd("Heading down")
+    hd("Heading down")
 
     print( code_box("CodeBox Aj%@!9") )
 

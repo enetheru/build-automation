@@ -1,10 +1,11 @@
 import copy
 from types import SimpleNamespace
+from typing import Any
 
 from share.expand_config import expand_host_env, expand
 from share.script_preamble import *
 
-project_base:dict = {
+project_base:dict[str,Any] = {
     'name':'godot-cpp',
     'gitdef':{
         'url':"https://github.com/enetheru/godot-cpp.git/",
@@ -77,21 +78,28 @@ def source_git():
 
     #[=================================[ Source ]=================================]
     from share.actions_git import git_checkout
+    from git.exc import GitCommandError
 
     if config['ok'] and 'source' in build['verbs'] and 'source' in opts['build_actions']:
         console.set_window_title(f'Source - {build['name']}')
 
-        # if we have specified a different git repository than expected, add the shorthash to the name.
-        gitdef = build['gitdef'] = project['gitdef'] | build['gitdef'] | opts['gitdef']
-        remote:str = gitdef.get('remote', '')
-        gitref =  f'{remote}/{gitdef['ref']}' if remote else gitdef['ref']
+        # merge definitions project < build < opts
+        build['gitdef'] = project['gitdef'] | build['gitdef'] | opts['gitdef']
 
-        repo = git.Repo(project['path'] / 'git')
-        short_hash = repo.git.rev_parse('--short', gitref)
+        gitdef = build['gitdef']
+        remote = gitdef['remote']
+        gitref = gitdef['ref'] if remote == 'origin' else f'{remote}/{gitdef['ref']}'
 
-        if opts['gitdef']: build['source_dir'] += f'.{short_hash}'
+        repo = git.Repo(gitdef['gitdir'])
+        try:
+            short_hash = repo.git.rev_parse('--short', gitref)
+        except GitCommandError as e:
+            print(e)
+            exit(1)
 
-        gitdef['worktree_path'] = build['source_path'] = project['path'] / build['source_dir']
+        if 'override' in gitdef: build['source_dir'] += f'.{short_hash}'
+
+        build['source_path'] = project['path'] / build['source_dir']
 
         with Timer(name='source') as timer:
             git_checkout( config )
@@ -205,7 +213,7 @@ def clean_scons():
     #[=================================[ Clean ]=================================]
     if config['ok'] and 'clean' in build['verbs'] and 'clean' in opts['build_actions']:
         console.set_window_title(f'Clean - {build['name']}')
-        print(h2("SCons Clean"))
+        h2("SCons Clean")
 
         with Timer(name='clean', push=False) as timer:
             try:
@@ -273,7 +281,8 @@ def configure_cmake():
     cmake = build['cmake']
 
     if config['ok'] and 'configure' in build['verbs'] and 'configure' in opts['build_actions']:
-        print(h2("CMake Configure"))
+        h2("CMake Configure")
+        s1("CMake Configure")
         console.set_window_title(f'Configure - {build['name']}')
 
         config_opts = [
@@ -305,7 +314,7 @@ def configure_cmake():
             stream_command(f'cmake {' '.join(filter(None, config_opts))}', dry=opts['dry'])
             print('')
 
-        print(send(" CMake Configure Completed "))
+        send()
         stats['configure'] = timer.get_dict()
         config['ok'] = timer.ok()
 
@@ -323,7 +332,7 @@ def build_cmake():
     cmake = build['cmake']
 
     if config['ok'] and 'build' in build['verbs'] and 'build' in opts['build_actions']:
-        print(h2("CMake Build"))
+        h2("CMake Build")
         console.set_window_title('Build - {name}')
 
         build_path:Path = cmake['build_path']
@@ -337,7 +346,7 @@ def build_cmake():
 
         with Timer(name='build') as timer:
             for target in cmake["targets"]:
-                print(s2(f" Building target: {target} "))
+                s2(f" Building target: {target} ")
                 target_opts = copy.copy(build_opts)
                 target_opts.append(f" --target {target}")
 
@@ -348,7 +357,7 @@ def build_cmake():
                 stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
                 print('')
 
-        print(send(" CMake Build Completed "))
+        send()
         stats['build'] = timer.get_dict()
         config['ok'] = timer.ok()
 
@@ -592,8 +601,7 @@ def generate( opts:SimpleNamespace ) -> dict:
 
     project_base.update({
         'path': opts.path / project_base['name'],
-
-        'build_configs': {}
+        'build_configs': dict[str,SimpleNamespace]()
     })
     project = SimpleNamespace(**project_base )
 

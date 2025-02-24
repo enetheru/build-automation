@@ -14,7 +14,7 @@ def godotcpp_test( config:dict ) -> bool:
 
     opts = config['opts']
     build = config['build']
-    print( h2( 'Testing') )
+    t2('Testing')
 
     # FIXME use fresh to delete the .godot folder
     godot_editor = build['godot_e']
@@ -23,7 +23,7 @@ def godotcpp_test( config:dict ) -> bool:
     test_project_dir = build['source_path'] / 'test/project'
     dot_godot_dir = test_project_dir / '.godot'
     if not dot_godot_dir.exists():
-        print( h1('Generating the .godot folder') )
+        h('Generating the .godot folder')
         cmd_chunks = [
             f'"{godot_editor}"',
             '-e',
@@ -41,7 +41,7 @@ def godotcpp_test( config:dict ) -> bool:
         print('Error: Creating .godot folder')
         return True
 
-    print( h1("Run the test project") )
+    h("Run the test project")
     cmd_chunks = [
         f'"{godot_release_template}"',
         f'--path "{test_project_dir}"',
@@ -69,7 +69,7 @@ def godotcpp_test( config:dict ) -> bool:
         print( '    This requires investigation as it appears to only happen in cmake builds')
 
     from rich.panel import Panel
-    rich.print(
+    print(
         '',
         Panel( '\n'.join( output ),  expand=False, title='Test Execution', title_align='left', width=120 ),
         '')
@@ -79,7 +79,7 @@ def godotcpp_test( config:dict ) -> bool:
 
     for line in output:
         if line.find( 'PASSED' ) > 0:
-            print( h1( 'Test Succeeded' ) )
+            h( 'Test Succeeded' )
             return False
 
     return True

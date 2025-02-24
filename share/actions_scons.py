@@ -9,7 +9,8 @@ from share.script_preamble import *
 # ║ ███████  ██████  ██████  ██   ████ ███████     ██████   ██████  ██ ███████ ██████      ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 def scons_build(config: dict):
-    print(figlet("SCons Build", {"font": "small"}))
+    h1("SCons Build")
+    s1("SCons Build")
 
     opts:dict       = config['opts']
     project:dict    = config['project']
@@ -36,10 +37,10 @@ def scons_build(config: dict):
         cmd_chunks += scons["build_vars"]
 
     for target in scons["targets"]:
-        h3(f"Building {target}")
+        h(f"Building {target}")
         build_command: str = " ".join(filter(None, cmd_chunks))
         build_command += f" target={target}"
 
         stream_command(build_command, dry=opts['dry'], text=False)
 
-    print(align(" SCons build finished ", line=fill("- ")))
+    send()

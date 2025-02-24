@@ -59,7 +59,7 @@ def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, l
                 lines.append(f"{inner_pad}{qkey}:{{}},")
                 continue
             if isinstance(next(iter(value.values())), SimpleNamespace): continue
-            for line in f'{qkey}:{json.dumps( value, indent=indent )},'.splitlines():
+            for line in f'{qkey}:{json.dumps( {k:v for k,v in value.items() if v }, indent=indent )},'.splitlines():
                 lines.append(f'{inner_pad}{line}')
 
         elif isinstance(value, Path): # Handle Path objects
@@ -72,7 +72,7 @@ def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, l
             lines.append(f"{inner_pad}{qkey}:{repr(value)},")
 
     lines.append(f"{pad}}}")
-    buffer.write( "\n".join(lines) + '\n' )
+    buffer.write( "\n".join(lines) )
 
 
 def write_preamble(buffer:IO, project: SimpleNamespace):
@@ -93,13 +93,15 @@ def write_preamble(buffer:IO, project: SimpleNamespace):
 
 
 def section_heading( title ) -> str:
-    return align("# ", 0 , s1(title) ) + '\n'
+    line = align( f'[ {title} ]' , line=hr('='))
+    return align("# ", 0 , line ) + '\n'
 
 
 def write_section( buffer:IO, section:SimpleNamespace, section_name:str ):
     buffer.write( section_heading(f"Start of {section_name}") )
+    buffer.write( '\n'.join(code_box( section_name ).splitlines()) + '\n' )
     write_namespace( buffer, section, section_name )
-    buffer.write(f"config['{section_name}'] = {section_name}\n")
+    buffer.write(f"\nconfig['{section_name}'] = {section_name}\n")
     for verb in getattr( section, f'verbs', [] ):
         buffer.write( func_to_string( getattr( section, f'{verb}_script', None ) ) )
 
@@ -113,6 +115,8 @@ def write_section( buffer:IO, section:SimpleNamespace, section_name:str ):
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def generate_build_scripts( projects:dict ):
+    print(t3('Generating Build Scripts'))
+
     for project in projects.values():
         for build in project.build_configs.values():
             with open( build.script_path, "w", encoding='utf-8' ) as script:
@@ -121,5 +125,7 @@ def generate_build_scripts( projects:dict ):
                 write_section( script, build.toolchain, 'toolchain' )
                 write_section( script, project, 'project' )
                 write_section( script, build, 'build' )
+
+    print(h("[green]OK"))
 
 

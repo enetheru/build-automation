@@ -5,10 +5,11 @@ from rich.console import Console
 class ConsoleMultiplex(Console):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.quiet = False
         self.outputs: dict[str, Console] = dict[str, Console]()
 
-    def print(self, *args, **kwargs) -> None:
-        super().print(*args, **kwargs)
+    def print(self, *args, **kwargs ) -> None:
+        if not self.quiet: super().print(*args, **kwargs)
         for dest in self.outputs.values():
             dest.print(*args, **kwargs)
 

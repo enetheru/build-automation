@@ -163,7 +163,7 @@ def android_update( toolchain:SimpleNamespace, config:SimpleNamespace, console:C
     from pathlib import Path
 
     console.set_window_title('Updating Android SDK')
-    print(figlet("Android Update", {"font": "small"}))
+    print(t2("Android Update"))
 
     sdk_path = Path( toolchain.path )
     os.chdir(sdk_path / 'cmdline-tools/latest/bin')
@@ -203,7 +203,7 @@ def emscripten_update( toolchain:SimpleNamespace, config:SimpleNamespace, consol
     from pathlib import Path
 
     console.set_window_title('Updating Emscripten SDK')
-    print(figlet("Emscripten Update", {"font": "small"}))
+    print(t2("Emscripten Update"))
 
     emscripten_path = Path( toolchain.path )
     os.chdir(emscripten_path)
@@ -227,7 +227,7 @@ def win32_emscripten_script( config:dict, toolchain:dict ):
     )
 
     if not ('EMSDK' in os.environ):
-        print(figlet(f'Emscripten {emscripten_check.task.capitalize()}', {"font": "small"}))
+        print(t2(f'Emscripten {emscripten_check.task.capitalize()}'))
         stream_command( f'{cmd_prefix} "{emscripten_tool} {emscripten_check.task} {toolchain['version']}; python {config['script_path']}"',
             dry=config['dry'] )
         quit()
@@ -302,7 +302,7 @@ def darwin_emscripten_script( config:dict, toolchain:dict ):
     )
 
     if not ('EMSDK' in os.environ):
-        print(figlet(f'Emscripten {emscripten_check.task.capitalize()}', {"font": "small"}))
+        print(t2(f'Emscripten {emscripten_check.task.capitalize()}'))
         stream_command( f'{cmd_prefix} "{emscripten_tool} {emscripten_check.task} {toolchain['version']}"',
             dry=config['dry'] )
 

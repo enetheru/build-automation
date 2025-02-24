@@ -10,14 +10,16 @@ import git
 # ╰────────────────────────────────────────────────────────────────────────────╯
 # TODO, if the work tree is already upto date, then skip
 def git_checkout( config: dict ):
-    print( figlet("Git Checkout", {"font": "small"}) )
+    print( t2("Git Checkout") )
+    print( s2("Git Checkout") )
     opts = config['opts']
     project = config['project']
     build = config['build']
+
     gitdef = build['gitdef']
 
     gitdir = project['path'] / 'git'
-    worktree_path = gitdef["worktree_path"]
+    worktree_path = build["source_path"]
 
     if not gitdir.exists():
         fnf = FileNotFoundError()
@@ -25,14 +27,13 @@ def git_checkout( config: dict ):
         raise fnf
 
     repo = git.Repo( gitdir )
-
-    gitref:str = gitdef.get('remote', '')
-    gitref =  f'{gitref}/{gitdef['ref']}' if gitref else gitdef['ref']
+    remote = gitdef['remote']
+    gitref = gitdef['ref'] if remote == 'origin' else f'{remote}/{gitdef['ref']}'
 
     short_hash = repo.git.rev_parse('--short', gitref)
 
     if not worktree_path.exists():
-        h4("Create WorkTree")
+        h("Create WorkTree")
         os.chdir( gitdir )
 
         # Perhaps we deleted the worktree folder, in which case prune it
@@ -48,12 +49,12 @@ def git_checkout( config: dict ):
     worktree_hash = worktree.git.rev_parse('--short', gitref)
 
     if short_hash != worktree_hash:
-        h4("Update WorkTree")
+        h("Update WorkTree")
         cmd_chunks = [ '--force', '--detach', gitref ]
         if not opts['dry']:
             worktree.git.checkout( *filter(None, cmd_chunks) )
     else:
-        h4("WorkTree is Up-to-Date")
+        h("WorkTree is Up-to-Date")
 
-    # print( worktree.git.show() )
-    print(align(" Git Checkout Finished ", line=fill("- ")))
+    print( worktree.git.log('-1') )
+    print( send() )
