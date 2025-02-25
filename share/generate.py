@@ -114,8 +114,9 @@ def write_section( buffer:IO, section:SimpleNamespace, section_name:str ):
 # │                                                    |_|                     │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-def generate_build_scripts( projects:dict ):
-    print(t3('Generating Build Scripts'))
+def generate_build_scripts( opts:SimpleNamespace ):
+    projects = opts.projects
+    t3('Generating Build Scripts')
 
     for project in projects.values():
         for build in project.build_configs.values():
@@ -126,6 +127,6 @@ def generate_build_scripts( projects:dict ):
                 write_section( script, project, 'project' )
                 write_section( script, build, 'build' )
 
-    print(h("[green]OK"))
+    h("[green]OK")
 
 

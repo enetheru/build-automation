@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import argparse
 import importlib.util
 import json
 import multiprocessing
@@ -22,9 +21,7 @@ from rich.table import Table
 from share.ConsoleMultiplex import ConsoleMultiplex
 from share.format import *
 from share.run import stream_command
-from share.toolchains import toolchains
 from share.generate import generate_build_scripts, write_namespace
-
 
 def setattrdefault[T]( namespace:SimpleNamespace, field:str, default:T ) -> T:
     existing = getattr( namespace, field, None )
@@ -57,44 +54,54 @@ console = ConsoleMultiplex()
 rich._console = console
 
 # MARK: ArgParse
-# ====================[ Setup ArgParser ]======================-
-parser = argparse.ArgumentParser(
-    prog="Build-Automation", description="Builds Things", epilog="Build All The Things!!", )
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │    _            ___                                                        │
+# │   /_\  _ _ __ _| _ \__ _ _ _ ___ ___                                       │
+# │  / _ \| '_/ _` |  _/ _` | '_(_-</ -_)                                      │
+# │ /_/ \_\_| \__, |_| \__,_|_| /__/\___|                                      │
+# │           |___/                                                            │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+def parse_args(opts:SimpleNamespace) -> SimpleNamespace:
+    import argparse
+    parser = argparse.ArgumentParser(
+        prog="Build-Automation", description="Builds Things", epilog="Build All The Things!!", )
 
-parser_io = parser.add_argument_group( "IO" )
-parser_io.add_argument( "-q", "--quiet", action="store_true" )  # Supress output
-parser_io.add_argument( "-v", "--verbose", action="store_true" )  # extra output
-parser_io.add_argument( "--list", action="store_true" ) # List the configs and quit
-parser_io.add_argument( "--show", action="store_true" ) # Show the configuration and quit
-parser_io.add_argument( "--debug", action="store_true" ) # dont continue on some failures.
+    parser.add_argument( "--debug", action="store_true" ) # dont continue on some failures.
+    parser.add_argument( "--dry",action='store_true' )
+    parser.add_argument("-j", "--jobs", type=int,
+        default=(multiprocessing.cpu_count() - 1) or 1)
 
-# General or Global Options
-parser_opts = parser.add_argument_group( "Options" )
-parser_opts.add_argument( "--dry",action='store_true' )
-parser_opts.add_argument("-j", "--jobs", type=int,
-    default=(multiprocessing.cpu_count() - 1) or 1)
+    parser_io = parser.add_argument_group( "IO" )
+    parser_io.add_argument( "-q", "--quiet", action="store_true" )  # Supress output
+    parser_io.add_argument( "-v", "--verbose", action="store_true" )  # extra output
+    parser_io.add_argument( "--list", action="store_true" ) # List the configs and quit
+    parser_io.add_argument( "--show", action="store_true" ) # Show the configuration and quit
 
-# Filter which project/configurations get built.
-parser_filter = parser.add_argument_group( "Project Selection" )
-parser_filter.add_argument( "--project", default="*" )
-parser_filter.add_argument( "--filter", default=".*" )
+    # Toolchain Options
+    toolchain_opts = parser.add_argument_group( "Toolchain" )
+    toolchain_opts.add_argument( '-t', "--toolchain-regex", type=str, default='.*' )
+    toolchain_opts.add_argument('--toolchain-actions', nargs='+', default=[])
 
-# Process actions
-parser.add_argument('-t', '--toolchain-actions', nargs='+', default=[])
-parser.add_argument('-p', '--project-actions', nargs='+', default=[])
-parser.add_argument('-b', '--build-actions', nargs='+', default=[])
+    # Project Options
+    project_opts = parser.add_argument_group( "Project Options" )
+    project_opts.add_argument('-p', "--project-regex", type=str, default=".*" )
+    project_opts.add_argument('--project-actions', nargs='+', default=[])
 
-parser_opts.add_argument( "--giturl" )  # The Url to clone from
-parser_opts.add_argument( "--gitref" )  # the Commit to checkout
+    # Build Options
+    build_opts = parser.add_argument_group( "Build Options" )
+    build_opts.add_argument('-b', "--build-regex", type=str, default=".*" )
+    build_opts.add_argument( '--build-actions', nargs='+', default=[])
 
-# Create the namespace before parsing, so we can add derived options from the system
-opts = SimpleNamespace()
-opts.command = " ".join( sys.argv )
-opts.platform = platform.system()
-opts.path = Path( __file__ ).parent
+    # Git Overrides
+    parser_git = parser.add_argument_group( "Git Overrides" )
+    parser_git.add_argument( "--giturl" )  # The Url to clone from
+    parser_git.add_argument( "--gitref" )  # the Commit to checkout
 
-def parse_args():
     parser.parse_args( namespace=opts )
+
+    setattr(opts, 'toolchain_verbs', set() )
+    setattr(opts, 'project_verbs', set() )
+    setattr(opts, 'build_verbs', set() )
 
     # Create gitdef structure
     setattr(opts, 'gitdef', {
@@ -104,22 +111,59 @@ def parse_args():
     })
     delattr(opts, 'giturl')
     delattr(opts, 'gitref')
+    return opts
 
-
-# MARK: Toolchain Actions
+# MARK: Import Toolchains
 # ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _____         _    _         _          _      _   _                      │
-# │ |_   _|__  ___| |__| |_  __ _(_)_ _     /_\  __| |_(_)___ _ _  ___         │
-# │   | |/ _ \/ _ \ / _| ' \/ _` | | ' \   / _ \/ _|  _| / _ \ ' \(_-<         │
-# │   |_|\___/\___/_\__|_||_\__,_|_|_||_| /_/ \_\__|\__|_\___/_||_/__/         │
-# ╰────────────────────────────────────────────────────────────────────────────╯
+# │  ___                     _     _____         _    _         _              │
+# │ |_ _|_ __  _ __  ___ _ _| |_  |_   _|__  ___| |__| |_  __ _(_)_ _  ___     │
+# │  | || '  \| '_ \/ _ \ '_|  _|   | |/ _ \/ _ \ / _| ' \/ _` | | ' \(_-<     │
+# │ |___|_|_|_| .__/\___/_|  \__|   |_|\___/\___/_\__|_||_\__,_|_|_||_/__/     │
+# ╰───────────┤_├──────────────────────────────────────────────────────────────╯
+def import_toolchains( opts:SimpleNamespace ) -> dict:
+    t3( f"Importing Toolchains" )
+    toolchain_glob = f"*/toolchains.py"
+    h( f"file glob: {toolchain_glob}" )
 
-def process_toolchains():
-    for verb in opts.toolchain_actions:
-        for toolchain_name, toolchain in toolchains.items():
-            if verb in getattr( toolchain, 'verbs', [] ):
-                getattr( toolchain, verb )( toolchain, opts, console )
+    # Import toolchain modules.
+    toolchains: dict[str,SimpleNamespace] = {}
+    for file in opts.path.glob( toolchain_glob ):
+        if opts.verbose: h(file)
 
+        # Create Module Spec
+        spec = importlib.util.spec_from_file_location(
+            name=os.path.basename( file.parent ),
+            location=file )
+
+        # import module
+        toolchain_module = importlib.util.module_from_spec( spec )
+
+        # Execute the module
+        try:
+            spec.loader.exec_module( toolchain_module )
+        except Exception as e:
+            if opts.debug: raise e
+            else:
+                hu(str(e))
+                continue
+
+        # generate the project configurations
+        try: toolchains |= toolchain_module.generate( opts )
+        except Exception as e:
+            if opts.debug: raise e
+            else: hu( f'[red]{e}')
+
+    # Filter the results with the toolchain-regex
+    toolchains = {k: v for k, v in toolchains.items() if re.search( opts.toolchain_regex, v.name )}
+
+    # Verify and filter the toolchain configurations
+    for toolchain in toolchains.values():
+        setattrdefault(toolchain, 'verbs', [])
+        # collect toolchain verbs to display
+        for verb in toolchain.verbs:
+            opts.toolchain_verbs.add(verb)
+
+    return toolchains
 
 # MARK: Import Configs
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -128,9 +172,9 @@ def process_toolchains():
 # │  | || '  \| '_ \/ _ \ '_|  _| | (__/ _ \ ' \|  _| / _` (_-<                │
 # │ |___|_|_|_| .__/\___/_|  \__|  \___\___/_||_|_| |_\__, /__/                │
 # ╰───────────┤_├─────────────────────────────────────┤___/────────────────────╯
-def import_projects() -> dict:
+def import_projects(opts:SimpleNamespace) -> dict:
     t3( f"Importing Projects" )
-    project_glob = f"{opts.project}/config.py"
+    project_glob = f"*/config.py"
     h1( f"file glob: {project_glob}" )
 
     # Import project_config files.
@@ -153,17 +197,25 @@ def import_projects() -> dict:
         except Exception as e:
             if opts.debug: raise e
             else:
-                hu(str(e))
+                hu( f'In {spec.name} [red]{e}')
                 continue
 
         # generate the project configurations
         try: projects |= project_module.generate( opts )
         except Exception as e:
             if opts.debug: raise e
-            else: hu( f'[red]{e}')
+            else: hu( f'In {spec.name} [red]{e}')
+
+    # Filter the results with the toolchain-regex
+    projects = {k: v for k, v in projects.items() if re.search( opts.project_regex, v.name )}
+
     # Verify and filter the build configurations
     # projects without build configurations will be filtered out.
     for project in projects.values():
+        # collect project verbs to display
+        setattrdefault(project, 'verbs', [])
+        for verb in project.verbs:
+            opts.project_verbs.add(verb)
         # All project configs must have a valid gitdef with a URL
         if not getattr(project, 'gitdef', {} ).get('url', None):
             hu("[red]project is missing gitdef['url']")
@@ -172,7 +224,7 @@ def import_projects() -> dict:
 
         # match --filter <regex>
         builds: dict = project.build_configs
-        project.build_configs = {k: v for k, v in builds.items() if re.search( opts.filter, v.name )}
+        project.build_configs = {k: v for k, v in builds.items() if re.search( opts.build_regex, v.name )}
 
     # Cull projects after filtering build configurations
     projects = {v.name: v for v in projects.values() if len( v.build_configs )}
@@ -186,7 +238,8 @@ def import_projects() -> dict:
 # │ | |_| | '_ \/ _` / _` |  _/ -_) | (__/ _ \ ' \|  _| / _` (_-<              │
 # │  \___/| .__/\__,_\__,_|\__\___|  \___\___/_||_|_| |_\__, /__/              │
 # ╰───────┤_├───────────────────────────────────────────|___/──────────────────╯
-def update_configs( projects:dict ):
+def update_configs( opts:SimpleNamespace ):
+    projects = opts.projects
     t3('Updating Configs')
     issues:str = ''
 
@@ -206,6 +259,12 @@ def update_configs( projects:dict ):
             setattr( build, 'script_path', project.path / f"{build.name}.py" )
 
             setattrdefault(build, 'gitdef', {})
+            # build.source_path
+            # is the expected full patht to the source of the code
+            # if no existing source_dir is set we will use the build name.
+            source_path = project.path / getattr( build, 'source_dir', build.name )
+            setattrdefault( build, 'source_path', source_path )
+            # FIXME, if opts.gitdef['override'] == 'yes', then we need to add the shorthash
 
     if issues: h("[yellow]Issues Detected")
     else: h("[green]OK")
@@ -217,7 +276,7 @@ def update_configs( projects:dict ):
 # │ | (_ | |  _| | _/ -_)  _/ _| ' \  |  _/ '_/ _ \| / -_) _|  _(_-<           │
 # │  \___|_|\__| |_|\___|\__\__|_||_| |_| |_| \___// \___\__|\__/__/           │
 # ╰──────────────────────────────────────────────\___/─────────────────────────╯
-def fetch_project( project:SimpleNamespace ):
+def fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
     import git
 
     if 'fetch' not in project.verbs: return
@@ -326,7 +385,7 @@ def fetch_project( project:SimpleNamespace ):
 # │ |  _/ '_/ _ \/ _/ -_|_-<_-< | _ \ || | | / _` |                            │
 # │ |_| |_| \___/\__\___/__/__/ |___/\_,_|_|_\__,_|                            │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def process_build( build:SimpleNamespace ):
+def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     project = build.project
     # Skip the build config if there are no actions to perform
 
@@ -349,7 +408,9 @@ def process_build( build:SimpleNamespace ):
         console.tee( name=build.name, new_console=build_console )
 
     # =================[ Build Heading / Config ]==================-
-    s2(f"- Starting: {build.name} -")
+    section = Section(f"Run Script")
+    section.start()
+    h( build.script_path.as_posix() )
 
     if opts.verbose:
         write_namespace( pretendio, build, 'build')
@@ -423,6 +484,7 @@ def process_build( build:SimpleNamespace ):
         style="red" if stats["status"] == "Failed" else "green", )
     print( table )
 
+    section.end()
     console.pop( build.name )
 
     # ==================[ Output Log Processing ]==================-
@@ -437,8 +499,6 @@ def process_build( build:SimpleNamespace ):
           open( cleanlog_path, "w", encoding='utf-8' ) as log_clean):
         clean_log( log_raw, log_clean )
 
-    send()
-
 
 # MARK: Project
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -448,7 +508,7 @@ def process_build( build:SimpleNamespace ):
 # │ |_| |_| \___/\__\___/__/__/ |_| |_| \___// \___\__|\__|                    │
 # ╰────────────────────────────────────────\___/───────────────────────────────╯
 # TODO Setup a keyboard interrupt to cancel a job and exit the loop, rather than quit the whole script.
-def process_project( project:SimpleNamespace ):
+def process_project( opts:SimpleNamespace, project:SimpleNamespace ):
     os.chdir( project.path )
 
     # =====================[ stdout Logging ]======================-
@@ -467,7 +527,7 @@ def process_project( project:SimpleNamespace ):
         t2( project.name )
         t3("Project Config:")
         write_namespace( pretendio, project, 'project')
-        t3("Builds :")
+        t3("Build Configurations")
         for build in project.build_configs.values():
             h(build.name)
 
@@ -477,7 +537,7 @@ def process_project( project:SimpleNamespace ):
         build_num += 1
         console.set_window_title( f"{project.name}[{build_num}:{project_total}] - {build.name}" )
         try:
-            process_build( build )
+            process_build( opts, build )
         except KeyboardInterrupt:
             print( f'"Cancelling project "{project.name}", CTRL+C again to cancel all projects"')
             try:
@@ -501,12 +561,12 @@ def process_project( project:SimpleNamespace ):
 # │ |___/\__\__,_|\__|_/__/\__|_\__/__/                                        │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-def show_statistics( projects:dict ):
+def show_statistics( opts:SimpleNamespace ):
     table = Table( title="Stats", highlight=True, min_width=80 )
 
     # unique set of available data names
     column_set:set = set()
-    for project in projects.values():
+    for project in opts.projects.values():
         for build in project.build_configs.values():
             if not 'stats' in build.__dict__: continue
             if not 'subs' in build.stats: continue
@@ -524,7 +584,7 @@ def show_statistics( projects:dict ):
             sub_columns.append( action )
             table.add_column( action )
 
-    for project in projects.values():
+    for project in opts.projects.values():
         for build in project.build_configs.values():
             if not 'stats' in build.__dict__: continue
 
@@ -557,6 +617,20 @@ def show_statistics( projects:dict ):
             table.add_row( *r )
     print( table )
 
+# MARK: Toolchain Actions
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  _____         _    _         _          _      _   _                      │
+# │ |_   _|__  ___| |__| |_  __ _(_)_ _     /_\  __| |_(_)___ _ _  ___         │
+# │   | |/ _ \/ _ \ / _| ' \/ _` | | ' \   / _ \/ _|  _| / _ \ ' \(_-<         │
+# │   |_|\___/\___/_\__|_||_\__,_|_|_||_| /_/ \_\__|\__|_\___/_||_/__/         │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
+def process_toolchains( opts:SimpleNamespace ):
+    for verb in opts.toolchain_actions:
+        for toolchain_name, toolchain in opts.toolchains.items():
+            if verb in getattr( toolchain, 'verbs', [] ):
+                getattr( toolchain, verb )( toolchain, opts, console )
+
 # MARK: Main
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  __  __      _                                                             │
@@ -565,51 +639,69 @@ def show_statistics( projects:dict ):
 # │ |_|  |_\__,_|_|_||_|                                                       │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def main():
+    console.set_window_title( "AutoBuild" )
+
+    # Create the namespace before parsing, so we can add derived options from the system
+    opts = SimpleNamespace(**{
+        'command': " ".join( sys.argv ),
+        'platform': platform.system(),
+        'path': Path( __file__ ).parent,
+        'toolchains': {},
+        'projects': {}
+    })
+
     # Log everything to a file
     console.tee( Console( file=open( opts.path / "build_log.txt", "w", encoding='utf-8' ), force_terminal=True ),
         name="build_log" )
 
-    parse_args()
-    if opts.quiet: console.quiet = True
+    parse_args(opts)
 
-    console.set_window_title( "AutoBuild" )
+    if opts.quiet: console.quiet = True
     t1( "AutoBuild" )
 
     if opts.verbose:
         t3( "Options" )
         pprint( opts.__dict__, expand_all=True )
 
-    if opts.verbose:
-        t3( "Toolchains" )
-        for name in toolchains.keys():
-            h(name)
-
-    projects  = import_projects()
-
-    process_toolchains()
+    opts.toolchains = toolchains = import_toolchains(opts)
+    opts.projects  = projects = import_projects(opts)
 
     # TODO if help in any of the system verbs then display a list of verb help items.
 
     # List only.
-    if opts.list: exit()
+    if opts.list:
+        t3('List')
+        h('Toolchains')
+        for toolchain_name in toolchains:
+            hu(toolchain_name)
 
-    update_configs( projects )
+        h('Projects')
+        for project_name,project in projects.items():
+            hu(project_name)
+
+        h('Project | Builds')
+        for project_name,project in projects.items():
+            for build_name in project.build_configs:
+                hu(f'{project_name} | {build_name}')
+        quit()
+
+    process_toolchains( opts )
+
+    update_configs( opts )
 
     if 'fetch' in opts.project_actions:
-        t2('Fetching Projects')
-        s1("Fetching Projects")
-        for project in projects.values():
-            fetch_project( project )
-        send()
+        with Section( 'Fetching Projects' ):
+            for project in projects.values():
+                fetch_project( opts, project )
 
-    generate_build_scripts( projects )
+    generate_build_scripts( opts )
 
     for project in projects.values():
-        try: process_project( project )
+        try: process_project( opts, project )
         except KeyboardInterrupt:
             print("Processing Cancelled")
 
-    show_statistics( projects )
+    show_statistics( opts )
 
     console.pop( "build_log" )
 

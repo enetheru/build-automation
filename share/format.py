@@ -113,6 +113,28 @@ def t3(msg:str = 'Title Three',  endl:str=os.linesep):
 
 sections:Deque = Deque[str]()
 
+class Section:
+    def __init__(self, title=None ):
+        self.title = title
+
+    def start( self ):
+        pad.level = 1
+        title = Figlet(font='small', justify='left', width=columns).renderText(self.title)
+        lines = [s for s in title.splitlines() if not re.match( r'^\s*$', s)]
+        print( '\n'.join(lines) )
+
+    def end( self ):
+        pad.level = 1
+        print( align( f'> End: {self.title} <' , line=hr('- ', 80)) )
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.end()
+        return False
+
 # Sections
 def s1(msg:str = 'Section One'):
     pad.level = 1
@@ -287,6 +309,9 @@ print( capture.get() )""",
     hd("Heading down")
 
     print( code_box("CodeBox Aj%@!9") )
+
+    with Section('Fetching Projects') as section:
+        print( "Anything goes in the interior.")
 
 if __name__ == "__main__":
     main()

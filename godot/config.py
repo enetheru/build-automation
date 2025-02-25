@@ -308,7 +308,7 @@ def generate( opts:SimpleNamespace ) -> dict:
         }
     })
 
-    configs = expand_host_env( config_base )
+    configs = expand_host_env( config_base, opts )
     godot_platforms = {
         'android':'android',
         'darwin':'macos',

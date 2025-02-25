@@ -73,38 +73,79 @@ def source_git():
     opts:dict = {}
     project:dict = {}
     build:dict = {}
-    stats:dict = {}
     # start_script
 
     #[=================================[ Source ]=================================]
     from share.actions_git import git_checkout
     from git.exc import GitCommandError
 
-    if config['ok'] and 'source' in build['verbs'] and 'source' in opts['build_actions']:
+    if config['ok'] and 'source' in opts['build_actions']:
         console.set_window_title(f'Source - {build['name']}')
+        section = Section( "Git Checkout" )
+        section.start()
 
         # merge definitions project < build < opts
-        build['gitdef'] = project['gitdef'] | build['gitdef'] | opts['gitdef']
+        gitdef = project['gitdef'] | build['gitdef'] | opts['gitdef']
 
-        gitdef = build['gitdef']
-        remote = gitdef['remote']
-        gitref = gitdef['ref'] if remote == 'origin' else f'{remote}/{gitdef['ref']}'
+        # Verify we have cloned the repo.
+        gitdir = project['gitdir']
+        if not gitdir.exists():
+            fnf = FileNotFoundError()
+            fnf.add_note(f'Missing bare git repo path: {gitdir}, project needs to be fetched')
+            raise fnf
 
         repo = git.Repo(gitdef['gitdir'])
+
+        pattern = gitdef['ref'] if gitdef['remote'] == 'origin' else f'{gitdef['remote']}/{gitdef['ref']}'
         try:
-            short_hash = repo.git.rev_parse('--short', gitref)
+            bare_hash = repo.git.rev_parse('--short', pattern)
         except GitCommandError as e:
             print(e)
             exit(1)
 
-        if 'override' in gitdef: build['source_dir'] += f'.{short_hash}'
+        if 'override' in gitdef:
+            build['source_dir'] += f'.{bare_hash}'
 
         build['source_path'] = project['path'] / build['source_dir']
 
-        with Timer(name='source') as timer:
-            git_checkout( config )
-        stats['source'] = timer.get_dict()
-        config['ok'] = timer.ok()
+
+        worktree_path = build["source_path"]
+
+        if not worktree_path.exists():
+            # Perhaps we deleted the worktree folder, in which case prune it
+            cmd_args = [ 'prune',
+                '--verbose' if opts['verbose'] else None,
+                '--dry-run' if opts['dry'] else None ]
+            repo.git.worktree( filter(None, cmd_args) )
+
+            h("Create WorkTree")
+            os.chdir( gitdir )
+
+            cmd_args = [ 'add', '--detach', worktree_path, pattern ]
+            if opts['dry']:
+                print(f'dry-run: git worktree {' '.join(filter(None, cmd_args))}')
+
+            else:
+                repo.git.worktree( filter(None, cmd_args) )
+
+        if worktree_path.exists():
+            worktree = git.Repo( worktree_path )
+            worktree_hash = worktree.git.rev_parse('--short', pattern)
+
+            if bare_hash != worktree_hash:
+                h("Update WorkTree")
+                cmd_args = [ '--force', '--detach', pattern ]
+                if opts['dry']:
+                    print(f'dry-run: git checkout {' '.join(filter(None, cmd_args))}')
+                else:
+                    worktree.git.checkout( filter(None, cmd_args) )
+            else:
+                h("WorkTree is Up-to-Date")
+
+            print( worktree.git.log('-1') )
+
+        section.end()
+        config['ok'] = True
 
 def test_script():
     console = rich.console.Console()
@@ -115,12 +156,84 @@ def test_script():
     # start_script
 
     #[==================================[ Test ]==================================]
-    from actions import godotcpp_test
+    from subprocess import SubprocessError
+    from rich.panel import Panel
 
-    if config['ok'] and 'test' in build['verbs'] and 'test' in opts['build_actions']:
+    def gen_dot_folder():
+        cmd_parts = [
+            f'"{godot_editor}"',
+            '-e',
+            f'--path "{test_project_dir}"',
+            '--quit',
+            '--headless'
+        ]
+        stream_command(' '.join(cmd_parts), dry=opts['dry'])
+
+    def run_test() -> list:
+        cmd_parts = [
+            f'"{godot_release_template}"',
+            f'--path "{test_project_dir}"',
+            '--quit',
+            '--headless'
+        ]
+        output = ['']
+        stream_command( ' '.join(cmd_parts), dry=opts['dry'],
+            stdout_handler=lambda msg: output.append(msg),
+            stderr_handler=lambda msg: output.append( f'[red]{msg}[/red]' ) )
+        return output
+
+    while config['ok'] and 'test' in opts['build_actions']:
+        config['ok'] = False
         console.set_window_title(f'Test - {build['name']}')
-        with Timer(name='test') as timer:
-            godotcpp_test( config )
+        with Timer(name='test') as timer, Section("Testing"):
+
+            godot_editor = build['godot_e']
+            godot_release_template = build['godot_tr']
+
+            test_project_dir = build['source_path'] / 'test/project'
+            dot_godot_dir = test_project_dir / '.godot'
+
+            if dot_godot_dir.exists():
+                # FIXME use fresh to delete the .godot folder
+                pass
+            else:
+                h('Generating the .godot folder')
+                try: gen_dot_folder()
+                except SubprocessError as e:
+                    print( '[red]Godot exited abnormally during .godot folder creation')
+                    raise e
+
+            if not dot_godot_dir.exists() and not opts['dry']:
+                print('[red]Error: Creating .godot folder')
+                timer.status = TaskStatus.FAILED
+                break
+
+            h("Run the test project")
+            if opts['dry']:
+                h( 'Dry-Run: Test Completed' )
+                timer.status = TaskStatus.COMPLETED
+                config['ok'] = True
+                break
+
+            try: output = run_test()
+            except SubprocessError as e:
+                # FIXME Godot exited abnormally when running the test project
+                print( '[red]Error: Godot exited abnormally when running the test project')
+                print( '    This requires investigation as it appears to only happen in cmake builds')
+                timer.status = TaskStatus.FAILED
+                break
+
+            print( Panel( '\n'.join( output ),  expand=False, title='Test Execution', title_align='left', width=120 ))
+
+            for line in output:
+                if line.find( 'PASSED' ) > 0:
+                    h( 'Test Succeeded' )
+                    timer.status = TaskStatus.COMPLETED
+                    config['ok'] = True
+                    break
+                else:
+                    timer.status = TaskStatus.FAILED
+            break
 
         stats['test'] = timer.get_dict()
         config['ok'] = timer.ok()
@@ -614,7 +727,7 @@ def generate( opts:SimpleNamespace ) -> dict:
     })
 
     # Host environment toolchain and build tools
-    configs = expand_host_env( config_base )
+    configs = expand_host_env( config_base, opts )
     configs = expand( configs, expand_buildtools )
 
     # Naming upto now.

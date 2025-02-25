@@ -10,8 +10,9 @@ import git
 # ╰────────────────────────────────────────────────────────────────────────────╯
 # TODO, if the work tree is already upto date, then skip
 def git_checkout( config: dict ):
-    print( t2("Git Checkout") )
-    print( s2("Git Checkout") )
+    t2("Git Checkout")
+    s2("Git Checkout")
+
     opts = config['opts']
     project = config['project']
     build = config['build']
@@ -57,4 +58,4 @@ def git_checkout( config: dict ):
         h("WorkTree is Up-to-Date")
 
     print( worktree.git.log('-1') )
-    print( send() )
+    send()

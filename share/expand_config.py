@@ -1,12 +1,11 @@
 from copy import deepcopy
 from types import SimpleNamespace
 
-from share.toolchains import toolchains
-
-def expand( configs:list, func ) -> list:
+def expand( configs:list, func, *args ) -> list:
     configs_out:list = []
     for config in configs:
-        configs_out += func( config )
+        if args: configs_out += func( config, *args )
+        else: configs_out += func( config )
     return configs_out
 
 # # MARK: BuildTool
@@ -38,7 +37,7 @@ def expand_arch( config:SimpleNamespace ) -> list:
     return configs_out
 
 # MARK: Toolchain
-def expand_toolchains( config:SimpleNamespace ) -> list:
+def expand_toolchains( config:SimpleNamespace, toolchains:dict ) -> list:
     configs_out:list = []
     for toolchain in toolchains.values():
         cfg = deepcopy(config)
@@ -67,9 +66,9 @@ def expand_host( config:SimpleNamespace ) -> list:
     setattr( config, 'host', host )
     return [config]
 
-def expand_host_env( config:SimpleNamespace ) -> list:
+def expand_host_env( config:SimpleNamespace, opts:SimpleNamespace ) -> list:
     configs_out:list = expand( [config], expand_host)
-    configs_out:list = expand( configs_out, expand_toolchains)
+    configs_out:list = expand( configs_out, expand_toolchains, opts.toolchains )
     configs_out = expand( configs_out, expand_arch)
     configs_out = expand( configs_out, expand_platform)
 

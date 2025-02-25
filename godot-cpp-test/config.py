@@ -63,10 +63,15 @@ variations = ['default',
 # │  \___|_|  |_\__,_|_\_\___| |___/\__|_| |_| .__/\__|                        │
 # │                                          |_|                               │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
-    from share.actions_git import git_checkout
-    from share.actions_cmake import cmake_configure, cmake_build
+def cmake_script():
+    console = rich.console.Console()
+    config:dict = {}
+    opts:dict = {}
+    project:dict = {}
+    build:dict = {}
+    # start_script
 
+    from share.actions_git import git_checkout
     from actions import godotcpp_test
 
     def want( action:str ) -> bool:
@@ -90,23 +95,23 @@ def cmake_script( config:SimpleNamespace, console:rich.console.Console ):
             profile_path = Path(cmake['godot_build_profile'])
             if not profile_path.is_absolute():
                 profile_path = config['source_dir'] / profile_path
-            h4(f'using build profile: "{profile_path}"')
+            h(f'using build profile: "{profile_path}"')
             cmake['config_vars'].append(f'-DGODOT_BUILD_PROFILE="{os.fspath(profile_path)}"')
 
         if 'toolchain_file' in cmake:
             toolchain_path = Path(cmake['toolchain_file'])
             if not toolchain_path.is_absolute():
                 toolchain_path = config['root_dir'] / toolchain_path
-            h4(f'using toolchain file: "{toolchain_path}"')
+            h(f'using toolchain file: "{toolchain_path}"')
             cmake['config_vars'].append(f'--toolchain "{os.fspath(toolchain_path)}"')
 
         console.set_window_title('Prepare - {name}')
-        stats['prepare'] = timer.time_function( config, func=cmake_configure )
+        # FIXME stats['prepare'] = timer.time_function( config, func=cmake_configure )
 
     #[=================================[ Build ]=================================]
     if want('build') and timer.ok():
         console.set_window_title('Build - {name}')
-        stats['build'] = timer.time_function( config, func=cmake_build )
+        # FIXME stats['build'] = timer.time_function( config, func=cmake_build )
 
     #[==================================[ Test ]==================================]
     if want('test') and timer.ok():
@@ -288,8 +293,8 @@ def expand( configs:list, func ) -> list:
         configs_out += func( config )
     return configs_out
         
-def generate_configs():
-    configs:list = expand_host_env( base_config() )
+def generate( opts:SimpleNamespace ):
+    configs:list = expand_host_env( base_config(), opts )
 
     configs = expand( configs, platforms )
     configs = expand( configs, variants )
@@ -299,4 +304,4 @@ def generate_configs():
     for config in configs:
         project_config.build_configs[config.name] = config
 
-generate_configs()
+    return {}

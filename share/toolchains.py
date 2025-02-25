@@ -336,12 +336,18 @@ darwin_toolchains.append( SimpleNamespace(**{
 # │                 ███████ ███████ ███████ ███████  ██████    ██              │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 # Copy the dictionary key into the toolchain as the name
-import sys
-toolchains:dict = {}
-match sys.platform:
-    case 'win32':
-        for tc in windows_toolchains:
-            toolchains[tc.name] = tc
-    case 'darwin':
-        for tc in darwin_toolchains:
-            toolchains[tc.name] = tc
+
+def generate(opts:SimpleNamespace) -> dict:
+    import sys
+
+    toolchains:dict = {}
+
+    match sys.platform:
+        case 'win32':
+            for tc in windows_toolchains:
+                toolchains[tc.name] = tc
+        case 'darwin':
+            for tc in darwin_toolchains:
+                toolchains[tc.name] = tc
+
+    return toolchains
