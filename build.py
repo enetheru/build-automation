@@ -63,6 +63,7 @@ rich._console = console
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def parse_args(opts:SimpleNamespace) -> SimpleNamespace:
     import argparse
+
     parser = argparse.ArgumentParser(
         prog="Build-Automation", description="Builds Things", epilog="Build All The Things!!", )
 
@@ -156,9 +157,9 @@ def import_toolchains( opts:SimpleNamespace ) -> dict:
     # Filter the results with the toolchain-regex
     toolchains = {k: v for k, v in toolchains.items() if re.search( opts.toolchain_regex, v.name )}
 
-    # Verify and filter the toolchain configurations
+    # Fetch all the verbs from the toolchain for displaying help
     for toolchain in toolchains.values():
-        setattrdefault(toolchain, 'verbs', [])
+        setattrdefault(toolchain, 'verbs', set())
         # collect toolchain verbs to display
         for verb in toolchain.verbs:
             opts.toolchain_verbs.add(verb)
@@ -212,10 +213,6 @@ def import_projects(opts:SimpleNamespace) -> dict:
     # Verify and filter the build configurations
     # projects without build configurations will be filtered out.
     for project in projects.values():
-        # collect project verbs to display
-        setattrdefault(project, 'verbs', [])
-        for verb in project.verbs:
-            opts.project_verbs.add(verb)
         # All project configs must have a valid gitdef with a URL
         if not getattr(project, 'gitdef', {} ).get('url', None):
             hu("[red]project is missing gitdef['url']")
@@ -228,6 +225,19 @@ def import_projects(opts:SimpleNamespace) -> dict:
 
     # Cull projects after filtering build configurations
     projects = {v.name: v for v in projects.values() if len( v.build_configs )}
+
+    # Fetch all the verbs from the project and build for displaying help
+    for project in projects.values():
+        setattrdefault(project, 'verbs', {'fetch'} )
+        # collect toolchain verbs to display
+        for verb in project.verbs:
+            opts.project_verbs.add(verb)
+
+        for build in project.build_configs.values():
+            setattrdefault(build, 'verbs', {} )
+            # collect toolchain verbs to display
+            for verb in build.verbs:
+                opts.build_verbs.add(verb)
 
     return projects
 
@@ -248,7 +258,6 @@ def update_configs( opts:SimpleNamespace ):
         setattr(project, 'name', name )
         setattr(project, 'opts', opts )
         setattr(project, 'path', opts.path / project.name )
-        setattr(project, 'verbs', getattr(project, 'verbs', []) + ['fetch'])
         project.gitdef['remote'] = 'origin'
         project.gitdef['gitdir'] = project.path / 'git'
 
@@ -670,19 +679,26 @@ def main():
 
     # List only.
     if opts.list:
-        t3('List')
-        h('Toolchains')
-        for toolchain_name in toolchains:
-            hu(toolchain_name)
+        with Section('List'):
+            t3('Toolchains')
+            h(f"Available Verbs: {opts.toolchain_verbs or None}")
+            h('List:')
+            for toolchain_name in toolchains:
+                hu(toolchain_name)
 
-        h('Projects')
-        for project_name,project in projects.items():
-            hu(project_name)
+            t3('Projects')
+            h(f"Available Verbs: {opts.project_verbs or None}")
+            h('List:')
+            for project_name,project in projects.items():
+                hu(project_name)
 
-        h('Project | Builds')
-        for project_name,project in projects.items():
-            for build_name in project.build_configs:
-                hu(f'{project_name} | {build_name}')
+            t3('Project | Builds')
+            h(f"Available Verbs: {opts.build_verbs or None}")
+            h('List:')
+            for project_name,project in projects.items():
+                for build_name in project.build_configs:
+                    hu(f'{project_name} | {build_name}')
+
         quit()
 
     process_toolchains( opts )
