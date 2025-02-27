@@ -384,6 +384,13 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     project = build.project
     # Skip the build config if there are no actions to perform
 
+    setattr( build, 'stats', {
+        "status": 'dnf',
+        'duration':'dnr',
+        'subs':{}
+    })
+    stats = build.stats
+
     skip:bool=True
     for k in opts.build_actions:
         if k in build.verbs:
@@ -392,7 +399,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     if skip:
         # h4( f'No matching build verbs for "{build.name}"')
         # print(f"    available : {build.verbs}")
-        build.stats = {"status":'skipped', 'duration':'dnr'}
+        build.stats |= {"status":'skipped'}
         return
 
     # =====================[ stdout Logging ]======================-
@@ -407,8 +414,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     section.start()
     h( build.script_path.as_posix() )
 
-    if opts.verbose:
-        write_namespace( pretendio, build, 'build')
+    if opts.verbose: write_namespace( pretendio, build, 'build')
 
     # ==================[ Print Configuration ]====================-
     from rich.panel import Panel
@@ -430,49 +436,64 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
             width=120 ) )
 
     # ====================[ Run Build Script ]=====================-
-    build.stats = stats = {}
-    stats['start_time'] = datetime.now()
-    stats['subs'] = subs = {}
-
     # Out little output handler which captures the lines and looks for data to
     # use in the statistics
     def monitor_output( line ):
-        if line.startswith('json:'): subs.update(json.loads( line[6:] ))
+        if line.startswith('json:'): stats['subs'].update(json.loads( line[6:] ))
         else: print( line )
 
     errors:list = []
-    run_cmd = ' '.join(getattr(build.toolchain, 'shell', []) + [f'"python {build.script_path.as_posix()}"'] )
+    shell = getattr(build.toolchain, 'shell', [])
     env = getattr(build.toolchain, 'env', None )
+
+    cmd = f'python {build.script_path.as_posix()}'
+    run_cmd = ' '.join( shell + [f'"{cmd}"']) if shell else cmd
     try:
-        returncode = stream_command( run_cmd, env=env,
+        stats |= { 'start_time':datetime.now() }
+        proc = stream_command( run_cmd, env=env,
             stdout_handler=monitor_output,
             stderr_handler=lambda msg: errors.append(msg)
-        ).returncode
-    except CalledProcessError as e:
-        panel_content = Group(
-            Panel( str(e), title='Exception', title_align='left' ),
-            Panel( '\n'.join( errors ), title='stderr', title_align='left')
         )
-        print( Panel( panel_content,  expand=False, title='Errors', title_align='left', width=120 ) )
-        returncode = 1
+        proc.check_returncode()
+        returncode = proc.returncode
+        end_time = datetime.now()
+        stats |= {
+            "status": "Completed" if not returncode else "Failed",
+            "end_time": end_time,
+            "duration": end_time - stats["start_time"]
+        }
     except KeyboardInterrupt:
-        print("Cancelling current job, CTRL+C to cancel project")
-        returncode = 1
-        try:
-            sleep(3)
-        except KeyboardInterrupt as e:
-            # Cleanup
-            build.stats = {"status":'cancelled', 'duration':'dnr'}
-            console.pop( build.name )
-            raise e
-        print("continuing")
+        end_time = datetime.now()
+        stats |= {
+            "status": "Cancelled",
+            "end_time": end_time,
+            "duration": end_time - stats["start_time"]
+        }
+
+        print("Build Cancelled with 'KeyboardInterrupt'")
+        console.pop( build.name )
+
+        print("Waiting 3s before continuing, CTRL+C to cancel project")
+        try: sleep(3)
+        except KeyboardInterrupt as e: raise e
+        print("continuing...")
+    except Exception as e:
+        end_time = datetime.now()
+        stats |= {
+            "status": "Failed",
+            "end_time": end_time,
+            "duration": end_time - stats["start_time"]
+        }
+        panels = [Panel( str(e), title='Exception', title_align='left' )]
+        if errors:
+            panels.append( Panel( '\n'.join( errors ), title='stderr', title_align='left'))
+
+        print( Panel( Group(*panels),
+            expand=False, title='Errors', title_align='left', width=120 ) )
+
     # TODO create a timeout for the processing, something reasonable.
     #   this should be defined in the build config as the largest possible build time that is expected.
     #   that way it can trigger a check of the system if it is failing this test.
-
-    stats["status"] = "Completed" if not returncode else "Failed"
-    stats["end_time"] = datetime.now()
-    stats["duration"] = stats["end_time"] - stats["start_time"]
 
     table = Table( highlight=True, min_width=80, show_header=False )
     table.add_row(

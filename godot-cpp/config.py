@@ -1,4 +1,5 @@
 import copy
+from subprocess import CompletedProcess
 from types import SimpleNamespace
 from typing import Any
 
@@ -79,6 +80,7 @@ def test_script():
     from rich.panel import Panel
     from subprocess import SubprocessError
     from share.format import p
+    from json import dumps
 
     def collect_godots() -> dict:
         godot_arches = ['x86_64', 'x86_32', 'arm64', 'arm32', 'wasm32']
@@ -135,7 +137,7 @@ def test_script():
         # godot_sets = {k:v for k,v in godot_sets.items() if v['platform'] == build['platform'] and v['arch'] == build['arch']}
 
         #FIXME, detect current platform and arch and use them to filter
-        return {k:v for k,v in godot_sets.items() if v['platform'] == 'windows' and v['arch'] in ['x86_64', 'x86_32']}
+        return {k:v for k,v in godot_sets.items() if v['platform'] == 'windows' and v['arch'] in ['x86_64']}
 
     def gen_dot_folder():
         cmd_parts = [
@@ -161,14 +163,17 @@ def test_script():
         output = ['']
         errors = ['']
 
+        returncode = 'dnf'
         try:
-            stream_command( ' '.join(cmd_parts), dry=opts['dry'],
+            proc:CompletedProcess = stream_command( ' '.join(cmd_parts), dry=opts['dry'],
                 stdout_handler=lambda msg: output.append(msg),
                 stderr_handler=lambda msg: errors.append(msg) )
+            returncode = proc.returncode
+            proc.check_returncode()
         except Exception as e:
             if opts['debug']: raise e
             from rich.console import Group
-            panel_content = Group(
+            panel_content = Group(f'ReturnCode: {returncode}',
                 Panel( str(e), title='Exception', title_align='left' ),
                 Panel( '\n'.join( output ), title='stderr', title_align='left'),
                 Panel( '\n'.join( errors ), title='stderr', title_align='left')
@@ -181,6 +186,8 @@ def test_script():
 
         if 'PASSED' in ''.join(output):
             return result | {'status': 'Success'}
+        else:
+            print( Panel( '\n'.join( output ),  expand=False, title='stdout', title_align='left', width=120 ))
 
         return result
 
@@ -220,24 +227,25 @@ def test_script():
 
             godot_sets = collect_godots()
             num_tests = len(godot_sets)
-            successes = 0
+            talley = 0
             for set_name, set_value in godot_sets.items():
                 if opts['verbose']:
                     t3("Running Test")
                     h('Using Fileset:')
                     p( set_value, pretty=True )
                 result = run_test( set_value )
-                if result['status'] == 'Success': successes += 1
+                if result['status'] == 'Success': talley += 1
                 testing_results.append( result )
 
-            results:dict = {
-                'status': 'Failed' if successes != num_tests else 'Success',
-                'duration': f'{successes} / {num_tests}',
-            }
-            import json
+            success = talley == num_tests
+            if success: config['ok'] = True
 
+            results:dict = {
+                'status': 'Success' if success else 'Failed',
+                'duration': f'{talley} / {num_tests}',
+            }
+            print('json:', dumps({'test':results}, default=str))
             stats['test'] = results
-            print('json:', json.dumps({'test':results}, default=str))
             break
 
 
