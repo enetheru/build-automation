@@ -46,7 +46,7 @@ def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, l
 
     lines = [f"{pad}{name} = {{"]
 
-    skip_keys = []
+    skip_keys = ['script_parts']
     skip_keys += getattr(namespace, 'skip_keys', [])
 
     for key, value in namespace.__dict__.items():
@@ -92,18 +92,13 @@ def write_preamble(buffer:IO, project: SimpleNamespace):
     buffer.write('\n\n')
 
 
-def section_heading( title ) -> str:
-    line = align( f'[ {title} ]' , line=hr('='))
-    return align("# ", 0 , line ) + '\n'
-
-
 def write_section( buffer:IO, section:SimpleNamespace, section_name:str ):
-    buffer.write( section_heading(f"Start of {section_name}") )
-    buffer.write( '\n'.join(code_box( section_name ).splitlines()) + '\n' )
+    codebox = '\n'.join(code_box( section_name, width=120 ).splitlines())
+    buffer.writelines(['\n',codebox,'\n'])
     write_namespace( buffer, section, section_name )
-    buffer.write(f"\nconfig['{section_name}'] = {section_name}\n")
-    for verb in getattr( section, f'verbs', [] ):
-        buffer.write( func_to_string( getattr( section, f'{verb}_script', None ) ) )
+    buffer.writelines(['\n', f"config['{section_name}'] = {section_name}", '\n'])
+    for part in getattr( section, f'script_parts', [] ):
+        buffer.write( func_to_string( part ) )
 
 # MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮

@@ -1,5 +1,6 @@
 import os
 import re
+import typing
 from typing import Deque
 
 from pyfiglet import Figlet
@@ -185,6 +186,16 @@ def h(msg:str = 'Heading', level:int=None ):
     else:
         bullet = pad.bullets[-1]
     print(  f'{padding}{bullet} {msg}' )
+
+def p( msg:typing.Any = 'Heading', level:int=None, pretty:bool=False ):
+    from rich.pretty import pretty_repr
+
+    if level is None:level = pad.level + 2
+    padding:str = pad.padchar * level * pad.indent
+
+    string = pretty_repr(msg) if pretty else repr(msg)
+    for line in string.splitlines():
+        print(  f'{padding}{line}' )
 
 # MARK: CodeBox
 # ╓────────────────────────────────────────────────────────────────────────────╖

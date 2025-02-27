@@ -6,6 +6,7 @@ from share.script_preamble import *
 
 project_base:dict = {
     'name':'godot',
+    'verbs':['fetch'],
     'gitdef':{
         'url':"https://github.com/godotengine/godot.git/",
         'ref':'master'
@@ -20,61 +21,6 @@ project_base:dict = {
 # ║                      ██ ██      ██   ██ ██ ██         ██         ██                    ║
 # ║                 ███████  ██████ ██   ██ ██ ██         ██    ███████                    ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
-
-def source_git():
-    console = rich.console.Console()
-    config:dict = {}
-    opts:dict = {}
-    project:dict = {}
-    build:dict = {}
-    stats:dict = {}
-    # start_script
-
-    #[=================================[ Source ]=================================]
-    from share.actions_git import git_checkout
-
-    repo = git.Repo(project['path'] / 'git')
-
-    if config['ok'] and 'source' in build['verbs'] and 'source' in opts['build_actions']:
-        console.set_window_title(f'Source - {build['name']}')
-
-        # if we have specified a different git repository than expected, add the shorthash to the name.
-        gitdef = build['gitdef'] = project['gitdef'] | build['gitdef'] | opts['gitdef']
-        remote:str = gitdef.get('remote', '')
-        gitref =  f'{remote}/{gitdef['ref']}' if remote else gitdef['ref']
-
-        if opts['gitdef']:
-            short_hash = repo.git.rev_parse('--short', gitref)
-            build['source_dir'] += f'.{short_hash}'
-
-        gitdef['worktree_path'] = build['source_path'] = project['path'] / build['source_dir']
-
-        with Timer(name='source') as timer:
-            git_checkout( config )
-        stats['source'] = timer.get_dict()
-        config['ok'] = timer.ok()
-
-    if not opts['quiet']:
-        print( repo.git.log('-1') )
-
-def stats_script():
-    config:dict = {}
-    stats:dict = {}
-    # start_script
-
-    #[=================================[ Stats ]=================================]
-    from rich.table import Table
-    table = Table(title="Stats", highlight=True, min_width=80)
-
-    table.add_column("Section", style="cyan", no_wrap=True)
-    table.add_column("Status", style="magenta")
-    table.add_column("Duration", style="green")
-
-    for cmd_name, cmd_stats in stats.items():
-        table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}')
-
-    rich.print( table )
-    if not config['ok']: exit(1)
 
 # MARK: SCons Script
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -287,6 +233,7 @@ def expand_variations( config:SimpleNamespace ) -> list:
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def generate( opts:SimpleNamespace ) -> dict:
+    from share.snippets import source_git, show_stats
 
     project_base.update({
         'path': opts.path / project_base['name'],
@@ -294,14 +241,13 @@ def generate( opts:SimpleNamespace ) -> dict:
     })
     project = SimpleNamespace(**project_base)
 
+
     config_base = SimpleNamespace(**{
         'name':[],
         'variant':'null',
         'source_dir':[],
-        'verbs':['source', 'check'],
-        'source_script':source_git,
-        'check_script':check_scons,
-
+        'verbs':['source'],
+        'script_parts':[source_git, check_scons],
         "scons": {
             "targets": ["template_release", "template_debug", "editor"],
             "build_vars":["compiledb=yes"]
@@ -341,14 +287,9 @@ def generate( opts:SimpleNamespace ) -> dict:
     configs = filter( None, [config_toolchains(cfg) for cfg in configs] )
     
     for cfg in configs:
-        cfg.verbs.append( 'build' )
-        setattr(cfg, 'build_script', build_scons )
+        cfg.verbs += ['build','clean']
 
-        cfg.verbs.append( 'clean' )
-        setattr(cfg, 'clean_script', clean_scons )
-
-        cfg.verbs.append( 'stats' )
-        setattr(cfg, 'stats_script', stats_script )
+        cfg.script_parts += [ build_scons, clean_scons, show_stats ]
 
         if isinstance(cfg.name, list): cfg.name = '.'.join(cfg.name)
         if isinstance(cfg.source_dir, list): cfg.source_dir = '.'.join(cfg.source_dir)

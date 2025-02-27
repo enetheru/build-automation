@@ -67,86 +67,6 @@ godot_arch = {
 # ║                 ███████  ██████ ██   ██ ██ ██         ██    ███████                    ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
-def source_git():
-    console = rich.console.Console()
-    config:dict = {}
-    opts:dict = {}
-    project:dict = {}
-    build:dict = {}
-    # start_script
-
-    #[=================================[ Source ]=================================]
-    from share.actions_git import git_checkout
-    from git.exc import GitCommandError
-
-    if config['ok'] and 'source' in opts['build_actions']:
-        console.set_window_title(f'Source - {build['name']}')
-        section = Section( "Git Checkout" )
-        section.start()
-
-        # merge definitions project < build < opts
-        gitdef = project['gitdef'] | build['gitdef'] | opts['gitdef']
-
-        # Verify we have cloned the repo.
-        gitdir = project['gitdir']
-        if not gitdir.exists():
-            fnf = FileNotFoundError()
-            fnf.add_note(f'Missing bare git repo path: {gitdir}, project needs to be fetched')
-            raise fnf
-
-        repo = git.Repo(gitdef['gitdir'])
-
-        pattern = gitdef['ref'] if gitdef['remote'] == 'origin' else f'{gitdef['remote']}/{gitdef['ref']}'
-        try:
-            bare_hash = repo.git.rev_parse('--short', pattern)
-        except GitCommandError as e:
-            print(e)
-            exit(1)
-
-        if 'override' in gitdef:
-            build['source_dir'] += f'.{bare_hash}'
-
-        build['source_path'] = project['path'] / build['source_dir']
-
-
-        worktree_path = build["source_path"]
-
-        if not worktree_path.exists():
-            # Perhaps we deleted the worktree folder, in which case prune it
-            cmd_args = [ 'prune',
-                '--verbose' if opts['verbose'] else None,
-                '--dry-run' if opts['dry'] else None ]
-            repo.git.worktree( filter(None, cmd_args) )
-
-            h("Create WorkTree")
-            os.chdir( gitdir )
-
-            cmd_args = [ 'add', '--detach', worktree_path, pattern ]
-            if opts['dry']:
-                print(f'dry-run: git worktree {' '.join(filter(None, cmd_args))}')
-
-            else:
-                repo.git.worktree( filter(None, cmd_args) )
-
-        if worktree_path.exists():
-            worktree = git.Repo( worktree_path )
-            worktree_hash = worktree.git.rev_parse('--short', pattern)
-
-            if bare_hash != worktree_hash:
-                h("Update WorkTree")
-                cmd_args = [ '--force', '--detach', pattern ]
-                if opts['dry']:
-                    print(f'dry-run: git checkout {' '.join(filter(None, cmd_args))}')
-                else:
-                    worktree.git.checkout( filter(None, cmd_args) )
-            else:
-                h("WorkTree is Up-to-Date")
-
-            print( worktree.git.log('-1') )
-
-        section.end()
-        config['ok'] = True
-
 def test_script():
     console = rich.console.Console()
     config:dict = {}
@@ -156,8 +76,66 @@ def test_script():
     # start_script
 
     #[==================================[ Test ]==================================]
-    from subprocess import SubprocessError
     from rich.panel import Panel
+    from subprocess import SubprocessError
+    from share.format import p
+
+    def collect_godots() -> dict:
+        godot_arches = ['x86_64', 'x86_32', 'arm64', 'arm32', 'wasm32']
+
+        # find all builds in the godot build folder to test against.
+        godot_path = Path( opts['path'] / 'godot' )
+        godot_sets = {}
+        for child in godot_path.glob(f'{build['host']}*/'):
+            # Get all the executables in the folder
+            files = [f.name for f in (child / 'bin').glob('*.exe')]
+            files = [*filter( lambda f: 'godot' in f , files )]
+            files = [*filter( lambda f: 'console' not in f , files )]
+
+            if not len(files):
+                continue
+
+            set_folder = child.name
+
+            for f in files:
+                # Chop up the godot.windows.target... into pieces and process them
+                file_path = Path(child / 'bin' / f)
+                parts = f.split('.')[1:-1]
+                parts = [p for p in parts if p != 'llvm']
+
+                set_platform = parts[0]
+                set_target = parts[1]
+                parts = parts[2:]
+
+                set_arch = 'unknown'
+                set_variant = 'default'
+                while parts:
+                    if parts[0] in godot_arches: set_arch = parts[0]
+                    else: set_variant = parts[0]
+                    parts = parts[1:]
+
+                # create the key
+                set_name = f'{set_folder}.{set_platform}.{set_arch}.{set_variant}'
+
+                godot_sets.setdefault( set_name, {
+                    'name': set_name,
+                    'platform': set_platform,
+                    'arch': set_arch,
+                    'variant':set_variant
+                })
+
+                # update the dict
+                godot_sets[set_name] |= {
+                    set_target: file_path.as_posix()
+                }
+
+        godot_sets = {k:v for k,v in godot_sets.items() if v['variant'] == build['variant']}
+
+        #FIXME this is broken because python arches dont match godot arches, so we need to translate them.
+        # godot_sets = {k:v for k,v in godot_sets.items() if v['platform'] == build['platform'] and v['arch'] == build['arch']}
+
+        #FIXME, detect current platform and arch and use them to filter
+        return {k:v for k,v in godot_sets.items() if v['platform'] == 'windows' and v['arch'] in ['x86_64', 'x86_32']}
 
     def gen_dot_folder():
         cmd_parts = [
@@ -169,26 +147,52 @@ def test_script():
         ]
         stream_command(' '.join(cmd_parts), dry=opts['dry'])
 
-    def run_test() -> list:
+    def run_test( godot_set:dict ) -> dict:
+        result = {
+            'fileset': godot_set['name'],
+            'status': 'Failed'
+        }
         cmd_parts = [
-            f'"{godot_release_template}"',
+            f'{godot_set['template_release']}',
             f'--path "{test_project_dir}"',
             '--quit',
             '--headless'
         ]
         output = ['']
-        stream_command( ' '.join(cmd_parts), dry=opts['dry'],
-            stdout_handler=lambda msg: output.append(msg),
-            stderr_handler=lambda msg: output.append( f'[red]{msg}[/red]' ) )
-        return output
+        errors = ['']
+
+        try:
+            stream_command( ' '.join(cmd_parts), dry=opts['dry'],
+                stdout_handler=lambda msg: output.append(msg),
+                stderr_handler=lambda msg: errors.append(msg) )
+        except Exception as e:
+            if opts['debug']: raise e
+            from rich.console import Group
+            panel_content = Group(
+                Panel( str(e), title='Exception', title_align='left' ),
+                Panel( '\n'.join( output ), title='stderr', title_align='left'),
+                Panel( '\n'.join( errors ), title='stderr', title_align='left')
+            )
+            print( Panel( panel_content,  expand=False, title='Errors', title_align='left', width=120 ) )
+            return result
+
+        if opts['verbose']:
+            print( Panel( '\n'.join( output ),  expand=False, title='Test Output', title_align='left', width=120 ))
+
+        if 'PASSED' in ''.join(output):
+            return result | {'status': 'Success'}
+
+        return result
+
+
+    testing_results = []
 
     while config['ok'] and 'test' in opts['build_actions']:
-        config['ok'] = False
-        console.set_window_title(f'Test - {build['name']}')
-        with Timer(name='test') as timer, Section("Testing"):
+        with Section( "Testing" ):
+            config['ok'] = False
+            console.set_window_title(f'Test - {build['name']}')
 
             godot_editor = build['godot_e']
-            godot_release_template = build['godot_tr']
 
             test_project_dir = build['source_path'] / 'test/project'
             dot_godot_dir = test_project_dir / '.godot'
@@ -205,57 +209,37 @@ def test_script():
 
             if not dot_godot_dir.exists() and not opts['dry']:
                 print('[red]Error: Creating .godot folder')
-                timer.status = TaskStatus.FAILED
+                testing_results += ['Creation of .godot folder failed.']
+                config['ok'] = False
                 break
 
-            h("Run the test project")
             if opts['dry']:
                 h( 'Dry-Run: Test Completed' )
-                timer.status = TaskStatus.COMPLETED
                 config['ok'] = True
                 break
 
-            try: output = run_test()
-            except SubprocessError as e:
-                # FIXME Godot exited abnormally when running the test project
-                print( '[red]Error: Godot exited abnormally when running the test project')
-                print( '    This requires investigation as it appears to only happen in cmake builds')
-                timer.status = TaskStatus.FAILED
-                break
+            godot_sets = collect_godots()
+            num_tests = len(godot_sets)
+            successes = 0
+            for set_name, set_value in godot_sets.items():
+                if opts['verbose']:
+                    t3("Running Test")
+                    h('Using Fileset:')
+                    p( set_value, pretty=True )
+                result = run_test( set_value )
+                if result['status'] == 'Success': successes += 1
+                testing_results.append( result )
 
-            print( Panel( '\n'.join( output ),  expand=False, title='Test Execution', title_align='left', width=120 ))
+            results:dict = {
+                'status': 'Failed' if successes != num_tests else 'Success',
+                'duration': f'{successes} / {num_tests}',
+            }
+            import json
 
-            for line in output:
-                if line.find( 'PASSED' ) > 0:
-                    h( 'Test Succeeded' )
-                    timer.status = TaskStatus.COMPLETED
-                    config['ok'] = True
-                    break
-                else:
-                    timer.status = TaskStatus.FAILED
+            stats['test'] = results
+            print('json:', json.dumps({'test':results}, default=str))
             break
 
-        stats['test'] = timer.get_dict()
-        config['ok'] = timer.ok()
-
-def stats_script():
-    config:dict = {}
-    stats:dict = {}
-    # start_script
-
-    #[=================================[ Stats ]=================================]
-    from rich.table import Table
-    table = Table(title="Stats", highlight=True, min_width=80)
-
-    table.add_column("Section", style="cyan", no_wrap=True)
-    table.add_column("Status", style="magenta")
-    table.add_column("Duration", style="green")
-
-    for cmd_name, cmd_stats in stats.items():
-        table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}')
-
-    rich.print( table )
-    if not config['ok']: exit(1)
 
 # MARK: SCons Script
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -305,7 +289,7 @@ def build_scons():
     #[=================================[ Build ]=================================]
     from share.actions_scons import scons_build
 
-    if config['ok'] and 'build' in build['verbs'] and 'build' in opts['build_actions']:
+    if config['ok'] and 'build' in opts['build_actions']:
         console.set_window_title(f'Build - {build['name']}')
         with Timer(name='build') as timer:
             scons_build( config )
@@ -324,7 +308,7 @@ def clean_scons():
     from subprocess import CalledProcessError
 
     #[=================================[ Clean ]=================================]
-    if config['ok'] and 'clean' in build['verbs'] and 'clean' in opts['build_actions']:
+    if config['ok'] and 'clean' in opts['build_actions']:
         console.set_window_title(f'Clean - {build['name']}')
         h2("SCons Clean")
 
@@ -342,7 +326,7 @@ def clean_scons():
         stats['clean'] = timer.get_dict()
         config['ok'] = timer.ok()
 
-# MARK: CMake Script
+# MARK: CMake
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │   ___ __  __      _         ___         _      _                           │
 # │  / __|  \/  |__ _| |_____  / __| __ _ _(_)_ __| |_                         │
@@ -351,128 +335,16 @@ def clean_scons():
 # │                                          |_|                               │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-def check_cmake():
-    project:dict = {}
+def pre_cmake():
     build:dict = {}
     # start_script
 
-    #[===============================[ Check ]===============================]
+    #[==============================[ Pre-CMake ]==============================]
     cmake = build['cmake']
+    if 'godot_build_profile' in cmake:
+        profile_path:Path = build['source_path'] / cmake['godot_build_profile']
+        cmake['config_vars'].append( f'-DGODOT_BUILD_PROFILE="{profile_path.as_posix()}"' )
 
-    source_path = build.setdefault("source_path", project['path'] / build['source_dir'])
-
-    # requires CMakeLists.txt file existing in the current directory.
-    if not (source_path / "CMakeLists.txt").exists():
-        fnf = FileNotFoundError()
-        fnf.add_note(f"Missing CMakeLists.txt in {source_path}")
-        raise fnf
-
-    build_dir = cmake.setdefault('build_dir', f'build-{build['platform']}-{build['arch']}-{build['variant']}')
-    build_path = cmake.setdefault('build_path', source_path / build_dir )
-
-    # Create Build Directory
-    if not build_path.is_dir():
-        t3(f"Creating {cmake['build_dir']}")
-        os.mkdir(build_path)
-
-    try:
-        os.chdir(build_path)
-    except FileNotFoundError as fnf:
-        fnf.add_note(f'Missing Folder {build_path}')
-        raise fnf
-
-def configure_cmake():
-    console = rich.console.Console()
-    config:dict = {}
-    opts:dict = {}
-    build:dict = {}
-    stats:dict = {}
-    toolchain:dict = {}
-    # start_script
-
-    #[===============================[ Configure ]===============================]
-    cmake = build['cmake']
-
-    if config['ok'] and 'configure' in build['verbs'] and 'configure' in opts['build_actions']:
-        h2("CMake Configure")
-        s1("CMake Configure")
-        console.set_window_title(f'Configure - {build['name']}')
-
-        config_opts = [
-            "--fresh" if 'fresh' in opts['build_actions'] else None,
-            "--log-level=VERBOSE" if not opts["quiet"] else None,
-            f'-S "{build['source_path']}"',
-            f'-B "{cmake['build_path']}"',
-        ]
-
-        if 'cmake' in toolchain:
-            tc = toolchain['cmake']
-            if 'toolchain' in tc:
-                toolchain_file = opts["path"] / toolchain['cmake']['toolchain']
-                config_opts.append( f'--toolchain "{os.fspath(toolchain_file)}"' )
-            for var in tc.get('config_vars', []):
-                config_opts.append(var)
-
-        if 'generator' in cmake:
-            config_opts.append( f'-G "{cmake['generator']}"' )
-
-        if "config_vars" in cmake:
-            config_opts += cmake["config_vars"]
-
-        if 'godot_build_profile' in cmake:
-            profile_path:Path = build['source_path'] / cmake['godot_build_profile']
-            config_opts.append( f'-DGODOT_BUILD_PROFILE="{profile_path.as_posix()}"' )
-
-        with Timer(name='configure') as timer:
-            stream_command(f'cmake {' '.join(filter(None, config_opts))}', dry=opts['dry'])
-            print('')
-
-        send()
-        stats['configure'] = timer.get_dict()
-        config['ok'] = timer.ok()
-
-
-def build_cmake():
-    console = rich.console.Console()
-    config:dict = {}
-    opts:dict = {}
-    build:dict = {}
-    stats:dict = {}
-    # start_script
-
-    #[=================================[ Build ]=================================]
-    import copy
-    cmake = build['cmake']
-
-    if config['ok'] and 'build' in build['verbs'] and 'build' in opts['build_actions']:
-        h2("CMake Build")
-        console.set_window_title('Build - {name}')
-
-        build_path:Path = cmake['build_path']
-
-        build_opts = [
-            f'--build {build_path.as_posix()}',
-            "--verbose" if not opts["quiet"] else None,
-            f"-j {opts['jobs']}",
-        ]
-        build_opts += cmake.get("build_vars", [])
-
-        with Timer(name='build') as timer:
-            for target in cmake["targets"]:
-                s2(f" Building target: {target} ")
-                target_opts = copy.copy(build_opts)
-                target_opts.append(f" --target {target}")
-
-                if "tool_vars" in cmake:
-                    target_opts.append('--')
-                    target_opts += cmake["tool_vars"]
-
-                stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
-                print('')
-
-        send()
-        stats['build'] = timer.get_dict()
-        config['ok'] = timer.ok()
 
 # MARK: Configure
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -484,10 +356,8 @@ def build_cmake():
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def gen_scons( cfg:SimpleNamespace ) -> bool:
-    cfg.verbs += ['check', 'build', 'clean']
-    setattr(cfg, 'check_script', check_scons )
-    setattr(cfg, 'build_script', build_scons )
-    setattr(cfg, 'clean_script', clean_scons )
+    cfg.verbs += ['build', 'clean']
+    cfg.script_parts +=  [check_scons, build_scons, clean_scons,]
 
     setattr(cfg, 'scons', {
         'build_dir':'test',
@@ -545,10 +415,9 @@ def gen_scons( cfg:SimpleNamespace ) -> bool:
     return True
 
 def gen_cmake( cfg:SimpleNamespace ) -> bool:
-    cfg.verbs += ['check', 'configure', 'build']
-    setattr(cfg, 'check_script', check_cmake )
-    setattr(cfg, 'configure_script', configure_cmake )
-    setattr(cfg, 'build_script', build_cmake )
+    from share.snippets import cmake_check, cmake_configure, cmake_build
+    cfg.verbs += ['configure', 'build']
+    cfg.script_parts += [pre_cmake, cmake_check, cmake_configure, cmake_build]
 
     setattr(cfg, 'cmake', {
         'godot_build_profile':'test/build_profile.json',
@@ -579,20 +448,7 @@ build_tools = {
 # │   \_/\__,_|_| |_\__,_|_||_\__|  \___\___/_||_|_| |_\__, |                  │
 # │                                                    |___/                   │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-
-def variant_default( cfg:SimpleNamespace ) -> bool:
-    """
-
-    :type cfg: object
-    """
-    return True
-
-def variant_skip( cfg:SimpleNamespace ) -> bool:
-    """
-
-    :type cfg: object
-    """
-    return False
+variations = { 'default' :lambda cfg:True }
 
 # MARK: double
 def variant_double( cfg:SimpleNamespace ) -> bool:
@@ -604,16 +460,14 @@ def variant_double( cfg:SimpleNamespace ) -> bool:
         case 'cmake':
             cfg.cmake["config_vars"].append("-DGODOT_PRECISION=double")
     return True
+variations['double'] = variant_double
 
-variations = {
-    'default':variant_default,
-    'double':variant_double,
-    'nothreads':variant_skip,
-    'hotreload':variant_skip,
-    'exceptions':variant_skip,
-    'staticcpp':variant_skip,
-    'debugcrt':variant_skip,
-}
+# TODO
+# * nothreads
+# * hotreload
+# * exceptions
+# * staticcpp
+# * debugcrt
 
 # MARK: Expansion
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -711,6 +565,8 @@ def expand_buildtools( config:SimpleNamespace ) -> list:
 # │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def generate( opts:SimpleNamespace ) -> dict:
+    from share.snippets import source_git, show_stats
+
 
     project_base.update({
         'path': opts.path / project_base['name'],
@@ -723,11 +579,11 @@ def generate( opts:SimpleNamespace ) -> dict:
         'source_dir':'',
         'gitdef':{},
         'verbs':['source'],
-        'source_script':source_git
+        'script_parts':[source_git]
     })
 
     # Host environment toolchain and build tools
-    configs = expand_host_env( config_base, opts )
+    configs:list[SimpleNamespace] = expand_host_env( config_base, opts )
     configs = expand( configs, expand_buildtools )
 
     # Naming upto now.
@@ -757,16 +613,16 @@ def generate( opts:SimpleNamespace ) -> dict:
     # target and variants
     configs = expand( configs, expand_variant )
 
-    for cfg in configs:
-        cfg.verbs.append( 'test' )
-        setattr(cfg, 'test_script', test_script )
-        cfg.verbs.append( 'stats' )
-        setattr(cfg, 'stats_script', stats_script )
+    for cfg in sorted( configs, key=lambda value: value.name ):
+        cfg.verbs += ['test']
+        cfg.script_parts += [test_script, show_stats]
 
         cfg.name.append( cfg.buildtool )
         cfg.source_dir.append( cfg.buildtool )
 
-    for cfg in sorted( configs, key=lambda value: value.name ):
+        if cfg.buildtool == 'cmake':
+            cfg.cmake['build_dir'] = f'build-{cfg.platform}-{cfg.arch}-{cfg.variant}'
+
         if isinstance(cfg.name, list): cfg.name = '.'.join(cfg.name)
         if isinstance(cfg.source_dir, list): cfg.source_dir = '.'.join(cfg.source_dir)
 
