@@ -35,7 +35,7 @@ def stream_command(
         args = shlex.split( args )
 
     if dry: # pretend the command executed successfully
-        CompletedProcess( args, 0 )
+        return CompletedProcess( args, 0 )
 
     with (
         # errors: 'strict', 'replace', 'ignore', 'backslashreplace'

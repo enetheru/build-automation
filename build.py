@@ -279,6 +279,9 @@ def fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
 
     if 'fetch' not in project.verbs: return
     t3(project.name)
+    if opts.dry:
+        h("Dry-Run: Skipping Fetch")
+        return
     g = git.cmd.Git()
 
     # git ls-remote --symref https://github.com/enetheru/godot-cpp.git HEAD
@@ -291,19 +294,18 @@ def fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
 
     # Lets clone if we dont exist
     if not project.gitdir.exists():
-        hu( 'Cloning' )
-        if project['dry']: return
+        h( 'Cloning Repository' )
         repo = git.Repo.clone_from( project.gitdef['url'], project.gitdir, progress=print,  bare=True, tags=True )
     else:
         repo = git.Repo( project.gitdir )
 
-    h("Prune Expired Worktrees")
-    repo.git.worktree('prune')
+        h("Prune Expired Worktrees")
+        repo.git.worktree('prune')
 
-    if opts.verbose:
-        h("Worktrees")
-        for line in str(repo.git.worktree('list')).splitlines():
-            hu(line)
+        if opts.verbose:
+            h("Worktrees")
+            for line in str(repo.git.worktree('list')).splitlines():
+                hu(line)
 
     h("Existing Remotes:")
     for remote in repo.remotes:
@@ -350,10 +352,10 @@ def fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
             continue
 
         try:
-            if gitdef.remote == 'origin':
-                local_hash = repo.git.rev_parse(f"{gitdef.ref}")
-            else:
-                local_hash = repo.git.rev_parse(f"{gitdef.remote}/{gitdef.ref}")
+            cmd_arg = gitdef.ref if gitdef.remote == 'origin' else f"{gitdef.remote}/{gitdef.ref}"
+            h( f"git rev-parse {cmd_arg}" )
+            local_hash = repo.git.rev_parse(cmd_arg)
+            hu(local_hash)
         except GitCommandError as e:
             if opts.debug: raise e
             # if the ref doesnt exist it will raise this exception.
@@ -399,7 +401,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     if skip:
         # h4( f'No matching build verbs for "{build.name}"')
         # print(f"    available : {build.verbs}")
-        build.stats |= {"status":'skipped'}
+        build.stats |= {"status":'Skipped'}
         return
 
     # =====================[ stdout Logging ]======================-
@@ -454,14 +456,15 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
             stdout_handler=monitor_output,
             stderr_handler=lambda msg: errors.append(msg)
         )
-        proc.check_returncode()
-        returncode = proc.returncode
+        print( "Post process")
         end_time = datetime.now()
         stats |= {
-            "status": "Completed" if not returncode else "Failed",
-            "end_time": end_time,
-            "duration": end_time - stats["start_time"]
+            'status': "Dry-Run" if opts.dry else "Completed",
+            'end_time': end_time,
+            'duration': end_time - stats["start_time"]
         }
+        print( "status updated after process")
+        proc.check_returncode()
     except KeyboardInterrupt:
         end_time = datetime.now()
         stats |= {
@@ -478,12 +481,14 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         except KeyboardInterrupt as e: raise e
         print("continuing...")
     except Exception as e:
+        print( "Exception raised")
         end_time = datetime.now()
         stats |= {
             "status": "Failed",
             "end_time": end_time,
             "duration": end_time - stats["start_time"]
         }
+        print( "Status Updated after exception")
         panels = [Panel( str(e), title='Exception', title_align='left' )]
         if errors:
             panels.append( Panel( '\n'.join( errors ), title='stderr', title_align='left'))
@@ -611,17 +616,19 @@ def show_statistics( opts:SimpleNamespace ):
 
             colour = "green"
             status = build.stats['status']
-            if opts.dry:
-                colour = "yellow"
-                status = "dry-run"
-            elif build.stats["status"] == "Failed":
-                colour = "red"
+            match status:
+                case 'Completed':
+                    colour = "green"
+                    pass
+                case 'Cancelled' | 'Dry-Run' | 'Skipped':
+                    colour = "yellow"
+                case 'Failed':
+                    colour = "red"
 
             r.append(f"[{colour}]{status}[/{colour}]")
             r.append(str(build.stats['duration'])[:-3])
 
-            subs = build.stats.get('subs', None)
-            if not subs: continue
+            subs = build.stats.get('subs', {})
             for column_name in sub_columns:
                 sub = subs.get(column_name, None )
                 if not sub: r.append( 'n/a' )

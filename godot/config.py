@@ -35,7 +35,7 @@ def check_scons():
     build:dict = {}
     # start_script
 
-    #[=================================[ Check ]=================================]
+    #[=============================[ SCons Check ]=============================]
     scons = build['scons']
 
     # Figure out the build path
@@ -44,7 +44,7 @@ def check_scons():
     else:
         scons['build_path'] = project['path'] / build['source_dir']
 
-    build_path = scons['build_path']
+    build_path = Path(scons['build_path'])
 
     try: os.chdir(build_path)
     except FileNotFoundError as fnf:
@@ -73,7 +73,7 @@ def clean_scons():
 
         with Timer(name='clean', push=False) as timer:
             try:
-                proc = stream_command( "scons --clean" , dry=config['dry'])
+                proc = stream_command( "scons --clean" , dry=opts['dry'])
                 # Change status depending on the truthiness of returnvalue
                 # where False is Success and True is Failure.
                 timer.status = TaskStatus.FAILED if proc.returncode else TaskStatus.COMPLETED

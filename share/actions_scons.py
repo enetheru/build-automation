@@ -25,7 +25,7 @@ def scons_build(config: dict):
     # Use a project wide build cache
     scons_cache = project['path'] / 'scons_cache'
     scons['build_vars'].append(f'cache_path={scons_cache.as_posix()}')
-    scons['build_vars'].append('cache_limit=16')
+    scons['build_vars'].append('cache_limit=48')
 
     jobs = opts["jobs"]
     cmd_chunks = [
@@ -38,9 +38,11 @@ def scons_build(config: dict):
 
     for target in scons["targets"]:
         h(f"Building {target}")
-        build_command: str = " ".join(filter(None, cmd_chunks))
-        build_command += f" target={target}"
+        build_command: str = " ".join(filter(None, cmd_chunks + [f"target={target}"]))
 
-        stream_command(build_command, dry=opts['dry'], text=False)
+        # I found that if i dont clean the repository then files are unfortunately wrong.
+        stream_command('scons --clean -s', dry=opts['dry'])
+
+        stream_command(build_command, dry=opts['dry'])
 
     send()
