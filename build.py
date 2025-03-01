@@ -99,7 +99,14 @@ def parse_args(opts:SimpleNamespace):
     parser_git.add_argument( "--giturl" )  # The Url to clone from
     parser_git.add_argument( "--gitref" )  # the Commit to checkout
 
+    parser.add_argument('actions', nargs=argparse.REMAINDER)
+
     parser.parse_args( namespace=opts )
+
+    if opts.actions:
+        opts.toolchain_actions += opts.actions
+        opts.project_actions += opts.actions
+        opts.build_actions += opts.actions
 
     setattr(opts, 'toolchain_verbs', [] )
     setattr(opts, 'project_verbs', ['fetch'] )
@@ -107,6 +114,7 @@ def parse_args(opts:SimpleNamespace):
 
     # Create gitdef structure
     if opts.giturl or opts.gitref: # Overrides specified.
+        setattr( opts, 'gitoverride', True)
         setattr(opts, 'gitdef', {
             'override': 'yes',
             'url': opts.giturl or '',
@@ -115,6 +123,7 @@ def parse_args(opts:SimpleNamespace):
         if 'github' in opts.gitdef['url']:
             opts.gitdef['remote'] = opts.gitdef['url'].split('/')[3]
     else:
+        setattr( opts, 'gitoverride', False)
         setattr(opts, 'gitdef', {})
 
     delattr(opts, 'giturl')
@@ -252,6 +261,7 @@ def import_projects(opts:SimpleNamespace) -> dict:
             setattr( build, 'project', project )
             setattr( build, 'script_path', project.path / f"{build.name}.py" )
             setattrdefault(build, 'gitdef', {})
+            setattrdefault(build, 'disabled', False)
 
             # collect build verbs for list display
             opts.build_verbs += [verb for verb in getattr(build, 'verbs', [] )
@@ -342,8 +352,17 @@ def fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
 
         # Check the remote for updates.
         try:
-            h( f"git ls-remote {gitdef.url} {gitdef.ref}" )
-            remote_hash:str = g.ls_remote( gitdef.url, gitdef.ref ).split()[0]
+            ls_args = ['--exit-code', gitdef.url, gitdef.ref]
+            h( f"git ls-remote {' '.join(ls_args)}" )
+            response = g.ls_remote( *ls_args )
+            if not response:
+                hu( f"git ls-remote returned '{response}'" )
+                if opts.gitoverride: exit(1)
+                hu( f"disabling build: '{build.name}'" )
+                build.disabled = True
+                continue
+
+            remote_hash:str = response.split()[0]
             hu(remote_hash)
         except GitCommandError as e:
             if opts.debug: raise e
@@ -402,6 +421,10 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         # h4( f'No matching build verbs for "{build.name}"')
         # print(f"    available : {build.verbs}")
         build.stats |= {"status":'Skipped'}
+        return
+
+    if build.disabled:
+        build.stats |= {"status":'Disabled'}
         return
 
     # =====================[ stdout Logging ]======================-
@@ -620,7 +643,7 @@ def show_statistics( opts:SimpleNamespace ):
                 case 'Completed':
                     colour = "green"
                     pass
-                case 'Cancelled' | 'Dry-Run' | 'Skipped':
+                case 'Cancelled' | 'Dry-Run' | 'Skipped', 'Disabled':
                     colour = "yellow"
                 case 'Failed':
                     colour = "red"

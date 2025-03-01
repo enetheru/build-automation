@@ -1,6 +1,7 @@
 import os
 import re
 import typing
+from textwrap import indent
 from typing import Deque
 
 from pyfiglet import Figlet
@@ -53,6 +54,14 @@ class Padding:
     @level.setter
     def level(self, value):
         self._level = value if value >= 0 else 0
+
+    def str( self ) -> str:
+        return self.padchar * self.indent * self.level
+
+    def size( self ) -> int:
+        return len( self.str() )
+    def sizeu( self ) -> int:
+        return len( self.str() ) + self.indent
 
 pad = Padding()
 

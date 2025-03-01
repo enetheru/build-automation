@@ -21,6 +21,7 @@ def source_git():
     #[=================================[ Source ]=================================]
     from git.exc import GitCommandError
     from rich.panel import Panel
+    from rich.padding import Padding as rPadding
 
     if config['ok'] and 'source' in opts['build_actions']:
         console.set_window_title(f'Source - {build['name']}')
@@ -43,8 +44,8 @@ def source_git():
 
         pattern = gitdef['ref'] if gitdef['remote'] == 'origin' else f'{gitdef['remote']}/{gitdef['ref']}'
         try:
-            bare_hash = repo.git.rev_parse('--short', pattern)
-            hu( f'Short-Hash: {bare_hash}' )
+            bare_hash = repo.git.log('--format=%h', '-1',  pattern)
+            hu( f'{repo.git.log('--oneline', '-1',  pattern)}' )
         except GitCommandError as e:
             print(e)
             exit(1)
@@ -74,11 +75,11 @@ def source_git():
             worktree = git.Repo( worktree_path )
             h(f'worktree: {worktree_path.as_posix()}')
 
-            worktree_hash = worktree.git.rev_parse('--short', pattern)
-            hu( f'Short-Hash: {bare_hash}' )
+            worktree_hash = worktree.git.log('--format=%h', '-1')
+            hu( f'{worktree.git.log('--oneline', '-1')}' )
 
             if bare_hash != worktree_hash:
-                h("Update WorkTree")
+                h("Updating WorkTree")
                 cmd_args = [ '--force', '--detach', pattern ]
                 if opts['dry']:
                     print(f'dry-run: git checkout {' '.join(filter(None, cmd_args))}')
@@ -88,7 +89,10 @@ def source_git():
                 h("WorkTree is Up-to-Date")
 
 
-            print( Panel( worktree.git.log( '-1'),  expand=False, title=pattern, title_align='left', width=120 ))
+            print( rPadding(
+                Panel( worktree.git.log( '-1'),  expand=False, title=pattern, title_align='left', width=120 ),
+                (0,0,0,pad.sizeu()) )
+            )
 
         section.end()
         config['ok'] = True

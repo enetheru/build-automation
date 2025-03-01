@@ -139,9 +139,9 @@ def test_script():
         #FIXME, detect current platform and arch and use them to filter
         return {k:v for k,v in godot_sets.items() if v['platform'] == 'windows' and v['arch'] in ['x86_64']}
 
-    def gen_dot_folder():
+    def gen_dot_folder( godot_set ):
         cmd_parts = [
-            f'"{godot_editor}"',
+            f'"{godot_set['editor']}"',
             '-e',
             f'--path "{test_project_dir}"',
             '--quit',
@@ -199,20 +199,24 @@ def test_script():
             config['ok'] = False
             console.set_window_title(f'Test - {build['name']}')
 
-            godot_editor = build['godot_e']
+            godot_sets = collect_godots()
+            num_tests = len(godot_sets)
+            h(f'Found {num_tests} godot exe file sets to test with')
 
             test_project_dir = build['source_path'] / 'test/project'
             dot_godot_dir = test_project_dir / '.godot'
 
-            if dot_godot_dir.exists():
-                # FIXME use fresh to delete the .godot folder
-                pass
-            else:
-                h('Generating the .godot folder')
-                try: gen_dot_folder()
+            # FIXME use fresh to delete the .godot folder
+
+            for set_name, set_value in godot_sets.items():
+                if dot_godot_dir.exists():
+                    break
+                h(f'Generating the .godot folder using: {set_name}')
+                try: gen_dot_folder( set_value )
                 except SubprocessError as e:
                     print( '[red]Godot exited abnormally during .godot folder creation')
-                    raise e
+                    if opts['debug']: raise e
+
 
             if not dot_godot_dir.exists() and not opts['dry']:
                 print('[red]Error: Creating .godot folder')
@@ -225,8 +229,6 @@ def test_script():
                 config['ok'] = True
                 break
 
-            godot_sets = collect_godots()
-            num_tests = len(godot_sets)
             talley = 0
             for set_name, set_value in godot_sets.items():
                 if opts['verbose']:
