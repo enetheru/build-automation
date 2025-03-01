@@ -1,6 +1,8 @@
+import itertools
 import platform
 from pathlib import Path
 from types import SimpleNamespace
+from copy import deepcopy
 
 from rich.console import Console
 
@@ -71,10 +73,20 @@ windows_toolchains.append( SimpleNamespace(**{
 # │ | |__| |_\ V /| |\/| |___| |\/| | | ' \ (_ |\ \/\/ /  │
 # │ |____|____\_/ |_|  |_|   |_|  |_|_|_||_\___| \_/\_/   │
 # ╰───────────────────────────────────────────────────────╯
-# TODO I think that the expansion of the architectures should be here
-#   that way I can fill out the necessary cmake variables.
-# Perhaps I can simply provide the configure function here, that can be used
-# in projects. I guess I will find out when I expand the number of projects
+def llvm_mingw_expand( config:SimpleNamespace, toolchain:SimpleNamespace ) -> list:
+    configs_out:list = []
+    for arch, platform in itertools.product(config.toolchain.arch, config.toolchain.platform ):
+        cfg = deepcopy(config)
+
+        setattr( cfg, 'arch', arch )
+        setattr( cfg, 'platform', platform )
+
+        toolchain = cfg.toolchain
+        toolchain.cmake['config_vars'] = [f'-DLLVM_MINGW_PROCESSOR={arch}']
+
+        configs_out.append( cfg )
+    return configs_out
+
 env = {k:v for k,v in os.environ.items()}
 env['PATH'] = f'C:/llvm-mingw/bin;{os.environ['PATH']}'
 windows_toolchains.append( SimpleNamespace(**{
@@ -84,10 +96,8 @@ windows_toolchains.append( SimpleNamespace(**{
     "arch":['i686', 'x86_64', 'armv7', 'aarch64'],
     'platform':['win32'],
     'env': env,
-    'cmake': {
-        'toolchain':'share\\toolchain-llvm-mingw.cmake',
-        # 'build_vars':'-DLLVM_MINGW_PROCESSOR={arch}'
-    },
+    'cmake': { 'toolchain':'share\\toolchain-llvm-mingw.cmake' },
+    'expand':llvm_mingw_expand
 }))
 
 # MARK: MinGW64
@@ -210,6 +220,10 @@ def emscripten_update( toolchain:SimpleNamespace, config:SimpleNamespace, consol
     stream_command( 'git pull', dry=config.dry )
 
 def win32_emscripten_script( config:dict, toolchain:dict ):
+    # start_script
+
+    # MARK: Emscripten
+    #[=============================[ Emscripten ]=============================]
     from pathlib import Path
 
     cmd_prefix = f'pwsh -Command'
@@ -239,7 +253,7 @@ windows_toolchains.append( SimpleNamespace(**{
     'version':'3.1.64',
     'verbs':['update', 'script'],
     'update':emscripten_update,
-    'script':win32_emscripten_script,
+    'script_parts':[win32_emscripten_script],
     "arch":['wasm32'], #wasm64
     'platform':['emscripten'],
     'cmake':{
@@ -319,7 +333,7 @@ darwin_toolchains.append( SimpleNamespace(**{
     'version':'3.1.64',
     'verbs':['update', 'script'],
     'update':emscripten_update,
-    'script':darwin_emscripten_script,
+    'script_parts':[darwin_emscripten_script],
     "arch":['wasm32'], #wasm64
     'platform':['emscripten'],
     'cmake':{

@@ -1,5 +1,9 @@
+import itertools
 from copy import deepcopy
 from types import SimpleNamespace
+
+from share.snippets import cmake_build, cmake_check, cmake_configure
+
 
 def expand( configs:list, func, *args ) -> list:
     configs_out:list = []
@@ -30,12 +34,20 @@ def expand_arch( config:SimpleNamespace ) -> list:
 def expand_toolchains( config:SimpleNamespace, toolchains:dict ) -> list:
     configs_out:list = []
     for toolchain in toolchains.values():
-        cfg = deepcopy(config)
-        setattr(cfg, 'toolchain', toolchain )
-        configs_out.append( cfg )
+        expander = getattr(toolchain, 'expand', None)
 
-    configs_out = expand( configs_out, expand_arch)
-    configs_out = expand( configs_out, expand_platform)
+        if expander:
+            cfg = deepcopy(config)
+            setattr(cfg, 'toolchain', toolchain )
+            configs_out += expander( cfg, toolchain )
+            continue
+
+        for arch, platform in itertools.product(toolchain.arch, toolchain.platform):
+            cfg = deepcopy(config)
+            setattr(cfg, 'toolchain', toolchain )
+            setattr(cfg, 'arch', arch )
+            setattr(cfg, 'platform', platform )
+            configs_out.append( cfg )
 
     return configs_out
 
@@ -49,82 +61,87 @@ def expand_buildtool( config:SimpleNamespace ) -> list:
     return configs_out
 
 # MARK: CMake
-def expand_cmake( config:SimpleNamespace, build_type:str ) -> list:
+cmake_config_types = {
+    'Debug':'debug',
+    "Release":'release',
+    "RelWithDebInfo":'reldeb',
+    # "MinSizeRel":'relmin',
+}
+
+cmake_generators = {
+    'Visual Studio 17 2022':'msvc',
+    'Ninja':'ninja',
+    'Ninja Multi-Config':'ninja-multi',
+    'MinGW Makefiles':'mingw',
+}
+
+def expand_cmake( config:SimpleNamespace ) -> list:
+    match getattr(config, 'buildtool', None):
+        case 'cmake':
+            pass
+        case None:
+            setattr(config, 'buildtool', 'cmake' )
+        case _:
+            return []
+
+    config.script_parts += [cmake_check, cmake_configure, cmake_build]
+    config.verbs += ['configure', 'build']
+
+    setattr( config, 'cmake', {
+        'config_vars':['-DCMAKE_CXX_COMPILER_LAUNCHER=ccache'],
+        'build_vars':[],
+        'targets':[],
+        'build_dir':'build-cmake',
+    } | getattr( config, 'cmake', {}) )
+
     configs_out:list = []
-    buildtool = getattr(config, 'buildtool', None)
-    if buildtool is None:
-        setattr(config, 'buildtool', 'cmake' )
-    elif config.buildtool != 'cmake': return []
-
-    generators = {
-        'msvc':'Visual Studio 17 2022',
-        'ninja':'Ninja',
-        'ninja-multi':'Ninja Multi-Config',
-        'mingw':'MinGW Makefiles'
-    }
-
-    for generator in generators:
+    for config_type, generator in itertools.product(cmake_config_types, cmake_generators ):
         cfg = deepcopy(config)
+        cmake = cfg.cmake
+        cmake['config_type'] = config_type
+        cmake['generator'] = generator
 
-        cmake = getattr( cfg, 'cmake', {})
-        setattr( cfg, 'cmake', {
-            'config_vars':['-DCMAKE_CXX_COMPILER_LAUNCHER=ccache'],
-            'build_vars':[],
-            'targets':['all'],
-            'gen':generator,
-            'generator':generators[generator],
-            'build_type':build_type,
-            'build_dir':'build-cmake',
-        } | cmake )
+        short_gen = cmake_generators[generator]
+        short_type = cmake_config_types[config_type]
 
-        match generator:
+        match short_gen:
             case 'msvc':
-                if cfg.toolchain.name != generator: continue
+                if cfg.toolchain.name != short_gen: continue
                 _A = {'x86_32':'Win32', 'x86_64':'x64', 'arm64':'ARM64'}
-                cfg.cmake['config_vars'].append( f'-A {_A[cfg.arch]}')
-                cfg.cmake['build_vars'].append(f'--config {build_type}')
-                cfg.cmake['tool_vars'] = ['-nologo', '-verbosity:normal', "-consoleLoggerParameters:'ShowCommandLine;ForceNoAlign'"]
+                cmake['config_vars'].append( f'-A {_A[cfg.arch]}')
+                cmake['build_vars'].append(f'--config {config_type}')
+                # cmake['tool_vars'] = ['-nologo', '-verbosity:normal', "-consoleLoggerParameters:'ShowCommandLine;ForceNoAlign'"]
 
             case 'ninja':
-                cfg.cmake['config_vars'].append(f'-DCMAKE_BUILD_TYPE={build_type}')
+                cmake['config_vars'].append(f'-DCMAKE_BUILD_TYPE={config_type}')
+                cmake['build_dir'] += f'-{short_type}'
 
             case 'ninja-multi':
-                cfg.cmake['build_vars'].append(f'--config {build_type}')
+                cmake['build_vars'].append(f'--config {config_type}')
 
             case 'mingw':
                 if cfg.toolchain.name != 'mingw64': continue
-                cfg.cmake['config_vars'].append(f'-DCMAKE_BUILD_TYPE={build_type}')
+                cmake['config_vars'].append(f'-DCMAKE_BUILD_TYPE={config_type}')
+                cmake['build_dir'] += f'-{short_type}'
             case _:
                 continue
 
         configs_out.append( cfg )
     return configs_out
 
-def expand_host( config:SimpleNamespace ) -> list:
+def short_host() -> str:
     import sys
-
     bits = "64" if sys.maxsize > 2**32 else "32"
-
-    match sys.platform:
-        case 'linux':
-            host = f'l{bits}'
-        case 'darwin':
-            host = f'd{bits}'
-        case 'win32':
-            host = f'w{bits}'
-        case 'cygwin':
-            host = f'c{bits}'
-        case _: # 'aix', 'android', 'emscripten', 'ios', 'wasi'
-            # I am not aware of any compilers for these platforms yet
-            return []
-
-    setattr( config, 'host', host )
-    return [config]
+    return f'{sys.platform[0]}{bits}'
 
 def expand_host_env( config:SimpleNamespace, opts:SimpleNamespace ) -> list:
-    configs_out:list = expand( [config], expand_host)
-    configs_out = expand( configs_out, expand_toolchains, opts.toolchains )
+    setattr( config, 'host', short_host() )
+
+    configs_out = expand( [config], expand_toolchains, opts.toolchains )
 
     # configs_out = expand( configs_out, expand_buildtool )
+    for config in configs_out:
+        if not getattr(config, 'name', None):
+            setattr(config, 'name', f'{config.host}.{config.toolchain.name}.{config.arch}.{config.platform}')
 
     return configs_out

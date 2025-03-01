@@ -29,6 +29,7 @@ def func_to_string( func ) -> str:
     lines:list = ['']
     skip = True
     source = inspect.getsource( func )
+
     for line in source.splitlines():
         if skip:
             skip = '# start_script' not in line
@@ -88,6 +89,7 @@ def write_preamble(buffer:IO, project: SimpleNamespace):
         "stats:dict = {}",
         "config:dict = { 'ok': True }",
     ]
+    # TODO add checking for required modules and bail nicely.
     buffer.write( '\n'.join( lines ) )
     buffer.write('\n\n')
 
@@ -97,8 +99,6 @@ def write_section( buffer:IO, section:SimpleNamespace, section_name:str ):
     buffer.writelines(['\n',codebox,'\n'])
     write_namespace( buffer, section, section_name )
     buffer.writelines(['\n', f"config['{section_name}'] = {section_name}", '\n'])
-    for part in getattr( section, f'script_parts', [] ):
-        buffer.write( func_to_string( part ) )
 
 # MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -121,6 +121,10 @@ def generate_build_scripts( opts:SimpleNamespace ):
                 write_section( script, build.toolchain, 'toolchain' )
                 write_section( script, project, 'project' )
                 write_section( script, build, 'build' )
+
+                for section in [project.opts, build.toolchain, project, build]:
+                    for part in getattr( section, f'script_parts', [] ):
+                        script.write( func_to_string( part ) )
 
     h("[green]OK")
 

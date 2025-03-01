@@ -1,50 +1,79 @@
-import sys
 import copy
-
 from types import SimpleNamespace
-from share.expand_config import expand_host_env
 
+from share.expand_config import cmake_config_types
 from share.script_preamble import *
 
-project_config = SimpleNamespace(**{
-    'gitdef':{
-        'url':"https://github.com/enetheru/godot-cpp-test.git/",
-        'ref':"main",
-    },
-    'build_configs' : {}
-})
+# MARK: Generate
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ██████  ███████ ███    ██ ███████ ██████   █████  ████████ ███████        │
+# │ ██       ██      ████   ██ ██      ██   ██ ██   ██    ██    ██             │
+# │ ██   ███ █████   ██ ██  ██ █████   ██████  ███████    ██    █████          │
+# │ ██    ██ ██      ██  ██ ██ ██      ██   ██ ██   ██    ██    ██             │
+# │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
+# ╰────────────────────────────────────────────────────────────────────────────╯
 
+def generate( opts:SimpleNamespace ):
+    from godot.config import godot_platforms
+    from godot.config import godot_arch
 
-def base_config() -> SimpleNamespace:
-    return SimpleNamespace( **{
-        "name": '',
+    from share.expand_config import expand_host_env, cmake_generators, expand_cmake, expand
+    from share.snippets import source_git
+
+    project = SimpleNamespace(**{
+        'name':'godot-cpp-test',
+        'gitdef':{
+            'url':"https://github.com/enetheru/godot-cpp-test.git/",
+            'ref':"main",
+        },
+        'build_configs' : {}
     })
+
+
+    build_base = SimpleNamespace(**{
+        'verbs':['source'],
+        'script_parts':[source_git]
+    })
+
+    builds = expand_host_env( build_base, opts )
+    builds = expand( builds,  expand_cmake )
+
+    # Rename
+    for build in builds:
+
+        toolchain = build.toolchain.name
+        arch = godot_arch[build.arch]
+        platform = godot_platforms[build.platform]
+
+        cmake = build.cmake
+        short_gen = cmake_generators[cmake['generator']]
+        short_type = cmake_config_types[cmake['config_type']]
+
+        name_parts = [
+            build.host,
+            toolchain if toolchain != 'emscripten' else None,
+            platform if build.platform != 'android' else None,
+            arch if arch != 'wasm32' else None,
+            short_gen,
+            short_type
+        ]
+        build.name = '.'.join(filter(None,name_parts))
+
+        srcdir_parts = [
+            build.host,
+            toolchain,
+            short_gen if short_gen != build.toolchain.name else None
+        ]
+        build.source_dir = '.'.join(filter(None, srcdir_parts))
+
+    project.build_configs = {v.name: v for v in builds }
+    return { project.name: project }
 
 variations = ['default',
     'double',
     'nothreads',
     'hotreload'
     'exceptions']
-
-# MARK: Notes
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _  _     _                                                                │
-# │ | \| |___| |_ ___ ___                                                      │
-# │ | .` / _ \  _/ -_|_-<                                                      │
-# │ |_|\_\___/\__\___/__/                                                      │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-# =======================[ Emscripten ]========================-
-# latest version gives this error
-# scons: *** [bin\.web_zip\godot.editor.worker.js] The system cannot find the file specified
-# https://forum.godotengine.org/t/error-while-building-godot-4-3-web-template/86368
-
-# Official Requirements:
-# godotengine - 4.0+     | Emscripten 1.39.9
-# godotengine - 4.2+     | Emscripten 3.1.39
-# godotengine - master   | Emscripten 3.1.62
-
-# But in the github action runner, it's 3.1.64
-# And all of the issues related show 3.1.64
 
 # MARK: Scripts
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
@@ -169,7 +198,7 @@ def configure_variant( config:SimpleNamespace ) -> bool:
     return True
 
 # MARK: CMake
-def expand_cmake( config:SimpleNamespace ) -> list:
+def expand_cmake2( config:SimpleNamespace ) -> list:
     config.name += ".cmake"
 
     setattr(config, 'script', cmake_script )
@@ -286,22 +315,5 @@ def platforms( config:SimpleNamespace ) -> list:
 
         configs_out.append(cfg)
     return configs_out
-
-def expand( configs:list, func ) -> list:
-    configs_out:list = []
-    for config in configs:
-        configs_out += func( config )
-    return configs_out
         
-def generate( opts:SimpleNamespace ):
-    configs:list = expand_host_env( base_config(), opts )
 
-    configs = expand( configs, platforms )
-    configs = expand( configs, variants )
-    configs = expand( configs, build_tools )
-
-
-    for config in configs:
-        project_config.build_configs[config.name] = config
-
-    return {}

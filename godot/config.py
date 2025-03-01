@@ -4,6 +4,28 @@ from types import SimpleNamespace
 from share.expand_config import expand_host_env, expand
 from share.script_preamble import *
 
+godot_platforms = {
+    'android':'android',
+    'darwin':'macos',
+    'emscripten':'web',
+    'ios':'ios',
+    'linux':'linux',
+    'win32':'windows'
+}
+godot_arch = {
+    'armv32': 'arm32',
+    'armv7': 'arm32',
+    'armeabi-v7a': 'arm32',
+    'arm64':'arm64',
+    'arm64-v8a':'arm64',
+    'aarch64':'arm64',
+    'x86_32':'x86_32',
+    'i686':'x86_32',
+    'x86':'x86_32',
+    'x86_64':'x86_64',
+    'wasm32':'wasm32'
+}
+
 project_base:dict = {
     'name':'godot',
     'verbs':['fetch'],
@@ -255,27 +277,6 @@ def generate( opts:SimpleNamespace ) -> dict:
     })
 
     configs = expand_host_env( config_base, opts )
-    godot_platforms = {
-        'android':'android',
-        'darwin':'macos',
-        'emscripten':'web',
-        'ios':'ios',
-        'linux':'linux',
-        'win32':'windows'
-    }
-    godot_arch = {
-        'armv32': 'arm32',
-        'armv7': 'arm32',
-        'armeabi-v7a': 'arm32',
-        'arm64':'arm64',
-        'arm64-v8a':'arm64',
-        'aarch64':'arm64',
-        'x86_32':'x86_32',
-        'i686':'x86_32',
-        'x86':'x86_32',
-        'x86_64':'x86_64',
-        'wasm32':'wasm32'
-    }
     for cfg in configs:
         cfg.name = [cfg.host, cfg.toolchain.name, cfg.arch]
         cfg.source_dir = [cfg.host, cfg.toolchain.name]

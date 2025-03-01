@@ -143,6 +143,7 @@ def import_toolchains( opts:SimpleNamespace ) -> dict:
 
     # Import toolchain modules.
     toolchains: dict[str,SimpleNamespace] = {}
+    hu()
     for file in opts.path.glob( toolchain_glob ):
         if opts.verbose: h(file)
 
@@ -168,6 +169,7 @@ def import_toolchains( opts:SimpleNamespace ) -> dict:
         except Exception as e:
             if opts.debug: raise e
             else: hu( f'[red]{e}')
+    hd()
 
     # Filter the results with the toolchain-regex
     toolchains = {k: v for k, v in toolchains.items() if re.search( opts.toolchain_regex, v.name )}
@@ -405,9 +407,13 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     project = build.project
     # Skip the build config if there are no actions to perform
 
+    console.line()
+    s1( f'Process: {build.name}' )
+    if opts.verbose: write_namespace( pretendio, build, 'build')
+
     setattr( build, 'stats', {
-        "status": 'dnf',
-        'duration':'dnr',
+        'status': "dnf",
+        'duration':"dnr",
         'subs':{}
     })
     stats = build.stats
@@ -438,8 +444,6 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     section = Section(f"Run Script")
     section.start()
     h( build.script_path.as_posix() )
-
-    if opts.verbose: write_namespace( pretendio, build, 'build')
 
     # ==================[ Print Configuration ]====================-
     from rich.panel import Panel
@@ -504,6 +508,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         except KeyboardInterrupt as e: raise e
         print("continuing...")
     except Exception as e:
+        if opts.debug: raise e
         print( "Exception raised")
         end_time = datetime.now()
         stats |= {
@@ -565,6 +570,7 @@ def process_project( opts:SimpleNamespace, project:SimpleNamespace ):
     log_file = open( file=log_path, mode='w', buffering=1, encoding="utf-8" )
     project_console = Console( file=log_file, force_terminal=True )
     console.tee( project_console , project.name )
+    console.line()
     s1( f'Process: {project.name}' )
 
     # ================[ project Heading / Config ]==================-
@@ -649,7 +655,7 @@ def show_statistics( opts:SimpleNamespace ):
                     colour = "red"
 
             r.append(f"[{colour}]{status}[/{colour}]")
-            r.append(str(build.stats['duration'])[:-3])
+            r.append(str(build.stats['duration']))
 
             subs = build.stats.get('subs', {})
             for column_name in sub_columns:

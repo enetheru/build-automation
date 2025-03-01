@@ -18,6 +18,7 @@ def source_git():
     build:dict = {}
     # start_script
 
+    # MARK: Git-Checkout
     #[=================================[ Source ]=================================]
     from git.exc import GitCommandError
     from rich.panel import Panel
@@ -131,6 +132,7 @@ def cmake_check():
     build:dict = {}
     # start_script
 
+    # MARK: CMake-Check
     #[=============================[ CMake-Check ]=============================]
     cmake = build['cmake']
 
@@ -165,6 +167,7 @@ def cmake_configure():
     toolchain:dict = {}
     # start_script
 
+    # MARK: CMake-Configure
     #[===========================[ CMake-Configure ]===========================]
     cmake = build['cmake']
 
@@ -211,12 +214,13 @@ def cmake_build():
     stats:dict = {}
     # start_script
 
+    # MARK: CMake-Build
     #[=============================[ CMake-Build ]=============================]
     import copy
     cmake = build['cmake']
 
     if config['ok'] and 'build' in opts['build_actions']:
-        h2("CMake Build")
+        t2("CMake Build")
         console.set_window_title('Build - {name}')
 
         build_path:Path = cmake['build_path']
@@ -229,17 +233,29 @@ def cmake_build():
         build_opts += cmake.get("build_vars", [])
 
         with Timer(name='build') as timer:
-            for target in cmake["targets"]:
-                s2(f" Building target: {target} ")
-                target_opts = copy.copy(build_opts)
-                target_opts.append(f" --target {target}")
+            targets = ' '.join(cmake.get('targets', []))
+            s2(f" Building targets: {targets or 'default'} ")
+            target_opts = copy.copy(build_opts)
+            if targets:
+                target_opts.append(f" --target {targets}")
 
-                if "tool_vars" in cmake:
-                    target_opts.append('--')
-                    target_opts += cmake["tool_vars"]
+            if "tool_vars" in cmake:
+                target_opts.append('--')
+                target_opts += cmake["tool_vars"]
 
-                stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
-                print('')
+            stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
+            print('')
+            # for target in cmake["targets"]:
+            #     s2(f" Building target: {target} ")
+            #     target_opts = copy.copy(build_opts)
+            #     target_opts.append(f" --target {target}")
+            #
+            #     if "tool_vars" in cmake:
+            #         target_opts.append('--')
+            #         target_opts += cmake["tool_vars"]
+            #
+            #     stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
+            #     print('')
 
         send()
         stats['build'] = timer.get_dict()
