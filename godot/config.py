@@ -91,10 +91,12 @@ def generate( opts:SimpleNamespace ) -> dict:
 
     configs = expand_host_env( config_base, opts )
     for cfg in configs:
-        cfg.name = [cfg.host, cfg.toolchain.name, cfg.arch]
+        platform = godot_platforms[cfg.platform]
+        arch = godot_arch[cfg.arch]
+        cfg.name = [cfg.host, cfg.toolchain.name, platform, arch]
         cfg.source_dir = [cfg.host, cfg.toolchain.name]
-        cfg.scons['build_vars'].append(f'platform={godot_platforms[cfg.platform]}')
-        cfg.scons['build_vars'].append(f'arch={godot_arch[cfg.arch]}')
+        cfg.scons['build_vars'].append(f'platform={platform}')
+        cfg.scons['build_vars'].append(f'arch={arch}')
 
     configs = expand_func( configs, expand_variations )
 
