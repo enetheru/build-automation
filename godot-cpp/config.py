@@ -1,15 +1,7 @@
 import copy
-from subprocess import CompletedProcess
-from threading import settrace
 from types import SimpleNamespace
 
-from share.expand_config import (
-    expand_host_env, expand_func, expand_list, expand_cmake, cmake_generators,
-    cmake_config_types
-)
 from share.script_preamble import *
-
-
 
 # MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -22,6 +14,10 @@ from share.script_preamble import *
 def generate( opts:SimpleNamespace ) -> dict:
     from godot.config import godot_platforms, godot_arch
     from share.snippets import source_git, show_stats
+    from share.expand_config import (
+        expand_host_env, expand_func, expand_list, expand_cmake, cmake_generators,
+        cmake_config_types
+    )
 
     name = 'godot-cpp'
 
@@ -104,6 +100,15 @@ def generate( opts:SimpleNamespace ) -> dict:
 # ║                 ███████  ██████ ██   ██ ██ ██         ██    ███████                    ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
+# MARK: Testing
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  _____       _   _                                                         │
+# │ |_   _|__ __| |_(_)_ _  __ _                                               │
+# │   | |/ -_|_-<  _| | ' \/ _` |                                              │
+# │   |_|\___/__/\__|_|_||_\__, |                                              │
+# │                        |___/                                               │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
 def test_script():
     console = rich.console.Console()
     config:dict = {}
@@ -114,7 +119,7 @@ def test_script():
 
     #[==================================[ Test ]==================================]
     from rich.panel import Panel
-    from subprocess import SubprocessError
+    from subprocess import SubprocessError, CompletedProcess
     from share.format import p
     from json import dumps
 
@@ -391,16 +396,51 @@ def pre_cmake():
         profile_path:Path = build['source_path'] / cmake['godot_build_profile']
         cmake['config_vars'].append( f'-DGODOT_BUILD_PROFILE="{profile_path.as_posix()}"' )
 
-
-# MARK: Configure
+# MARK: Expansion
 # ╭────────────────────────────────────────────────────────────────────────────╮
-# │  ██████  ██████  ███    ██ ███████ ██  ██████  ██    ██ ██████  ███████    │
-# │ ██      ██    ██ ████   ██ ██      ██ ██       ██    ██ ██   ██ ██         │
-# │ ██      ██    ██ ██ ██  ██ █████   ██ ██   ███ ██    ██ ██████  █████      │
-# │ ██      ██    ██ ██  ██ ██ ██      ██ ██    ██ ██    ██ ██   ██ ██         │
-# │  ██████  ██████  ██   ████ ██      ██  ██████   ██████  ██   ██ ███████    │
+# │ ███████ ██   ██ ██████   █████  ███    ██ ███████ ██  ██████  ███    ██    │
+# │ ██       ██ ██  ██   ██ ██   ██ ████   ██ ██      ██ ██    ██ ████   ██    │
+# │ █████     ███   ██████  ███████ ██ ██  ██ ███████ ██ ██    ██ ██ ██  ██    │
+# │ ██       ██ ██  ██      ██   ██ ██  ██ ██      ██ ██ ██    ██ ██  ██ ██    │
+# │ ███████ ██   ██ ██      ██   ██ ██   ████ ███████ ██  ██████  ██   ████    │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
+# MARK: BuildTools
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ___      _ _    _ _____         _                                         │
+# │ | _ )_  _(_) |__| |_   _|__  ___| |___                                     │
+# │ | _ \ || | | / _` | | |/ _ \/ _ \ (_-<                                     │
+# │ |___/\_,_|_|_\__,_| |_|\___/\___/_/__/                                     │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+def expand_buildtools( config:SimpleNamespace ) -> list[SimpleNamespace]:
+    from share.expand_config import expand_cmake
+
+    configs_out = []
+    for tool in ['scons', 'cmake']:
+        cfg = copy.deepcopy(config)
+
+        setattr(cfg, 'buildtool', tool )
+        match tool:
+            case 'scons':
+                configs_out += expand_scons( cfg )
+
+            case 'cmake':
+                cfg.script_parts += [pre_cmake]
+                setattr( cfg, 'cmake', {
+                    'godot_build_profile':'test/build_profile.json',
+                    'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
+                    'config_vars':  ['-DGODOT_ENABLE_TESTING=ON']
+                })
+                configs_out += expand_cmake( cfg )
+    return configs_out
+
+# MARK: Scons
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ___                                                                       │
+# │ / __| __ ___ _ _  ___                                                      │
+# │ \__ \/ _/ _ \ ' \(_-<                                                      │
+# │ |___/\__\___/_||_/__/                                                      │
+# ╰────────────────────────────────────────────────────────────────────────────╯
 def expand_scons( config:SimpleNamespace ) -> list[SimpleNamespace]:
     from godot.config import godot_platforms, godot_arch
 
@@ -420,15 +460,15 @@ def expand_scons( config:SimpleNamespace ) -> list[SimpleNamespace]:
     arch = godot_arch[config.arch]
 
     setattr( config, 'scons', {
-        'build_dir':'test',
-        "build_vars":[
-            "compiledb=yes",
-            f"platform={platform}",
-            f"arch={arch}",
-            "build_profile=build_profile.json",
-        ],
-        "targets": ["template_release", "template_debug", "editor"],
-    } | getattr( config, 'scons', {}) )
+                                  'build_dir':'test',
+                                  "build_vars":[
+                                      "compiledb=yes",
+                                      f"platform={platform}",
+                                      f"arch={arch}",
+                                      "build_profile=build_profile.json",
+                                  ],
+                                  "targets": ["template_release", "template_debug", "editor"],
+                              } | getattr( config, 'scons', {}) )
 
     match config.toolchain.name:
         case 'msvc' | 'android' | 'emscripten' | 'appleclang':
@@ -454,6 +494,14 @@ def expand_scons( config:SimpleNamespace ) -> list[SimpleNamespace]:
 
     return [config]
 
+# MARK: Variations
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │ __   __        _      _   _                                                │
+# │ \ \ / /_ _ _ _(_)__ _| |_(_)___ _ _  ___                                   │
+# │  \ V / _` | '_| / _` |  _| / _ \ ' \(_-<                                   │
+# │   \_/\__,_|_| |_\__,_|\__|_\___/_||_/__/                                   │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
 # MARK: Variant Config
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │ __   __        _          _      ___           __ _                        │
@@ -462,7 +510,6 @@ def expand_scons( config:SimpleNamespace ) -> list[SimpleNamespace]:
 # │   \_/\__,_|_| |_\__,_|_||_\__|  \___\___/_||_|_| |_\__, |                  │
 # │                                                    |___/                   │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-variations = { 'default' :lambda cfg:True }
 
 # MARK: double
 def variant_double( cfg:SimpleNamespace ) -> bool:
@@ -474,48 +521,21 @@ def variant_double( cfg:SimpleNamespace ) -> bool:
         case 'cmake':
             cfg.cmake["config_vars"].append("-DGODOT_PRECISION=double")
     return True
-variations['double'] = variant_double
 
-# TODO
-# * nothreads
-# * hotreload
-# * exceptions
-# * staticcpp
-# * debugcrt
-
-# MARK: Expansion
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │ ███████ ██   ██ ██████   █████  ███    ██ ███████ ██  ██████  ███    ██    │
-# │ ██       ██ ██  ██   ██ ██   ██ ████   ██ ██      ██ ██    ██ ████   ██    │
-# │ █████     ███   ██████  ███████ ██ ██  ██ ███████ ██ ██    ██ ██ ██  ██    │
-# │ ██       ██ ██  ██      ██   ██ ██  ██ ██      ██ ██ ██    ██ ██  ██ ██    │
-# │ ███████ ██   ██ ██      ██   ██ ██   ████ ███████ ██  ██████  ██   ████    │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-
-# MARK: BuildTools
-def expand_buildtools( config:SimpleNamespace ) -> list[SimpleNamespace]:
-    configs_out = []
-    for tool in ['scons', 'cmake']:
-        cfg = copy.deepcopy(config)
-
-        setattr(cfg, 'buildtool', tool )
-        match tool:
-            case 'scons':
-                configs_out += expand_scons( cfg )
-
-            case 'cmake':
-                cfg.script_parts += [pre_cmake]
-                setattr( cfg, 'cmake', {
-                    'godot_build_profile':'test/build_profile.json',
-                    'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
-                    'config_vars':  ['-DGODOT_ENABLE_TESTING=ON']
-                })
-                configs_out += expand_cmake( cfg )
-    return configs_out
-
-# MARK: Variant
 def expand_variant( config:SimpleNamespace ) -> list:
     configs_out:list = []
+
+    variations = {
+        'default': lambda cfg: True,
+        'double': variant_double
+        # TODO
+        # nothreads
+        # hotreload
+        # exceptions
+        # staticcpp
+        # debugcrt
+    }
+
     for variant, configure_func in variations.items():
         cfg = copy.deepcopy(config)
         setattr( cfg, 'variant', variant )
