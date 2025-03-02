@@ -1,63 +1,99 @@
 import copy
 from subprocess import CompletedProcess
+from threading import settrace
 from types import SimpleNamespace
-from typing import Any
 
-from share.expand_config import expand_host_env, expand
+from share.expand_config import (
+    expand_host_env, expand_func, expand_list, expand_cmake, cmake_generators,
+    cmake_config_types
+)
 from share.script_preamble import *
 
-project_base:dict[str,Any] = {
-    'name':'godot-cpp',
-    'gitdef':{
-        'url':"https://github.com/enetheru/godot-cpp.git/",
-        'ref':'master'
-    },
-}
 
-# MARK: Notes
+
+# MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮
-# │  _  _     _                                                                │
-# │ | \| |___| |_ ___ ___                                                      │
-# │ | .` / _ \  _/ -_|_-<                                                      │
-# │ |_|\_\___/\__\___/__/                                                      │
+# │  ██████  ███████ ███    ██ ███████ ██████   █████  ████████ ███████        │
+# │ ██       ██      ████   ██ ██      ██   ██ ██   ██    ██    ██             │
+# │ ██   ███ █████   ██ ██  ██ █████   ██████  ███████    ██    █████          │
+# │ ██    ██ ██      ██  ██ ██ ██      ██   ██ ██   ██    ██    ██             │
+# │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-# =======================[ Emscripten ]========================-
-# latest version gives this error
-# scons: *** [bin\.web_zip\godot.editor.worker.js] The system cannot find the file specified
-# https://forum.godotengine.org/t/error-while-building-godot-4-3-web-template/86368
+def generate( opts:SimpleNamespace ) -> dict:
+    from godot.config import godot_platforms, godot_arch
+    from share.snippets import source_git, show_stats
 
-# Official Requirements:
-# godotengine - 4.0+     | Emscripten 1.39.9
-# godotengine - 4.2+     | Emscripten 3.1.39
-# godotengine - master   | Emscripten 3.1.62
+    name = 'godot-cpp'
 
-# But in the github action runner, it's 3.1.64
-# And all of the issues related show 3.1.64
+    project = SimpleNamespace(**{
+        'name':name,
+        'path': opts.path / name,
+        'gitdef':{
+            'url':"https://github.com/enetheru/godot-cpp.git/",
+            'ref':'master'
+        },
+        # TODO rename all 'build_configs' to 'builds'
+        'build_configs' : dict[str,SimpleNamespace]()
+    })
 
-# Platform Mapping from python 3.13 to what godot-cpp scons expects
-godot_platforms = {
-    'android':'android',
-    'ios':'ios',
-    'linux':'linux',
-    'emscripten':'web',
-    'darwin':'macos',
-    'win32':'windows'
-    # aix, cygwin, wasi, are unsupported
-}
+    build_base = SimpleNamespace(**{
+        'verbs':['source'],
+        'script_parts':[source_git]
+    })
 
-godot_arch = {
-    'armv32': 'arm32',
-    'armv7': 'arm32',
-    'armeabi-v7a': 'arm32',
-    'arm64':'arm64',
-    'arm64-v8a':'arm64',
-    'aarch64':'arm64',
-    'x86_32':'x86_32',
-    'i686':'x86_32',
-    'x86':'x86_32',
-    'x86_64':'x86_64',
-    'wasm32':'wasm32'
-}
+    # Host environment toolchain and build tools
+    builds:list[SimpleNamespace] = expand_host_env( build_base, opts )
+    builds = expand_list( builds, 'buildtool', ['scons','cmake'] )
+    builds = expand_func( builds, expand_buildtools )
+
+    # target and variants
+    builds = expand_func( builds, expand_variant )
+
+    # Naming upto now.
+    for build in builds:
+
+        toolchain = build.toolchain.name
+        arch = godot_arch[build.arch]
+        platform = godot_platforms[build.platform]
+
+        name_parts = [
+            build.host,
+            toolchain if toolchain != 'emscripten' else None,
+            platform if build.platform != 'android' else None,
+            arch if arch != 'wasm32' else None,
+            build.variant
+        ]
+
+        srcdir_parts = [
+            build.host,
+            toolchain,
+            build.variant
+        ]
+
+        if build.buildtool == 'scons':
+            name_parts += ['scons']
+            srcdir_parts += ['scons']
+
+        elif build.buildtool == 'cmake':
+            cmake = build.cmake
+            short_gen = cmake_generators[cmake['generator']]
+            short_type = cmake_config_types[cmake['config_type']]
+            name_parts += [
+                short_gen if build.buildtool == 'cmake' else None,
+                short_type if build.buildtool == 'cmake' else None,
+            ]
+            srcdir_parts += [
+                short_gen if short_gen != build.toolchain.name else None
+            ]
+
+        build.name = '.'.join(filter(None,name_parts))
+        build.source_dir = '.'.join(filter(None, srcdir_parts))
+
+        build.verbs += ['test']
+        build.script_parts += [test_script, show_stats]
+
+    project.build_configs = {v.name: v for v in builds }
+    return { project.name: project }
 
 # MARK: Scripts
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
@@ -365,90 +401,58 @@ def pre_cmake():
 # │  ██████  ██████  ██   ████ ██      ██  ██████   ██████  ██   ██ ███████    │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-def gen_scons( cfg:SimpleNamespace ) -> bool:
-    cfg.verbs += ['build', 'clean']
-    cfg.script_parts +=  [check_scons, build_scons, clean_scons,]
+def expand_scons( config:SimpleNamespace ) -> list[SimpleNamespace]:
+    from godot.config import godot_platforms, godot_arch
 
-    setattr(cfg, 'scons', {
-        'build_dir':'test',
-        "build_vars":["compiledb=yes", 'build_profile=build_profile.json'],
-        "targets": ["template_release", "template_debug", "editor"],
-    } )
-
-    cfg.scons["build_vars"].append(f'platform={godot_platforms[cfg.platform]}')
-
-    match cfg.toolchain.name:
-        case 'android':
-            android_abi = {
-                'armeabi-v7a': 'arm32',
-                'arm64-v8a':'arm64',
-                'x86':'x86_32',
-                'x86_64':'x86_64'
-            }
-            cfg.scons["build_vars"].append(f'arch={android_abi[cfg.arch]}')
-
-        case 'emscripten':
+    match getattr(config, 'buildtool', None):
+        case 'scons':
             pass
+        case None:
+            setattr(config, 'buildtool', 'scons' )
+        case _: #ignore if buildtool is something other than None or scons
+            return [config]
 
-        case "msvc" | 'appleclang':
-            cfg.scons['build_vars'].append(f'arch={cfg.arch}')
 
+    config.verbs += ['build', 'clean']
+    config.script_parts +=  [check_scons, build_scons, clean_scons,]
+
+    platform = godot_platforms[config.platform]
+    arch = godot_arch[config.arch]
+
+    setattr( config, 'scons', {
+        'build_dir':'test',
+        "build_vars":[
+            "compiledb=yes",
+            f"platform={platform}",
+            f"arch={arch}",
+            "build_profile=build_profile.json",
+        ],
+        "targets": ["template_release", "template_debug", "editor"],
+    } | getattr( config, 'scons', {}) )
+
+    match config.toolchain.name:
+        case 'msvc' | 'android' | 'emscripten' | 'appleclang':
+            pass
         case "llvm":
-            if cfg.arch != 'x86_64': return False
-            cfg.scons["build_vars"].append("use_llvm=yes")
-            cfg.scons['build_vars'].append(f'arch={cfg.arch}')
+            if config.arch != 'x86_64': return []
+            config.scons["build_vars"].append("use_llvm=yes")
 
         case "llvm-mingw":
-            archmap = {
-                'armv7': 'arm32',
-                'aarch64':'arm64',
-                'i686':'x86_32',
-                'x86_64':'x86_64'
-            }
-            cfg.scons["build_vars"].append(f'arch={archmap[cfg.arch]}')
-            cfg.scons["build_vars"].append("use_mingw=yes")
-            cfg.scons["build_vars"].append("use_llvm=yes")
-            cfg.scons["build_vars"].append(f"mingw_prefix={cfg.toolchain.sysroot}")
+            config.scons["build_vars"].append("use_mingw=yes")
+            config.scons["build_vars"].append("use_llvm=yes")
+            config.scons["build_vars"].append(f"mingw_prefix={config.toolchain.sysroot}")
 
         case "msys2-clang64":
-            cfg.scons['build_vars'].append(f'arch={cfg.arch}')
-            cfg.scons["build_vars"].append("use_mingw=yes")
-            cfg.scons["build_vars"].append("use_llvm=yes")
+            config.scons["build_vars"].append("use_mingw=yes")
+            config.scons["build_vars"].append("use_llvm=yes")
 
         case "mingw64" | "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
-            cfg.scons['build_vars'].append(f'arch={cfg.arch}')
-            cfg.scons["build_vars"].append("use_mingw=yes")
+            config.scons["build_vars"].append("use_mingw=yes")
 
         case _:
-            return False
+            return []
 
-    return True
-
-def gen_cmake( cfg:SimpleNamespace ) -> bool:
-    from share.snippets import cmake_check, cmake_configure, cmake_build
-    cfg.verbs += ['configure', 'build']
-    cfg.script_parts += [pre_cmake, cmake_check, cmake_configure, cmake_build]
-
-    setattr(cfg, 'cmake', {
-        'godot_build_profile':'test/build_profile.json',
-        'config_vars':['-DGODOT_ENABLE_TESTING=ON', '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache'],
-        'build_vars':[],
-        'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
-    } )
-    # TODO make ccache soemthing that is detected before use.
-
-    if cfg.toolchain.name == 'android':
-        cfg.cmake['config_vars'] += ['-DANDROID_PLATFORM=latest', f'-DANDROID_ABI={cfg.arch}' ]
-
-    if cfg.toolchain.name == 'llvm-mingw':
-        cfg.cmake['config_vars'] += [f'-DLLVM_MINGW_PROCESSOR={cfg.arch}']
-
-    return True
-
-build_tools = {
-    'scons': gen_scons,
-    'cmake': gen_cmake
-}
+    return [config]
 
 # MARK: Variant Config
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -488,154 +492,36 @@ variations['double'] = variant_double
 # │ ███████ ██   ██ ██      ██   ██ ██   ████ ███████ ██  ██████  ██   ████    │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
+# MARK: BuildTools
+def expand_buildtools( config:SimpleNamespace ) -> list[SimpleNamespace]:
+    configs_out = []
+    for tool in ['scons', 'cmake']:
+        cfg = copy.deepcopy(config)
+
+        setattr(cfg, 'buildtool', tool )
+        match tool:
+            case 'scons':
+                configs_out += expand_scons( cfg )
+
+            case 'cmake':
+                cfg.script_parts += [pre_cmake]
+                setattr( cfg, 'cmake', {
+                    'godot_build_profile':'test/build_profile.json',
+                    'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
+                    'config_vars':  ['-DGODOT_ENABLE_TESTING=ON']
+                })
+                configs_out += expand_cmake( cfg )
+    return configs_out
+
 # MARK: Variant
 def expand_variant( config:SimpleNamespace ) -> list:
     configs_out:list = []
     for variant, configure_func in variations.items():
         cfg = copy.deepcopy(config)
-
         setattr( cfg, 'variant', variant )
-        cfg.name.append( variant )
 
         if not configure_func( cfg ): # Skip variants who's configuration step fails.
             continue
 
-        # TODO If I want to test against multiple binaries then I need to specify multiple.
-        '{root}/godot/{host}.{toolchain}.{platform}.{arch}.{variant}/bin/godot.{platform}.{target}[.double].{arch}[.llvm].console.exe'
-        # For now I will just focus on the current OS
-        setattr(cfg, 'godot_e', Path('C:/build/godot/w64.msvc/bin/godot.windows.editor.x86_64.console'))
-        setattr(cfg, 'godot_tr', Path('C:/build/godot/w64.msvc/bin/godot.windows.template_release.x86_64.console'))
-        setattr(cfg, 'godot_td', Path('C:/build/godot/w64.msvc/bin/godot.windows.template_debug.x86_64.console'))
-
         configs_out.append( cfg )
     return configs_out
-
-
-# MARK: Generators
-def expand_generators( config:SimpleNamespace ) -> list:
-    configs_out:list = []
-
-    for generator in  ['msvc', 'ninja', 'ninja-multi', 'mingw']:
-        cfg = copy.deepcopy(config)
-
-        cfg.buildtool += f'.{generator}'
-
-        match generator:
-            case 'msvc':
-                _A = {'x86_32':'Win32', 'x86_64':'x64', 'arm64':'ARM64'}
-                if cfg.toolchain.name != generator: continue
-                cfg.cmake['generator'] = 'Visual Studio 17 2022'
-                cfg.cmake['config_vars'].append( f'-A {_A[cfg.arch]}')
-                cfg.cmake['build_vars'].append('--config Release')
-                cfg.cmake['tool_vars'] = ['-nologo', '-verbosity:normal', "-consoleLoggerParameters:'ShowCommandLine;ForceNoAlign'"]
-
-            case 'ninja':
-                cfg.cmake['generator'] = 'Ninja'
-                cfg.cmake['config_vars'].append('-DCMAKE_BUILD_TYPE=Release')
-
-            case 'ninja-multi':
-                cfg.cmake['generator'] = 'Ninja Multi-Config'
-                cfg.cmake['build_vars'].append('--config Release')
-
-            case 'mingw':
-                if cfg.toolchain.name != 'mingw64': continue
-                cfg.cmake['generator'] = 'MinGW Makefiles'
-                cfg.cmake['config_vars'].append('-DCMAKE_BUILD_TYPE=Release')
-            case _:
-                continue
-
-        configs_out.append( cfg )
-    return configs_out
-
-# MARK: BuildTools
-def expand_buildtools( config:SimpleNamespace ) -> list:
-    configs_out:list = []
-    for buildtool, configure_func in build_tools.items():
-        cfg = copy.deepcopy(config)
-
-        setattr(cfg, 'buildtool', buildtool )
-        if not configure_func( cfg ):
-            continue
-
-        match buildtool:
-            case 'scons':
-                configs_out.append( cfg )
-
-            case 'cmake':
-                configs_out += expand_generators( cfg )
-
-    return configs_out
-
-# MARK: Generate
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  ██████  ███████ ███    ██ ███████ ██████   █████  ████████ ███████        │
-# │ ██       ██      ████   ██ ██      ██   ██ ██   ██    ██    ██             │
-# │ ██   ███ █████   ██ ██  ██ █████   ██████  ███████    ██    █████          │
-# │ ██    ██ ██      ██  ██ ██ ██      ██   ██ ██   ██    ██    ██             │
-# │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
-# ╰────────────────────────────────────────────────────────────────────────────╯
-def generate( opts:SimpleNamespace ) -> dict:
-    from share.snippets import source_git, show_stats
-
-
-    project_base.update({
-        'path': opts.path / project_base['name'],
-        'build_configs': dict[str,SimpleNamespace]()
-    })
-    project = SimpleNamespace(**project_base )
-
-    config_base = SimpleNamespace(**{
-        'name':'',
-        'source_dir':'',
-        'gitdef':{},
-        'verbs':['source'],
-        'script_parts':[source_git]
-    })
-
-    # Host environment toolchain and build tools
-    configs:list[SimpleNamespace] = expand_host_env( config_base, opts )
-    configs = expand( configs, expand_buildtools )
-
-    # Naming upto now.
-    for cfg in configs:
-        # Host
-        cfg.name = [cfg.host]
-        cfg.source_dir = [cfg.host]
-
-        # Toolchain
-        if cfg.toolchain.name not in  ['android', 'emscripten']:
-            cfg.name.append(cfg.toolchain.name)
-            cfg.source_dir.append(cfg.toolchain.name)
-
-        # Platform
-        cfg.name.append(godot_platforms[cfg.platform])
-
-        if len(cfg.toolchain.platform) > 1:
-            cfg.source_dir.append(cfg.platform)
-
-        # arch
-        if cfg.arch != 'wasm32':
-            cfg.name.append( godot_arch[cfg.arch] )
-
-        if len(cfg.toolchain.arch) > 1:
-            cfg.source_dir.append( cfg.arch )
-
-    # target and variants
-    configs = expand( configs, expand_variant )
-
-    for cfg in sorted( configs, key=lambda value: value.name ):
-        cfg.verbs += ['test']
-        cfg.script_parts += [test_script, show_stats]
-
-        cfg.name.append( cfg.buildtool )
-        cfg.source_dir.append( cfg.buildtool )
-
-        if cfg.buildtool == 'cmake':
-            cfg.cmake['build_dir'] = f'build-{cfg.platform}-{cfg.arch}-{cfg.variant}'
-
-        if isinstance(cfg.name, list): cfg.name = '.'.join(cfg.name)
-        if isinstance(cfg.source_dir, list): cfg.source_dir = '.'.join(cfg.source_dir)
-
-        project.build_configs[cfg.name] = cfg
-
-    return {project.name:project }

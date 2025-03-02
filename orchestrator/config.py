@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from share.expand_config import expand, expand_host_env, expand_cmake, cmake_config_types, cmake_generators
+from share.expand_config import expand_func, expand_host_env, expand_cmake, cmake_config_types, cmake_generators
 
 from share.script_preamble import *
 
@@ -34,8 +34,7 @@ def generate( opts:SimpleNamespace ) -> dict:
 
     configs:list = expand_host_env( build_base, opts )
 
-    configs:list = expand( configs, expand_cmake )
-    print( len(configs))
+    configs:list = expand_func( configs, expand_cmake )
 
     for cfg in configs:
         cfg.script_parts += [show_stats]

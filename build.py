@@ -7,14 +7,12 @@ import sys
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
-from subprocess import CalledProcessError
 from time import sleep
 from types import SimpleNamespace
 from typing import IO
 
 import rich
 from rich.console import Console, Group
-from rich.panel import Panel
 from rich.pretty import pprint
 from rich.table import Table
 
@@ -41,6 +39,46 @@ def process_log_null( raw_file: IO, clean_file: IO ):
 
     for line in raw_file:
         clean_file.write( regex.sub('', line ) )
+
+def git_override( opts:SimpleNamespace):
+    from git import GitCommandError
+    import git
+
+    g = git.cmd.Git()
+
+    checked = {}
+    for project in opts.projects.values():
+        for build in project.build_configs.values():
+
+            gitdef:SimpleNamespace = SimpleNamespace(
+                **{k:v for k,v in project.gitdef.items() if v}
+                  | {k:v for k,v in build.gitdef.items() if v}
+                  | {k:v for k,v in opts.gitdef.items() if v})
+
+            ls_args = [gitdef.url, gitdef.ref]
+            ls_arg = ' '.join([gitdef.url, gitdef.ref])
+            remote_hash:str = ''
+            if ls_arg in checked:
+                remote_hash = checked[ls_arg]
+            else:
+                try:
+                    h( f"git ls-remote {ls_arg}" )
+                    response = g.ls_remote( *ls_args )
+                    if response: remote_hash = response.split()[0]
+                except GitCommandError as e:
+                    if opts.debug: raise e
+                    hu(f"[yellow]Unable to determine remote reference.")
+
+            if not remote_hash:
+                hu( f"disabling build: '{build.name}'" )
+                build.disabled = True
+                continue
+
+            hu(remote_hash)
+            checked[ ls_arg ] = remote_hash
+            build.gitdef['override'] = remote_hash
+            build.source_dir += f".{remote_hash[:7]}"
+            build.source_path = project.path / build.source_dir
 
 
 class PretendIO(StringIO):
@@ -409,7 +447,9 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
 
     console.line()
     s1( f'Process: {build.name}' )
-    if opts.verbose: write_namespace( pretendio, build, 'build')
+    if opts.verbose:
+        write_namespace( pretendio, build.toolchain, 'toolchain')
+        write_namespace( pretendio, build, 'build')
 
     setattr( build, 'stats', {
         'status': "dnf",
@@ -449,6 +489,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     from rich.panel import Panel
     from rich.syntax import Syntax
 
+    # Show the script.
     if opts.show:
         with open(build.script_path, "rt") as code_file:
             syntax = Syntax(code_file.read(),
@@ -508,7 +549,6 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         except KeyboardInterrupt as e: raise e
         print("continuing...")
     except Exception as e:
-        if opts.debug: raise e
         print( "Exception raised")
         end_time = datetime.now()
         stats |= {
@@ -518,11 +558,10 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         }
         print( "Status Updated after exception")
         panels = [Panel( str(e), title='Exception', title_align='left' )]
-        if errors:
-            panels.append( Panel( '\n'.join( errors ), title='stderr', title_align='left'))
+        if errors: panels.append( Panel( '\n'.join( errors ), title='stderr', title_align='left'))
 
-        print( Panel( Group(*panels),
-            expand=False, title='Errors', title_align='left', width=120 ) )
+        print( Panel( Group(*panels), expand=False, title='Errors', title_align='left', width=120 ) )
+        if opts.debug: raise e
 
     # TODO create a timeout for the processing, something reasonable.
     #   this should be defined in the build config as the largest possible build time that is expected.
@@ -717,24 +756,30 @@ def main():
     opts.toolchains = toolchains = import_toolchains(opts)
     opts.projects   = projects   = import_projects(opts)
 
+    if opts.gitoverride:
+        t3( "Processing Override" )
+        git_override(opts)
+
     # TODO if help in any of the system verbs then display a list of verb help items.
 
     # List only.
     if opts.list:
         with Section('List'):
-            t3('Toolchains')
+            t3(f'{len(toolchains)} Toolchains')
             h(f"Available Verbs: {opts.toolchain_verbs or None}")
             h('List:')
             for toolchain_name in toolchains:
                 hu(toolchain_name)
 
-            t3('Projects')
+            n_builds = 0
+            t3(f'{len(projects)} Projects')
             h(f"Available Verbs: {opts.project_verbs or None}")
             h('List:')
             for project_name,project in projects.items():
+                n_builds += len(project.build_configs)
                 hu(project_name)
 
-            t3('Project | Builds')
+            t3(f'{n_builds} Build Configurations')
             h(f"Available Verbs: {opts.build_verbs or None}")
             h('List:')
             for project_name,project in projects.items():

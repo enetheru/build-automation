@@ -1,17 +1,40 @@
 import copy
 from types import SimpleNamespace
 
-from share.expand_config import expand_host_env, expand
+from share.expand_config import expand_host_env, expand_func
 from share.script_preamble import *
 
+# MARK: Notes
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  _  _     _                                                                │
+# │ | \| |___| |_ ___ ___                                                      │
+# │ | .` / _ \  _/ -_|_-<                                                      │
+# │ |_|\_\___/\__\___/__/                                                      │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+# =======================[ Emscripten ]========================-
+# latest version gives this error
+# scons: *** [bin\.web_zip\godot.editor.worker.js] The system cannot find the file specified
+# https://forum.godotengine.org/t/error-while-building-godot-4-3-web-template/86368
+
+# Official Requirements:
+# godotengine - 4.0+     | Emscripten 1.39.9
+# godotengine - 4.2+     | Emscripten 3.1.39
+# godotengine - master   | Emscripten 3.1.62
+
+# But in the github action runner, it's 3.1.64
+# And all of the issues related show 3.1.64
+
+# Platform Mapping from python 3.13 to what godot-cpp scons expects
 godot_platforms = {
     'android':'android',
-    'darwin':'macos',
-    'emscripten':'web',
     'ios':'ios',
     'linux':'linux',
+    'emscripten':'web',
+    'darwin':'macos',
     'win32':'windows'
+    # aix, cygwin, wasi, are unsupported
 }
+
 godot_arch = {
     'armv32': 'arm32',
     'armv7': 'arm32',
@@ -34,6 +57,59 @@ project_base:dict = {
         'ref':'master'
     }
 }
+
+# MARK: Generate
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ██████  ███████ ███    ██ ███████ ██████   █████  ████████ ███████        │
+# │ ██       ██      ████   ██ ██      ██   ██ ██   ██    ██    ██             │
+# │ ██   ███ █████   ██ ██  ██ █████   ██████  ███████    ██    █████          │
+# │ ██    ██ ██      ██  ██ ██ ██      ██   ██ ██   ██    ██    ██             │
+# │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
+def generate( opts:SimpleNamespace ) -> dict:
+    from share.snippets import source_git, show_stats
+
+    project_base.update({
+        'path': opts.path / project_base['name'],
+        "build_configs": {}
+    })
+    project = SimpleNamespace(**project_base)
+
+
+    config_base = SimpleNamespace(**{
+        'name':[],
+        'variant':'null',
+        'source_dir':[],
+        'verbs':['source'],
+        'script_parts':[source_git, check_scons],
+        "scons": {
+            "targets": ["template_release", "template_debug", "editor"],
+            "build_vars":["compiledb=yes"]
+        }
+    })
+
+    configs = expand_host_env( config_base, opts )
+    for cfg in configs:
+        cfg.name = [cfg.host, cfg.toolchain.name, cfg.arch]
+        cfg.source_dir = [cfg.host, cfg.toolchain.name]
+        cfg.scons['build_vars'].append(f'platform={godot_platforms[cfg.platform]}')
+        cfg.scons['build_vars'].append(f'arch={godot_arch[cfg.arch]}')
+
+    configs = expand_func( configs, expand_variations )
+
+    configs = filter( None, [config_toolchains(cfg) for cfg in configs] )
+
+    for cfg in configs:
+        cfg.verbs += ['build','clean']
+
+        cfg.script_parts += [ build_scons, clean_scons, show_stats ]
+
+        if isinstance(cfg.name, list): cfg.name = '.'.join(cfg.name)
+        if isinstance(cfg.source_dir, list): cfg.source_dir = '.'.join(cfg.source_dir)
+        project.build_configs[cfg.name] = cfg
+
+    return {project.name:project}
 
 # MARK: Scripts
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
@@ -245,55 +321,4 @@ def expand_variations( config:SimpleNamespace ) -> list:
 
     return configs_out
 
-# MARK: Generate
-# ╭────────────────────────────────────────────────────────────────────────────╮
-# │  ██████  ███████ ███    ██ ███████ ██████   █████  ████████ ███████        │
-# │ ██       ██      ████   ██ ██      ██   ██ ██   ██    ██    ██             │
-# │ ██   ███ █████   ██ ██  ██ █████   ██████  ███████    ██    █████          │
-# │ ██    ██ ██      ██  ██ ██ ██      ██   ██ ██   ██    ██    ██             │
-# │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
-# ╰────────────────────────────────────────────────────────────────────────────╯
 
-def generate( opts:SimpleNamespace ) -> dict:
-    from share.snippets import source_git, show_stats
-
-    project_base.update({
-        'path': opts.path / project_base['name'],
-        "build_configs": {}
-    })
-    project = SimpleNamespace(**project_base)
-
-
-    config_base = SimpleNamespace(**{
-        'name':[],
-        'variant':'null',
-        'source_dir':[],
-        'verbs':['source'],
-        'script_parts':[source_git, check_scons],
-        "scons": {
-            "targets": ["template_release", "template_debug", "editor"],
-            "build_vars":["compiledb=yes"]
-        }
-    })
-
-    configs = expand_host_env( config_base, opts )
-    for cfg in configs:
-        cfg.name = [cfg.host, cfg.toolchain.name, cfg.arch]
-        cfg.source_dir = [cfg.host, cfg.toolchain.name]
-        cfg.scons['build_vars'].append(f'platform={godot_platforms[cfg.platform]}')
-        cfg.scons['build_vars'].append(f'arch={godot_arch[cfg.arch]}')
-
-    configs = expand( configs, expand_variations )
-
-    configs = filter( None, [config_toolchains(cfg) for cfg in configs] )
-    
-    for cfg in configs:
-        cfg.verbs += ['build','clean']
-
-        cfg.script_parts += [ build_scons, clean_scons, show_stats ]
-
-        if isinstance(cfg.name, list): cfg.name = '.'.join(cfg.name)
-        if isinstance(cfg.source_dir, list): cfg.source_dir = '.'.join(cfg.source_dir)
-        project.build_configs[cfg.name] = cfg
-
-    return {project.name:project}

@@ -9,7 +9,7 @@ from share.script_preamble import *
 # ║ ███████  ██████  ██████  ██   ████ ███████     ██████   ██████  ██ ███████ ██████      ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 def scons_build(config: dict):
-    h1("SCons Build")
+    t2("SCons Build")
     s1("SCons Build")
 
     opts:dict       = config['opts']

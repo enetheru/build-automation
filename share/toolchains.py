@@ -1,13 +1,9 @@
 import itertools
 import platform
-from pathlib import Path
-from types import SimpleNamespace
+from types import SimpleNamespace, MethodType
 from copy import deepcopy
 
-from rich.console import Console
-
-from share.format import *
-from share.run import stream_command
+from share.script_preamble import *
 
 # Since these things are getting a little complicated lets try to make a little example for myself.
 example = SimpleNamespace(**{
@@ -73,10 +69,10 @@ windows_toolchains.append( SimpleNamespace(**{
 # │ | |__| |_\ V /| |\/| |___| |\/| | | ' \ (_ |\ \/\/ /  │
 # │ |____|____\_/ |_|  |_|   |_|  |_|_|_||_\___| \_/\_/   │
 # ╰───────────────────────────────────────────────────────╯
-def llvm_mingw_expand( config:SimpleNamespace, toolchain:SimpleNamespace ) -> list:
+def llvm_mingw_expand( self, build:SimpleNamespace ) -> list:
     configs_out:list = []
-    for arch, platform in itertools.product(config.toolchain.arch, config.toolchain.platform ):
-        cfg = deepcopy(config)
+    for arch, platform in itertools.product(self.arch, self.platform ):
+        cfg = deepcopy(build)
 
         setattr( cfg, 'arch', arch )
         setattr( cfg, 'platform', platform )
@@ -87,18 +83,25 @@ def llvm_mingw_expand( config:SimpleNamespace, toolchain:SimpleNamespace ) -> li
         configs_out.append( cfg )
     return configs_out
 
-env = {k:v for k,v in os.environ.items()}
-env['PATH'] = f'C:/llvm-mingw/bin;{os.environ['PATH']}'
-windows_toolchains.append( SimpleNamespace(**{
-    'name':"llvm-mingw",
-    'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
-    'sysroot':Path('C:/llvm-mingw'),
-    "arch":['i686', 'x86_64', 'armv7', 'aarch64'],
-    'platform':['win32'],
-    'env': env,
-    'cmake': { 'toolchain':'share\\toolchain-llvm-mingw.cmake' },
-    'expand':llvm_mingw_expand
-}))
+def llvm_mingw_toolchain() -> SimpleNamespace:
+
+
+    env = {k:v for k,v in os.environ.items()}
+    env['PATH'] = f'C:/llvm-mingw/bin;{os.environ['PATH']}'
+
+    toolchain = SimpleNamespace(**{
+        'name':"llvm-mingw",
+        'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
+        'sysroot':Path('C:/llvm-mingw'),
+        "arch":['i686', 'x86_64', 'armv7', 'aarch64'],
+        'platform':['win32'],
+        'env': env,
+        'cmake': { 'toolchain':'share\\toolchain-llvm-mingw.cmake' },
+    })
+    setattr( toolchain, 'expand', MethodType(llvm_mingw_expand, toolchain) )
+    return toolchain
+
+windows_toolchains.append( llvm_mingw_toolchain())
 
 # MARK: MinGW64
 # ╭──────────────────────────────────────╮
@@ -168,37 +171,59 @@ windows_toolchains.append( SimpleNamespace(**{
 # │ /_/ \_\_||_\__,_|_| \___/_\__,_| │
 # ╰──────────────────────────────────╯
 # The variations of toolchains for mingw are listed here: https://www.mingw-w64.org/downloads/
-def android_update( toolchain:SimpleNamespace, config:SimpleNamespace, console:Console ):
+def android_update( self, opts:SimpleNamespace, console:Console ):
     import os
     from pathlib import Path
 
     console.set_window_title('Updating Android SDK')
     print(t2("Android Update"))
 
-    sdk_path = Path( toolchain.path )
+    sdk_path = Path( self.path )
     os.chdir(sdk_path / 'cmdline-tools/latest/bin')
 
     cmd_chunks = [
         'sdkmanager.bat',
         '--update',
-        '--verbose' if config['quiet'] is False else None,
+        '--verbose' if opts.quiet is False else None,
     ]
-    stream_command( ' '.join(filter(None, cmd_chunks)), dry=config['dry'] )
+    stream_command( ' '.join(filter(None, cmd_chunks)), dry=opts.dry )
 
-windows_toolchains.append( SimpleNamespace(**{
-    'name':'android',
-    'desc':'[Android](https://developer.android.com/tools/sdkmanager)',
-    'path':Path('C:/androidsdk'),
-    'verbs':['update'],
-    'update':android_update,
-    'arch':['armeabi-v7a','arm64-v8a','x86','x86_64'],
-    'platform':['android'],
-    'cmake':{
-        'toolchain':'C:/androidsdk/ndk/23.2.8568313/build/cmake/android.toolchain.cmake',
-        'ANDROID_PLATFORM': 'latest',
-        'ANDROID_ABI':platform.machine()
-    }
-}))
+def android_expand( self, config:SimpleNamespace ) -> list:
+    configs_out:list = []
+    for abi, platform in itertools.product(self.arch, self.android_platforms ):
+        cfg = deepcopy(config)
+
+        setattr( cfg, 'arch', abi )
+        setattr( cfg, 'platform', 'android' )
+
+        cfg.toolchain.cmake['config_vars'] = [
+            f'-DANDROID_PLATFORM={platform}',
+            f'-DANDROID_ABI={abi}'
+        ]
+
+        configs_out.append( cfg )
+
+    return configs_out
+
+def android_toolchain() -> SimpleNamespace:
+    toolchain = SimpleNamespace(**{
+        'name':'android',
+        'desc':'[Android](https://developer.android.com/tools/sdkmanager)',
+        'path':Path('C:/androidsdk'),
+        'verbs':['update'],
+        'arch':['armeabi-v7a','arm64-v8a','x86','x86_64'],
+        'platform':['android'],
+        'android_platforms':['latest'],
+        'cmake':{
+            'toolchain':'C:/androidsdk/ndk/23.2.8568313/build/cmake/android.toolchain.cmake',
+        }
+    })
+    setattr( toolchain, 'update', MethodType(android_update, toolchain) )
+    setattr( toolchain, 'expand', MethodType(android_expand, toolchain) )
+
+    return toolchain
+
+windows_toolchains.append( android_toolchain() )
 
 # MARK: Emscripten
 # ╭────────────────────────────────────────────╮
@@ -219,7 +244,10 @@ def emscripten_update( toolchain:SimpleNamespace, config:SimpleNamespace, consol
     os.chdir(emscripten_path)
     stream_command( 'git pull', dry=config.dry )
 
-def win32_emscripten_script( config:dict, toolchain:dict ):
+def win32_emscripten_script():
+    build:dict = {}
+    toolchain:dict = {}
+    opts:dict = {}
     # start_script
 
     # MARK: Emscripten
@@ -237,13 +265,13 @@ def win32_emscripten_script( config:dict, toolchain:dict ):
     stream_command( f'{cmd_prefix} "{emscripten_tool} list"',
         stdout_handler=emscripten_check,
         quiet=True,
-        dry=config['dry']
+        dry=opts['dry']
     )
 
     if not ('EMSDK' in os.environ):
         print(t2(f'Emscripten {emscripten_check.task.capitalize()}'))
-        stream_command( f'{cmd_prefix} "{emscripten_tool} {emscripten_check.task} {toolchain['version']}; python {config['script_path']}"',
-            dry=config['dry'] )
+        stream_command( f'{cmd_prefix} "{emscripten_tool} {emscripten_check.task} {toolchain['version']}; python {build['script_path']}"',
+            dry=opts['dry'] )
         quit()
 
 windows_toolchains.append( SimpleNamespace(**{
@@ -297,8 +325,14 @@ darwin_toolchains.append( SimpleNamespace(**{
 # │ |___|_|_|_/__/\__|_| |_| .__/\__\___|_||_| │
 # │                        |_|                 │
 # ╰────────────────────────────────────────────╯
-def darwin_emscripten_script( config:dict, toolchain:dict ):
-    from pathlib import Path
+def darwin_emscripten_script():
+    toolchain:dict = {}
+    opts:dict = {}
+    build:dict = {}
+    # start_script
+
+    # MARK: Emscripten
+    #[=============================[ Emscripten ]=============================]
     import stat
 
     cmd_prefix = f'{os.environ['SHELL']} -c'
@@ -312,17 +346,17 @@ def darwin_emscripten_script( config:dict, toolchain:dict ):
     stream_command( f'{cmd_prefix} "{emscripten_tool} list"',
         stdout_handler=emscripten_check,
         quiet=True,
-        dry=config['dry']
+        dry=opts['dry']
     )
 
     if not ('EMSDK' in os.environ):
         print(t2(f'Emscripten {emscripten_check.task.capitalize()}'))
         stream_command( f'{cmd_prefix} "{emscripten_tool} {emscripten_check.task} {toolchain['version']}"',
-            dry=config['dry'] )
+            dry=opts['dry'] )
 
         env_script = (toolchain['path'] / 'emsdk_env.sh').as_posix()
         os.chmod(env_script, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        stream_command( f'{cmd_prefix} "source {env_script}; python {config['script_path']}"', dry=config['dry'] )
+        stream_command( f'{cmd_prefix} "source {env_script}; python {build['script_path']}"', dry=opts['dry'] )
         quit()
 
 

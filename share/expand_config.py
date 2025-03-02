@@ -4,42 +4,33 @@ from types import SimpleNamespace
 
 from share.snippets import cmake_build, cmake_check, cmake_configure
 
-
-def expand( configs:list, func, *args ) -> list:
+def expand_func( configs:list[SimpleNamespace], func, *args ) -> list:
     configs_out:list = []
     for config in configs:
         if args: configs_out += func( config, *args )
         else: configs_out += func( config )
     return configs_out
 
-# MARK: Platform
-def expand_platform( config:SimpleNamespace ) -> list:
+
+def expand_list( configs:list[SimpleNamespace], prop:str, items:list ) -> list:
     configs_out:list = []
-    for platform in config.toolchain.platform:
+    for config, item in itertools.product( configs, items ):
         cfg = deepcopy(config)
-        setattr( cfg, 'platform', platform )
+        setattr(cfg, prop, item )
         configs_out.append( cfg )
     return configs_out
 
-# MARK: Arch
-def expand_arch( config:SimpleNamespace ) -> list:
-    configs_out:list = []
-    for arch in config.toolchain.arch:
-        cfg = deepcopy(config)
-        setattr( cfg, 'arch', arch )
-        configs_out.append( cfg )
-    return configs_out
 
 # MARK: Toolchain
 def expand_toolchains( config:SimpleNamespace, toolchains:dict ) -> list:
     configs_out:list = []
     for toolchain in toolchains.values():
-        expander = getattr(toolchain, 'expand', None)
+        toolchain_expand = getattr(toolchain, 'expand', None)
 
-        if expander:
+        if toolchain_expand:
             cfg = deepcopy(config)
             setattr(cfg, 'toolchain', toolchain )
-            configs_out += expander( cfg, toolchain )
+            configs_out += cfg.toolchain.expand( cfg )
             continue
 
         for arch, platform in itertools.product(toolchain.arch, toolchain.platform):
@@ -49,15 +40,6 @@ def expand_toolchains( config:SimpleNamespace, toolchains:dict ) -> list:
             setattr(cfg, 'platform', platform )
             configs_out.append( cfg )
 
-    return configs_out
-
-# # MARK: BuildTool
-def expand_buildtool( config:SimpleNamespace ) -> list:
-    configs_out:list = []
-    for buildtool in ['scons', 'cmake']: #TODO perhaps detect these
-        cfg = deepcopy(config)
-        setattr( cfg, 'buildtool', buildtool )
-        configs_out.append( cfg )
     return configs_out
 
 # MARK: CMake
@@ -81,18 +63,20 @@ def expand_cmake( config:SimpleNamespace ) -> list:
             pass
         case None:
             setattr(config, 'buildtool', 'cmake' )
-        case _:
-            return []
+        case _: #ignore if buildtool is something other than None or camke
+            return [config]
 
-    config.script_parts += [cmake_check, cmake_configure, cmake_build]
     config.verbs += ['configure', 'build']
+    config.script_parts += [cmake_check, cmake_configure, cmake_build]
 
     setattr( config, 'cmake', {
-        'config_vars':['-DCMAKE_CXX_COMPILER_LAUNCHER=ccache'],
+        'config_vars':[],
         'build_vars':[],
         'targets':[],
         'build_dir':'build-cmake',
     } | getattr( config, 'cmake', {}) )
+
+    config.cmake['config_vars'] += ['-DCMAKE_CXX_COMPILER_LAUNCHER=ccache']
 
     configs_out:list = []
     for config_type, generator in itertools.product(cmake_config_types, cmake_generators ):
@@ -137,7 +121,7 @@ def short_host() -> str:
 def expand_host_env( config:SimpleNamespace, opts:SimpleNamespace ) -> list:
     setattr( config, 'host', short_host() )
 
-    configs_out = expand( [config], expand_toolchains, opts.toolchains )
+    configs_out = expand_func( [config], expand_toolchains, opts.toolchains )
 
     # configs_out = expand( configs_out, expand_buildtool )
     for config in configs_out:

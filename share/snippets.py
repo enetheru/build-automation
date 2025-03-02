@@ -9,7 +9,7 @@ from share.script_preamble import *
 # │  \___|_|\__|  \___|_||_\___\__|_\_\___/\_,_|\__|                           │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 # TODO, if the work tree is already upto date, then skip
-
+# TODO Rename source_git to something like checkout, and replace all verbs
 def source_git():
     console = rich.console.Console()
     config:dict = {}
@@ -51,10 +51,7 @@ def source_git():
             print(e)
             exit(1)
 
-        if 'override' in gitdef:
-            build['source_dir'] += f'.{bare_hash}'
-
-        worktree_path = build['source_path'] = project['path'] / build['source_dir']
+        worktree_path = build['source_path']
 
         if not worktree_path.exists():
             # Perhaps we deleted the worktree folder, in which case prune it
@@ -245,6 +242,7 @@ def cmake_build():
 
             stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
             print('')
+            # TODO I was working on putting all or no --target arguments rather than looping over them.
             # for target in cmake["targets"]:
             #     s2(f" Building target: {target} ")
             #     target_opts = copy.copy(build_opts)
