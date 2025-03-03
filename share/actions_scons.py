@@ -41,7 +41,7 @@ def scons_build(config: dict):
         build_command: str = " ".join(filter(None, cmd_chunks + [f"target={target}"]))
 
         # I found that if i dont clean the repository then files are unfortunately wrong.
-        stream_command('scons --clean -s', dry=opts['dry'])
+        stream_command('scons --clean -s ' + build_command, dry=opts['dry'])
 
         stream_command(build_command, dry=opts['dry'])
 

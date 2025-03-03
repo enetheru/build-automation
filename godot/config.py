@@ -106,7 +106,7 @@ def generate( opts:SimpleNamespace ) -> dict:
     for cfg in configs:
         cfg.verbs += ['build','clean']
 
-        cfg.script_parts += [ build_scons, clean_scons, show_stats ]
+        cfg.script_parts += [ build_scons, show_stats ]
 
         if isinstance(cfg.name, list): cfg.name = '.'.join(cfg.name)
         if isinstance(cfg.source_dir, list): cfg.source_dir = '.'.join(cfg.source_dir)
@@ -187,35 +187,6 @@ def check_scons():
         fnf = FileNotFoundError()
         fnf.add_note(f"[red]Missing SConstruct in {build_path}")
         raise fnf
-
-def clean_scons():
-    console = rich.console.Console()
-    config:dict = {}
-    stats:dict = {}
-    opts:dict = {}
-    build:dict = {}
-    # start_script
-    from subprocess import CalledProcessError
-
-    # MARK: SCons Clean
-    #[=================================[ Clean ]=================================]
-    if config['ok'] and 'clean' in build['verbs'] and 'clean' in opts['build_actions']:
-        console.set_window_title(f'Clean - {build['name']}')
-        print(h2("SCons Clean"))
-
-        with Timer(name='clean', push=False) as timer:
-            try:
-                proc = stream_command( "scons --clean" , dry=opts['dry'])
-                # Change status depending on the truthiness of returnvalue
-                # where False is Success and True is Failure.
-                timer.status = TaskStatus.FAILED if proc.returncode else TaskStatus.COMPLETED
-            except CalledProcessError as e:
-                # FIXME should this be more generic and handled elsewhere?
-                print( '[red]subprocess error')
-                print( f'[red]{e}' )
-                timer.status = TaskStatus.FAILED
-        stats['clean'] = timer.get_dict()
-        config['ok'] = timer.ok()
 
 def build_scons():
     console = rich.console.Console()
