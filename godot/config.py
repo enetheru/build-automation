@@ -1,4 +1,5 @@
 import copy
+import os
 from types import SimpleNamespace
 
 from share.expand_config import expand_host_env, expand_func
@@ -122,6 +123,35 @@ def generate( opts:SimpleNamespace ) -> dict:
 # ║                 ███████  ██████ ██   ██ ██ ██         ██    ███████                    ║
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 
+# MARK: Mingw32
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  __  __ _                  _______                                         │
+# │ |  \/  (_)_ _  __ ___ __ _|__ /_  )                                        │
+# │ | |\/| | | ' \/ _` \ V  V /|_ \/ /                                         │
+# │ |_|  |_|_|_||_\__, |\_/\_/|___/___|                                        │
+# │               |___/                                                        │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+# When mignw32 attempts to compile files that include the *translations.gen.h
+# files it spits out this error
+#
+#   cc1plus.exe: out of memory allocating 536875007 bytes
+#
+# I personally see it manifest specifically when:
+#   [ 72%] Compiling editor/editor_translation.cpp ...
+# A quick and dirty way to solve this for now is to just delete the translations.
+# The default language is english.
+
+def delete_translations():
+    build:dict = {}
+    # start_script
+
+    # MARK: Delete Translations
+    #[=========================[ Delete Translations ]=========================]
+    t3("Removing Translations")
+    h( ' '.join(os.listdir(build['source_path'] / 'doc/translations/') ) )
+    for file in Path(build['source_path'] / 'doc/translations/').glob('*.po'):
+        os.remove( file )
+
 # MARK: SCons Script
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  ___  ___               ___         _      _                               │
@@ -135,6 +165,7 @@ def check_scons():
     build:dict = {}
     # start_script
 
+    # MARK: SCons Check
     #[=============================[ SCons Check ]=============================]
     scons = build['scons']
 
@@ -166,6 +197,7 @@ def clean_scons():
     # start_script
     from subprocess import CalledProcessError
 
+    # MARK: SCons Clean
     #[=================================[ Clean ]=================================]
     if config['ok'] and 'clean' in build['verbs'] and 'clean' in opts['build_actions']:
         console.set_window_title(f'Clean - {build['name']}')
@@ -194,6 +226,7 @@ def build_scons():
     build:dict = {}
     # start_script
 
+    # MARK: SCons Build
     #[=================================[ Build ]=================================]
     from share.actions_scons import scons_build
     scons:dict = build['scons']
@@ -302,8 +335,12 @@ def config_toolchains( cfg:SimpleNamespace ) -> SimpleNamespace:
             cfg.scons["build_vars"].append("use_mingw=yes")
             cfg.scons["build_vars"].append("use_llvm=yes")
 
-        case "mingw64" | "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
+        case "mingw64" | "msys2-ucrt64" | "msys2-mingw64":
             cfg.scons["build_vars"].append("use_mingw=yes")
+
+        case 'msys2-mingw32':
+            cfg.scons["build_vars"].append("use_mingw=yes")
+            cfg.script_parts.append( delete_translations )
 
         case 'appleclang':
             cfg.scons['build_vars'].append('generate_bundle=yes')
