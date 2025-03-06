@@ -394,7 +394,7 @@ def pre_cmake():
     cmake = build['cmake']
     if 'godot_build_profile' in cmake:
         profile_path:Path = build['source_path'] / cmake['godot_build_profile']
-        cmake['config_vars'].append( f'-DGODOT_BUILD_PROFILE="{profile_path.as_posix()}"' )
+        cmake['config_vars'].append( f'-DGODOTCPP_BUILD_PROFILE="{profile_path.as_posix()}"' )
 
 # MARK: Expansion
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -429,7 +429,7 @@ def expand_buildtools( config:SimpleNamespace ) -> list[SimpleNamespace]:
                 setattr( cfg, 'cmake', {
                     'godot_build_profile':'test/build_profile.json',
                     'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
-                    'config_vars':  ['-DGODOT_ENABLE_TESTING=ON']
+                    'config_vars':  ['-DGODOTCPP_ENABLE_TESTING=ON']
                 })
                 configs_out += expand_cmake( cfg )
     return configs_out
@@ -519,7 +519,7 @@ def variant_double( cfg:SimpleNamespace ) -> bool:
         case 'scons':
             cfg.scons["build_vars"].append("precision=double")
         case 'cmake':
-            cfg.cmake["config_vars"].append("-DGODOT_PRECISION=double")
+            cfg.cmake["config_vars"].append("-DGODOTCPP_PRECISION=double")
     return True
 
 def expand_variant( config:SimpleNamespace ) -> list:

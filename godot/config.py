@@ -248,17 +248,8 @@ def config_minim( cfg:SimpleNamespace ) -> bool:
 
 variations['minimum'] = config_minim
 
-def tracy_script():
-    # start_script
-
-    #[=================================[ Tracy ]=================================]
-    # TODO implement the necessary details to fetch the submodules
-    print( "TODO implement the necessary details to fetch the submodules" )
-    exit(1)
-
 def config_tracy( cfg:SimpleNamespace ) -> bool:
     cfg.verbs.append( 'tracy' )
-    setattr(cfg, 'tracy_script', tracy_script )
 
     setattr(cfg, 'gitdef', {
         'remote':'enetheru',
@@ -273,7 +264,6 @@ variations['tracy'] = config_tracy
 
 def config_tracy_dbg( cfg:SimpleNamespace ) -> bool:
     cfg.verbs.append( 'tracy' )
-    setattr(cfg, 'tracy_script', tracy_script )
 
     setattr(cfg, 'gitdef', {
         'remote':'enetheru',
