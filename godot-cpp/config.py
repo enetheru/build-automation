@@ -366,16 +366,7 @@ def build_scons():
             for target in scons["targets"]:
                 h(f"Building {target}")
                 build_command: str = " ".join(filter(None, cmd_chunks + [f"target={target}"]))
-
-                sleep(3)
-                # I found that if i dont clean the repository then files are unfortunately wrong.
-                stream_command('scons --clean -s ', env=toolchain['env'], dry=opts['dry'])
-                # FIXME Sometimes i get an exception when this runs
-                #   scons: Could not remove 'C:\build\godot-cpp\w64.llvm-mingw.default.scons.5458596\gen\src\classes\resource.cpp'
-                #   The process cannot access the file because it is being used by another process
-                sleep(3)
-
-                stream_command(build_command, env=toolchain['env'], dry=opts['dry'])
+                stream_command(build_command, dry=opts['dry'])
 
         stats['build'] = timer.get_dict()
         config['ok'] = timer.ok()
@@ -513,13 +504,17 @@ def expand_scons( config:SimpleNamespace ) -> list[SimpleNamespace]:
         case "llvm-mingw":
             config.scons["build_vars"].append("use_mingw=yes")
             config.scons["build_vars"].append("use_llvm=yes")
-            config.scons["build_vars"].append(f"mingw_prefix={config.toolchain.sysroot}")
+            config.scons["build_vars"].append(f"mingw_prefix={config.toolchain.sysroot.as_posix()}")
+
+        case "mingw64":
+            config.scons["build_vars"].append("use_mingw=yes")
+            config.scons["build_vars"].append(f"mingw_prefix={config.toolchain.sysroot.as_posix()}")
 
         case "msys2-clang64":
             config.scons["build_vars"].append("use_mingw=yes")
             config.scons["build_vars"].append("use_llvm=yes")
 
-        case "mingw64" | "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
+        case "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
             config.scons["build_vars"].append("use_mingw=yes")
 
         case _:

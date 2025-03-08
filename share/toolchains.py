@@ -84,18 +84,13 @@ def llvm_mingw_expand( self, build:SimpleNamespace ) -> list:
     return configs_out
 
 def llvm_mingw_toolchain() -> SimpleNamespace:
-
-
-    env = {k:v for k,v in os.environ.items()}
-    env['PATH'] = f'C:/llvm-mingw/bin;{os.environ['PATH']}'
-
     toolchain = SimpleNamespace(**{
         'name':"llvm-mingw",
         'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
         'sysroot':Path('C:/llvm-mingw'),
+        'shell':[ "pwsh", "-Command"],
         "arch":['i686', 'x86_64', 'armv7', 'aarch64'],
         'platform':['win32'],
-        'env': env,
         'cmake': { 'toolchain':'share\\toolchain-llvm-mingw.cmake' },
     })
     setattr( toolchain, 'expand', MethodType(llvm_mingw_expand, toolchain) )
@@ -110,15 +105,12 @@ windows_toolchains.append( llvm_mingw_toolchain())
 # │ | |\/| | | ' \ (_ |\ \/\/ / _ \_  _| │
 # │ |_|  |_|_|_||_\___| \_/\_/\___/ |_|  │
 # ╰──────────────────────────────────────╯
-env = {k:v for k,v in os.environ.items()}
-env['PATH'] = f'C:/mingw64/bin;{os.environ['PATH']}'
 windows_toolchains.append( SimpleNamespace(**{
     'name':"mingw64",
     'desc':'[mingw](https://github.com/niXman/mingw-builds-binaries/releases,), This is also the default toolchain for clion',
-    'sysroot':'C:/mingw64',
+    'sysroot':Path('C:/mingw64'),
     "arch":['x86_64'],
     'platform':['win32'],
-    'env': env,
     'cmake': {
         'toolchain':'share\\toolchain-mingw64.cmake'
     },
