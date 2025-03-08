@@ -329,6 +329,35 @@ def check_scons():
         raise fnf
 
 
+def clean_scons():
+    console = rich.console.Console()
+    config:dict = {}
+    opts:dict = {}
+    build:dict = {}
+    stats:dict = {}
+    # start_script
+
+    from subprocess import CalledProcessError
+
+    #[=================================[ Clean ]=================================]
+    if config['ok'] and 'clean' in opts['build_actions']:
+        console.set_window_title(f'Clean - {build['name']}')
+
+        with Timer(name='clean', push=False) as timer, Section("SCons Clean"):
+            try:
+                proc = stream_command( "scons --clean -s" , dry=opts['dry'])
+                # Change status depending on the truthiness of returnvalue
+                # where False is Success and True is Failure.
+                timer.status = TaskStatus.FAILED if proc.returncode else TaskStatus.COMPLETED
+            except CalledProcessError as e:
+                # FIXME should this be more generic and handled elsewhere?
+                print( '[red]subprocess error')
+                print( f'[red]{e}' )
+                timer.status = TaskStatus.FAILED
+        stats['clean'] = timer.get_dict()
+        config['ok'] = timer.ok()
+
+
 def build_scons():
     console = rich.console.Console()
     config:dict = {}
@@ -371,35 +400,6 @@ def build_scons():
         stats['build'] = timer.get_dict()
         config['ok'] = timer.ok()
 
-
-def clean_scons():
-    console = rich.console.Console()
-    config:dict = {}
-    opts:dict = {}
-    build:dict = {}
-    stats:dict = {}
-    # start_script
-
-    from subprocess import CalledProcessError
-
-    #[=================================[ Clean ]=================================]
-    if config['ok'] and 'clean' in opts['build_actions']:
-        console.set_window_title(f'Clean - {build['name']}')
-        h2("SCons Clean")
-
-        with Timer(name='clean', push=False) as timer:
-            try:
-                proc = stream_command( "scons --clean" , dry=config['dry'])
-                # Change status depending on the truthiness of returnvalue
-                # where False is Success and True is Failure.
-                timer.status = TaskStatus.FAILED if proc.returncode else TaskStatus.COMPLETED
-            except CalledProcessError as e:
-                # FIXME should this be more generic and handled elsewhere?
-                print( '[red]subprocess error')
-                print( f'[red]{e}' )
-                timer.status = TaskStatus.FAILED
-        stats['clean'] = timer.get_dict()
-        config['ok'] = timer.ok()
 
 # MARK: CMake
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -478,7 +478,7 @@ def expand_scons( config:SimpleNamespace ) -> list[SimpleNamespace]:
 
 
     config.verbs += ['build', 'clean']
-    config.script_parts +=  [check_scons, build_scons, clean_scons,]
+    config.script_parts +=  [check_scons, clean_scons, build_scons]
 
     platform = godot_platforms[config.platform]
     arch = godot_arch[config.arch]
