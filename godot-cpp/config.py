@@ -333,17 +333,50 @@ def build_scons():
     console = rich.console.Console()
     config:dict = {}
     opts:dict = {}
+    project:dict = {}
+    toolchain:dict = {}
     build:dict = {}
     stats:dict = {}
     # start_script
 
     #[=================================[ Build ]=================================]
-    from share.actions_scons import scons_build
+    from os import environ
+    from time import sleep
 
     if config['ok'] and 'build' in opts['build_actions']:
         console.set_window_title(f'Build - {build['name']}')
-        with Timer(name='build') as timer:
-            scons_build( config )
+        with Timer(name='build') as timer, Section('Scons Build'):
+
+            scons: dict     = build["scons"]
+
+            try: os.chdir( scons['build_path'] )
+            except FileNotFoundError as fnf:
+                fnf.add_note( f'Missing Folder {scons['build_path']}' )
+                raise fnf
+
+            jobs = opts["jobs"]
+            cmd_chunks = [
+                "scons",
+                f"-j {jobs}" if jobs > 0 else None,
+                "verbose=yes" if opts["verbose"] else None,
+            ]
+            if "build_vars" in scons.keys():
+                cmd_chunks += scons["build_vars"]
+
+            for target in scons["targets"]:
+                h(f"Building {target}")
+                build_command: str = " ".join(filter(None, cmd_chunks + [f"target={target}"]))
+
+                sleep(3)
+                # I found that if i dont clean the repository then files are unfortunately wrong.
+                stream_command('scons --clean -s ', env=toolchain['env'], dry=opts['dry'])
+                # FIXME Sometimes i get an exception when this runs
+                #   scons: Could not remove 'C:\build\godot-cpp\w64.llvm-mingw.default.scons.5458596\gen\src\classes\resource.cpp'
+                #   The process cannot access the file because it is being used by another process
+                sleep(3)
+
+                stream_command(build_command, env=toolchain['env'], dry=opts['dry'])
+
         stats['build'] = timer.get_dict()
         config['ok'] = timer.ok()
 
