@@ -84,8 +84,12 @@ def write_preamble(buffer:IO, project: SimpleNamespace):
     with open(f'{Path( __file__ ).parent}/script_preamble.py') as script_imports:
         for line in script_imports.readlines()[1:]: lines.append( line.rstrip() )
     lines += [
+        '',
         "sys.stdout.reconfigure(encoding='utf-8')",
         "rich._console = console = Console(soft_wrap=False, width=9000)",
+        '',
+        "print( f'\\nPATH={os.environ['path'][:100]} ...' )",
+        '',
         "stats:dict = {}",
         "config:dict = { 'ok': True }",
     ]
