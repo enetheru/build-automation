@@ -1,0 +1,498 @@
+{
+  "--gcc-toolchain=<path>": {
+    "description": "Specifies the GCC toolchain path for Android NDK builds.",
+    "link": "https://developer.android.com/ndk/guides"
+  },
+  "--sysroot=<path>": {
+    "description": "Specifies the system root directory for Android NDK builds.",
+    "link": "https://developer.android.com/ndk/guides"
+  },
+  "--target=<arch>": {
+    "description": "Specifies the target architecture and Android API level (x86_64, API 31).",
+    "link": "https://developer.android.com/ndk/guides"
+  },
+  "-D": {
+    "description": "Defines a preprocessor macro (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Preprocessor-Options.html"
+  },
+  "-I": {
+    "description": "Specifies an additional include directory (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Directory-Options.html"
+  },
+  "-MT": {
+    "description": "Specifies the target name for dependency generation.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Preprocessor-Options.html"
+  },
+  "-O0": {
+    "description": "Disables optimization (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html"
+  },
+  "-O1": {
+    "description": "Optimizes for size/speed balance (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html"
+  },
+  "-O2": {
+    "description": "Optimizes for speed (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html"
+  },
+  "-O3": {
+    "description": "Aggressive optimization for speed (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html"
+  },
+  "-TP": {
+    "description": "Compile as C++ (Clang-cl).",
+    "link": "https://clang.llvm.org/docs/UsersManual.html#clang-cl"
+  },
+  "-Wall": {
+    "description": "Enables a set of common warnings (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Walloc-zero": {
+    "description": "Warns about allocation functions returning zeroed memory.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wattribute-alias=2": {
+    "description": "Enables warnings for alias attribute misuse at level 2.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wctor-dtor-privacy": {
+    "description": "Warns about classes with private constructors/destructors.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wduplicated-branches": {
+    "description": "Warns about duplicated branch conditions in if-else statements.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wduplicated-cond": {
+    "description": "Warns about duplicated conditions in if-else chains.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Werror=format-security": {
+    "description": "Treats format string security issues as errors.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wextra": {
+    "description": "Enables additional warnings (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wformat": {
+    "description": "Enables warnings for incorrect format string usage.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wimplicit-fallthrough": {
+    "description": "Warns about implicit fallthrough in switch statements.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wlogical-op": {
+    "description": "Warns about suspicious logical operations.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wno-misleading-indentation": {
+    "description": "Disables warnings about misleading indentation.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wno-ordered-compare-function-pointers": {
+    "description": "Disables warnings about ordered comparisons of function pointers.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wno-return-type": {
+    "description": "Disables warnings about mismatched return types.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wno-unused-parameter": {
+    "description": "Disables warnings about unused function parameters.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wnon-virtual-dtor": {
+    "description": "Warns about non-virtual destructors in polymorphic classes.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wplacement-new=1": {
+    "description": "Enables warnings for placement new issues at level 1.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wshadow-local": {
+    "description": "Warns about variables shadowing local variables.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wstringop-overflow=4": {
+    "description": "Enables warnings for string operation overflows at level 4.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-Wwrite-strings": {
+    "description": "Gives string constants the type const char[length] to get better warnings.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html"
+  },
+  "-c": {
+    "description": "Compiles or assembles source files without linking.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Overall-Options.html"
+  },
+  "-fPIC": {
+    "description": "Generates position-independent code (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Code-Gen-Options.html"
+  },
+  "-fdata-sections": {
+    "description": "Places each data item in its own section, enabling linker to optimize unused data.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html#Optimize-Options"
+  },
+  "-ffunction-sections": {
+    "description": "Places each function in its own section, enabling linker to optimize unused functions.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html#Optimize-Options"
+  },
+  "-fno-exceptions": {
+    "description": "Disables exception handling (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/C_002b_002b-Dialect-Options.html"
+  },
+  "-fno-gnu-unique": {
+    "description": "Disables GNU-specific unique object binding for weak symbols.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Code-Gen-Options.html"
+  },
+  "-fno-limit-debug-info": {
+    "description": "Allows unlimited debug information generation (Clang-specific).",
+    "link": "https://clang.llvm.org/docs/CommandGuide/clang.html"
+  },
+  "-fstack-protect-strong": {
+    "description": "Enables strong stack-smashing protection for functions with certain characteristics.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html#Optimize-Options"
+  },
+  "-funwind-tables": {
+    "description": "Generates unwind tables for exception handling and stack unwinding.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Code-Gen-Options.html"
+  },
+  "-fvisibility=hidden": {
+    "description": "Sets the default visibility for all symbols to hidden.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Code-Gen-Options.html"
+  },
+  "-g": {
+    "description": "Generates debug information for debugging.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Debugging-Options.html"
+  },
+  "-g2": {
+    "description": "Requests debug information at level 2.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Debugging-Options.html"
+  },
+  "-gdwarf-4": {
+    "description": "Requests DWARF version 4 debug information format.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Debugging-Options.html"
+  },
+  "-no-canonical-prefixes": {
+    "description": "Disables canonicalization of toolchain paths.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Directory-Options.html"
+  },
+  "-o": {
+    "description": "Specifies output file name (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Overall-Options.html"
+  },
+  "-o <path>": {
+    "description": "Specifies output object file for ARM64 editor build (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Overall-Options.html"
+  },
+  "-sSIDE_MODULE": {
+    "description": "Deprecated WebAssembly flag for side module generation.",
+    "link": "https://emscripten.org/docs/porting/connecting_cpp_and_javascript/WebAssembly.html"
+  },
+  "-sSIDE_MODULE=1": {
+    "description": "Explicitly sets side module generation for WebAssembly (deprecated).",
+    "link": "https://emscripten.org/docs/porting/connecting_cpp_and_javascript/WebAssembly.html"
+  },
+  "-sSUPPORT_LONGJMP='wasm'": {
+    "description": "Enables WebAssembly longjmp support in Emscripten.",
+    "link": "https://emscripten.org/docs/porting/emscripting.html"
+  },
+  "-sSUPPORT_LONGJMP=wasm": {
+    "description": "Enables WebAssembly longjmp support in Emscripten (alternative syntax).",
+    "link": "https://emscripten.org/docs/porting/emscripting.html"
+  },
+  "-sUSE_PTHREADS=1": {
+    "description": "Enables POSIX threads support in Emscripten for WebAssembly.",
+    "link": "https://emscripten.org/docs/porting/pthreads.html"
+  },
+  "-std=c++11": {
+    "description": "Specifies C++11 standard (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/C-Dialect-Options.html"
+  },
+  "-std=c++14": {
+    "description": "Specifies C++14 standard (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/C-Dialect-Options.html"
+  },
+  "-std=c++17": {
+    "description": "Specifies C++17 standard (GCC/Clang).",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/C-Dialect-Options.html"
+  },
+  "/D": {
+    "description": "Defines a preprocessor macro (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/d-preprocessor-definitions"
+  },
+  "/EHsc": {
+    "description": "Specifies the model of exception handling (extern C functions do not throw).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/eh-exception-handling-model"
+  },
+  "/FS": {
+    "description": "Forces writes to the PDB file to be serialized through MSPDBSRV.EXE.",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes"
+  },
+  "/Fd": {
+    "description": "Specifies PDB file output path (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/fd-program-database-file-name"
+  },
+  "/Fd<path>": {
+    "description": "Specifies PDB file output path for Godot C++ library (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/fd-program-database-file-name"
+  },
+  "/Fo": {
+    "description": "Specifies object file output path (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/fo-object-file-name"
+  },
+  "/Fo<path>": {
+    "description": "Specifies object file output path for LLVM editor x86_64 build (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/fo-object-file-name"
+  },
+  "/GR": {
+    "description": "Enables run-time type information (RTTI) (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/gr-enable-run-time-type-information"
+  },
+  "/I": {
+    "description": "Specifies an additional include directory (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/i-additional-include-directories"
+  },
+  "/MT": {
+    "description": "Compiles to create a multithreaded executable file, by using LIBCMT.lib.",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/md-mt-ld-use-run-time-library"
+  },
+  "/MT /utf-8": {
+    "description": "Multithreaded runtime with UTF-8.",
+    "link": ""
+  },
+  "/O1": {
+    "description": "Optimizes for minimal size (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/o1-o2-minimize-size-maximize-speed"
+  },
+  "/O2": {
+    "description": "Optimizes for maximum speed (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/o1-o2-minimize-size-maximize-speed"
+  },
+  "/Ob0": {
+    "description": "Controls inline expansion (disable).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/ob-inline-function-expansion"
+  },
+  "/Ob1": {
+    "description": "Controls inline expansion (only __inline).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/ob-inline-function-expansion"
+  },
+  "/Ob2": {
+    "description": "Controls inline expansion (auto).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/ob-inline-function-expansion"
+  },
+  "/Od": {
+    "description": "Disables optimization.",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/od-disable-debug"
+  },
+  "/RTC1": {
+    "description": "Enable fast runtime checks (equivalent to /RTCsu).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/rtc-run-time-error-checks"
+  },
+  "/TP": {
+    "description": "Specifies all source files are C++.",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/tc-tp-tc-tp-specify-source-file-type"
+  },
+  "/W0": {
+    "description": "Disables all warnings (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/compiler-option-warning-level"
+  },
+  "/W1": {
+    "description": "Enables minimal warning level (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/compiler-option-warning-level"
+  },
+  "/W2": {
+    "description": "Enables moderate warning level (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/compiler-option-warning-level"
+  },
+  "/W3": {
+    "description": "Enables high warning level (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/compiler-option-warning-level"
+  },
+  "/W4": {
+    "description": "Enables maximum warning level (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/compiler-option-warning-level"
+  },
+  "/Zi": {
+    "description": "Generates complete debugging information.",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/z7-zi-zi-debug-information-format"
+  },
+  "/c": {
+    "description": "Compiles without linking.",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/c-compile-without-linking"
+  },
+  "/experimental:external": {
+    "description": "Enables experimental external header diagnostics in MSVC.",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/external-external-headers-diagnostics?view=msvc-170"
+  },
+  "/external:W0": {
+    "description": "Set warning level for external headers to 0 (disable).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/external-external-headers-diagnostics"
+  },
+  "/external:anglebrackets": {
+    "description": "Treat all headers included via <> as external.",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/external-external-headers-diagnostics"
+  },
+  "/nologo": {
+    "description": "Suppresses display of sign-on banner.",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/nologo-suppress-startup-banner-c-cpp"
+  },
+  "/std:c++11": {
+    "description": "Specifies C++11 standard (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/std-specify-language-standard-version"
+  },
+  "/std:c++14": {
+    "description": "Specifies C++14 standard (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/std-specify-language-standard-version"
+  },
+  "/std:c++17": {
+    "description": "Specifies C++17 standard (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/std-specify-language-standard-version"
+  },
+  "/utf-8": {
+    "description": "Set source and execution character sets to UTF-8.",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/utf-8-set-source-and-executable-character-sets-to-utf-8"
+  },
+  "/wd": {
+    "description": "Disables specific warnings by number (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/compiler-option-warning-level"
+  },
+  "/wd4100": {
+    "description": "Disables warning C4100: unreferenced formal parameter.",
+    "link": "https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-4-c4100"
+  },
+  "/wd4127": {
+    "description": "Disables warning C4127: conditional expression is constant.",
+    "link": "https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-4-c4127"
+  },
+  "/wd4201": {
+    "description": "Disables warning C4201: nonstandard extension used: nameless struct/union.",
+    "link": "https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-4-c4201"
+  },
+  "/wd4244": {
+    "description": "Disables warning C4244: conversion from type1 to type2, possible loss of data.",
+    "link": "https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-and-4-c4244"
+  },
+  "/wd4245": {
+    "description": "Disables warning C4245: conversion from type1 to type2, signed/unsigned mismatch.",
+    "link": "https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4245"
+  },
+  "/wd4267": {
+    "description": "Disables warning C4267: conversion from size_t to type, possible loss of data.",
+    "link": "https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4267"
+  },
+  "/wd4305": {
+    "description": "Disables warning C4305: truncation from type1 to type2.",
+    "link": "https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-1-c4305"
+  },
+  "/wd4514": {
+    "description": "Disables warning C4514: unreferenced inline function has been removed.",
+    "link": "https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-4-c4514"
+  },
+  "/wd4714": {
+    "description": "Disables warning C4714: function marked as __forceinline not inlined.",
+    "link": "https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-4-c4714"
+  },
+  "/wd4820": {
+    "description": "Disables warning C4820: bytes padding added after construct member.",
+    "link": "https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-4-c4820"
+  },
+  "ANDROID": {
+    "description": "Defines Android platform for conditional compilation.",
+    "link": "https://developer.android.com/ndk/guides"
+  },
+  "ANDROID_ENABLED": {
+    "description": "Enables Android-specific features in Godot.",
+    "link": "https://docs.godotengine.org/en/stable/development/compiling/compiling_for_android.html"
+  },
+  "C:\\llvm-mingw\\bin\\aarch64-w64-mingw32-clang++": {
+    "description": "Path to Clang compiler for ARM64 MinGW target.",
+    "link": "https://clang.llvm.org/docs/CrossCompilation.html"
+  },
+  "C:\\mingw64\\bin\\x86_64-w64-mingw32-g++": {
+    "description": "Path to GCC compiler for x86_64 MinGW target.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Invoking-GCC.html"
+  },
+  "DEBUG_ENABLED": {
+    "description": "Enables debug features in Godot.",
+    "link": "https://docs.godotengine.org/en/stable/development/compiling/introduction_to_the_buildsystem.html"
+  },
+  "GDEXTENSION": {
+    "description": "Enables GDExtension support in Godot.",
+    "link": "https://docs.godotengine.org/en/stable/tutorials/scripting/gdextension/what_is_gdextension.html"
+  },
+  "HOT_RELOAD_ENABLED": {
+    "description": "Enables hot reloading in Godot.",
+    "link": "https://github.com/godotengine/godot-cpp/issues/1573"
+  },
+  "NDEBUG": {
+    "description": "Disables standard assertions.",
+    "link": "https://en.cppreference.com/w/cpp/error/assert"
+  },
+  "NOMINMAX": {
+    "description": "Prevents min/max macros in windows.h from being defined.",
+    "link": "https://stackoverflow.com/questions/13416418/define-nominmax-using-stdmin-max"
+  },
+  "REAL_T_IS_DOUBLE": {
+    "description": "Makes real_t type use double precision in Godot.",
+    "link": "https://docs.godotengine.org/en/stable/tutorials/physics/large_world_coordinates.html"
+  },
+  "THREADS_ENABLED": {
+    "description": "Enables threading support in Godot.",
+    "link": "https://docs.godotengine.org/en/stable/tutorials/performance/using_multiple_threads.html"
+  },
+  "TOOLS_ENABLED": {
+    "description": "Enables editor tools in Godot.",
+    "link": "https://docs.godotengine.org/en/stable/development/compiling/introduction_to_the_buildsystem.html"
+  },
+  "TYPED_METHOD_BIND": {
+    "description": "Uses typed method binding in Godot.",
+    "link": "https://github.com/godotengine/godot/issues/43354"
+  },
+  "UNIX_ENABLED": {
+    "description": "Enables Unix-specific features in Godot.",
+    "link": "https://docs.godotengine.org/en/stable/development/compiling/compiling_for_linux_bsd.html"
+  },
+  "WEB_ENABLED": {
+    "description": "Enables Web-specific features in Godot.",
+    "link": "https://docs.godotengine.org/en/stable/development/compiling/compiling_for_web.html"
+  },
+  "WIN32": {
+    "description": "Defines Windows 32-bit platform.",
+    "link": "https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types"
+  },
+  "WINDOWS_ENABLED": {
+    "description": "Defines Windows platform in Godot.",
+    "link": "https://github.com/godotengine/godot/issues/5692"
+  },
+  "_FORTIFY_SOURCE=2": {
+    "description": "Enables additional buffer overflow checks at compile time.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html#Optimize-Options"
+  },
+  "_HAS_EXCEPTIONS=0": {
+    "description": "Disables exception support in STL.",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/eh-exception-handling-model"
+  },
+  "_WINDOWS": {
+    "description": "Defines Windows platform.",
+    "link": "https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types"
+  },
+  "cl": {
+    "description": "Microsoft C/C++ compiler.",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/compiler-options"
+  },
+  "clang-cl": {
+    "description": "Clang compiler in cl.exe compatibility mode.",
+    "link": "https://clang.llvm.org/docs/UsersManual.html#clang-cl"
+  },
+  "nologo": {
+    "description": "Suppresses compiler logo output (MSVC).",
+    "link": "https://learn.microsoft.com/en-us/cpp/build/reference/nologo-suppress-startup-banner-c-cpp"
+  },
+  "std=c++17": {
+    "description": "Specifies the C++17 dialect.",
+    "link": "https://gcc.gnu.org/onlinedocs/gcc/C_002b_002b-Dialect-Options.html"
+  }
+}
