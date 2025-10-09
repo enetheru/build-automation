@@ -1,18 +1,20 @@
 import itertools
-import platform
-from types import SimpleNamespace, MethodType
 from copy import deepcopy
+from types import SimpleNamespace, MethodType
+
+from typing import Mapping, Any, cast
 
 from share.script_preamble import *
 
 # Since these things are getting a little complicated lets try to make a little example for myself.
-example = SimpleNamespace(**{
+example_mapping = SimpleNamespace(**cast(Mapping[str, Any], {
     'name'      :'name of the compiler, keep short',
     'desc'      :'description of the compiler, can be any length',
     'shell'     :[ "bash", "-c", """ "echo \"shell and script to pass to shell, can be a little awkward to write due to escaping\"" """ ],
     'arch'      :['list','of', 'target', 'architectures', 'like', 'x86_64', 'arm64', 'etc'],
     'platform'  :['list','of', 'target', 'platforms', 'matches', 'values', 'from', 'sys.platform']
-})
+}))
+
 
 # MARK: Windows
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -32,14 +34,15 @@ windows_toolchains:list = []
 # │ | |\/| \__ \\ V / (__  │
 # │ |_|  |_|___/ \_/ \___| │
 # ╰────────────────────────╯
-windows_toolchains.append( SimpleNamespace(**{
+
+windows_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
     'name':'msvc',
     'desc':'# Microsoft Visual Studio',
     'shell':[ "pwsh", "-Command",
         """ "&{Import-Module 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'};" """ ],
     "arch":['x86_64'],
     'platform':['win32']
-}))
+})))
 
 # MARK: LLVM
 # ╭────────────────────────╮
@@ -51,7 +54,7 @@ windows_toolchains.append( SimpleNamespace(**{
 # Currently only clang-cl is supported.
 env = {k:v for k,v in os.environ.items()}
 env['PATH'] = f'C:/Program Files/LLVM/bin;{os.environ['PATH']}'
-windows_toolchains.append( SimpleNamespace(**{
+windows_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
     'name':'llvm',
     'desc':'# Use Clang-Cl from llvm.org',
     "arch":['x86_64'], # TODO support more architectures
@@ -60,7 +63,7 @@ windows_toolchains.append( SimpleNamespace(**{
     'cmake':{
         'toolchain':'share\\toolchain-llvm.cmake',
     }
-}))
+})))
 
 # MARK: LLVM-MinGW
 # ╭───────────────────────────────────────────────────────╮
@@ -84,7 +87,7 @@ def llvm_mingw_expand( self, build:SimpleNamespace ) -> list:
     return configs_out
 
 def llvm_mingw_toolchain() -> SimpleNamespace:
-    toolchain = SimpleNamespace(**{
+    toolchain = SimpleNamespace(**cast( Mapping[str,Any],{
         'name':"llvm-mingw",
         'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
         'sysroot':Path('C:/llvm-mingw'),
@@ -92,7 +95,7 @@ def llvm_mingw_toolchain() -> SimpleNamespace:
         "arch":['i686', 'x86_64', 'armv7', 'aarch64'],
         'platform':['win32'],
         'cmake': { 'toolchain':'share\\toolchain-llvm-mingw.cmake' },
-    })
+    }))
     setattr( toolchain, 'expand', MethodType(llvm_mingw_expand, toolchain) )
     return toolchain
 
@@ -109,7 +112,7 @@ def mingw64_toolchain() -> SimpleNamespace:
     env = {k:v for k,v in os.environ.items()}
     env['PATH'] = f'C:/mingw64/bin;{os.environ['PATH']}'
 
-    toolchain = SimpleNamespace(**{
+    toolchain = SimpleNamespace(**cast( Mapping[str,Any],{
         'name':"mingw64",
         'desc':'[mingw](https://github.com/niXman/mingw-builds-binaries/releases,), This is also the default toolchain for clion',
         'sysroot':Path('C:/mingw64'),
@@ -119,7 +122,7 @@ def mingw64_toolchain() -> SimpleNamespace:
         'cmake': {
             'toolchain':'share\\toolchain-mingw64.cmake'
         },
-    })
+    }))
     return toolchain
 
 
@@ -134,37 +137,37 @@ windows_toolchains.append( mingw64_toolchain())
 # │ | |\/| \__ \\ V /\__ \/ /  │
 # │ |_|  |_|___/ |_| |___/___| │
 # ╰────────────────────────────╯
-windows_toolchains.append( SimpleNamespace(**{
+windows_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
     'name':"msys2-mingw32",
     'desc':'i686      gcc linking against msvcrt',
     'shell': [ "C:/msys64/msys2_shell.cmd", "-mingw32", "-defterm", "-no-start", "-c"],
     "arch":['x86_32'],
     'platform':['win32'],
-}))
+})))
 
-windows_toolchains.append( SimpleNamespace(**{
+windows_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
     'name':"msys2-mingw64",
     'desc':'x86_64    gcc linking against msvcrt',
     'shell': ["C:/msys64/msys2_shell.cmd", "-mingw64", "-defterm", "-no-start", "-c"],
     "arch":['x86_64'],
     'platform':['win32'],
-}))
+})))
 
-windows_toolchains.append( SimpleNamespace(**{
+windows_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
     'name':"msys2-ucrt64",
     'desc':'x86_64    gcc linking against ucrt',
     'shell': ["C:/msys64/msys2_shell.cmd", "-ucrt64", "-defterm", "-no-start", "-c"],
     "arch":['x86_64'],
     'platform':['win32'],
-}))
+})))
 
-windows_toolchains.append( SimpleNamespace(**{
+windows_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
     'name':"msys2-clang64",
     'desc':'x86_64    clang linking against ucrt',
     'shell': ["C:/msys64/msys2_shell.cmd", "-clang64", "-defterm", "-no-start", "-c"],
     "arch":['x86_64'],
     'platform':['win32'],
-}))
+})))
 
 # MARK: Android
 # ╭──────────────────────────────────╮
@@ -179,7 +182,7 @@ def android_update( self, opts:SimpleNamespace, console:Console ):
     from pathlib import Path
 
     console.set_window_title('Updating Android SDK')
-    print(t2("Android Update"))
+    print(fmt.t2("Android Update"))
 
     sdk_path = Path( self.path )
     os.chdir(sdk_path / 'cmdline-tools/latest/bin')
@@ -209,7 +212,7 @@ def android_expand( self, config:SimpleNamespace ) -> list:
     return configs_out
 
 def android_toolchain() -> SimpleNamespace:
-    toolchain = SimpleNamespace(**{
+    toolchain = SimpleNamespace(**cast( Mapping[str,Any],{
         'name':'android',
         'desc':'[Android](https://developer.android.com/tools/sdkmanager)',
         'path':Path('C:/androidsdk'),
@@ -220,7 +223,7 @@ def android_toolchain() -> SimpleNamespace:
         'cmake':{
             'toolchain':'C:/androidsdk/ndk/23.2.8568313/build/cmake/android.toolchain.cmake',
         }
-    })
+    }))
     setattr( toolchain, 'update', MethodType(android_update, toolchain) )
     setattr( toolchain, 'expand', MethodType(android_expand, toolchain) )
 
@@ -241,7 +244,7 @@ def emscripten_update( toolchain:SimpleNamespace, config:SimpleNamespace, consol
     from pathlib import Path
 
     console.set_window_title('Updating Emscripten SDK')
-    print(t2("Emscripten Update"))
+    print(fmt.t2("Emscripten Update"))
 
     emscripten_path = Path( toolchain.path )
     os.chdir(emscripten_path)
@@ -272,12 +275,12 @@ def win32_emscripten_script():
     )
 
     if not ('EMSDK' in os.environ):
-        print(t2(f'Emscripten {emscripten_check.task.capitalize()}'))
+        print(fmt.t2(f'Emscripten {emscripten_check.task.capitalize()}'))
         stream_command( f'{cmd_prefix} "{emscripten_tool} {emscripten_check.task} {toolchain['version']}; python {build['script_path']}"',
             dry=opts['dry'] )
         quit()
 
-windows_toolchains.append( SimpleNamespace(**{
+windows_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
     'name':'emscripten',
     'desc':'[Emscripten](https://emscripten.org/)',
     'path':Path('C:/emsdk'),
@@ -291,7 +294,7 @@ windows_toolchains.append( SimpleNamespace(**{
         'toolchain':'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake',
         'generators':['Ninja','Ninja Multi-Config']
     }
-}))
+})))
 
 
 # MARK: Darwin
@@ -312,13 +315,13 @@ darwin_toolchains:list = []
 # │ /_/ \_\ .__/ .__/_\___|\___|_\__,_|_||_\__, | │
 # │       |_|  |_|                         |___/  │
 # ╰───────────────────────────────────────────────╯
-darwin_toolchains.append( SimpleNamespace(**{
+darwin_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
     'name':"appleclang",
     'desc':"Default toolchain on MacOS",
     'arch':['x86_64','arm64'],
     'platform':['darwin','ios'],
     # Use clang -print-target-triple to get the host triple
-}))
+})))
 
 # MARK: Emscripten
 # ╭────────────────────────────────────────────╮
@@ -353,7 +356,7 @@ def darwin_emscripten_script():
     )
 
     if not ('EMSDK' in os.environ):
-        print(t2(f'Emscripten {emscripten_check.task.capitalize()}'))
+        print(fmt.t2(f'Emscripten {emscripten_check.task.capitalize()}'))
         stream_command( f'{cmd_prefix} "{emscripten_tool} {emscripten_check.task} {toolchain['version']}"',
             dry=opts['dry'] )
 
@@ -363,7 +366,7 @@ def darwin_emscripten_script():
         quit()
 
 
-darwin_toolchains.append( SimpleNamespace(**{
+darwin_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
     'name':'emscripten',
     'desc':'[Emscripten](https://emscripten.org/)',
     'path':Path('/Users/enetheru/emsdk'),
@@ -376,7 +379,7 @@ darwin_toolchains.append( SimpleNamespace(**{
     'cmake':{
         'toolchain':'/Users/enetheru/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
     }
-}))
+})))
 
 # MARK: Select
 # ╭────────────────────────────────────────────────────────────────────────────╮

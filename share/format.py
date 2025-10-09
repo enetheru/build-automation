@@ -1,12 +1,12 @@
 import os
 import re
 import typing
-from textwrap import indent
 from typing import Deque
 
 from pyfiglet import Figlet
 from pyfiglet import FontNotFound
 from rich import print
+
 
 # MARK: FORMAT
 ###################################- Format -###################################
@@ -221,16 +221,16 @@ def p( msg:typing.Any = 'Heading', level:int=None, pretty:bool=False ):
 # Eg.
 # "╓─╖║ ║╙─╜", "╔═╗║ ║╚═╝", "╭─╮│ │╰─╯", "▛▀▜▌ ▐▙▄▟",
 # "┌─┐│ │└─┘", "┏━┓┃ ┃┗━┛", "╒═╕│ │╘═╛"
-def code_box( msg:str = 'CodeBox',
-    comment:str = '#',
-    pad:str = ' ',
-    border:str = "╭─╮│ │╰─╯",
-    width:int = columns,
-    compact:bool = True,
-    above:str = '',
-    below:str = '',
-    ratio:float=0,
-    ffont:str='small') -> str:
+def code_box(msg:str = 'CodeBox',
+             comment:str = '#',
+             padding:str = ' ',
+             border:str = "╭─╮│ │╰─╯",
+             width:int = columns,
+             compact:bool = True,
+             above:str = '',
+             below:str = '',
+             ratio:float=0,
+             ffont:str='small') -> str:
 
     if  len(border) < 9:
         edges:list[str] = list(border[0] * 9)
@@ -240,9 +240,9 @@ def code_box( msg:str = 'CodeBox',
 
     if comment != edges[3]:
         for i in 0,3,6:
-            edges[i] = f"{comment}{pad}{edges[i]}"
+            edges[i] = f"{comment}{padding}{edges[i]}"
 
-    lines:list = [ f"{comment}{pad}MARK: {msg}" ]
+    lines:list = [ f"{comment}{padding}MARK: {msg}"]
 
     top = bend( edges[0], edges[2], hr(edges[1], width=width) )
     if above: top = align( above, line= top )
@@ -330,7 +330,7 @@ print( capture.get() )""",
 
     print( code_box("CodeBox Aj%@!9") )
 
-    with Section('Fetching Projects') as section:
+    with Section('Fetching Projects'):
         print( "Anything goes in the interior.")
 
 if __name__ == "__main__":

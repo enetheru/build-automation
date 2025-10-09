@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import multiprocessing
+import os
 import platform
 import sys
 from datetime import datetime
@@ -9,7 +10,7 @@ from io import StringIO
 from pathlib import Path
 from time import sleep
 from types import SimpleNamespace
-from typing import IO
+from typing import IO, cast, Mapping, Any
 
 import rich
 from rich.console import Console, Group
@@ -18,7 +19,7 @@ from rich.table import Table
 
 # Local Imports
 from share.ConsoleMultiplex import ConsoleMultiplex
-from share.format import *
+from share import format as fmt
 from share.run import stream_command
 from share.generate import generate_build_scripts, write_namespace
 
@@ -35,7 +36,7 @@ def get_interior_dict( subject ) -> dict:
 
 # noinspection PyUnusedLocal
 def process_log_null( raw_file: IO, clean_file: IO ):
-    regex = re.compile(r'(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]')
+    regex = fmt.re.compile(r'(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]')
 
     for line in raw_file:
         clean_file.write( regex.sub('', line ) )
@@ -62,19 +63,19 @@ def git_override( opts:SimpleNamespace):
                 remote_hash = checked[ls_arg]
             else:
                 try:
-                    h( f"git ls-remote {ls_arg}" )
+                    fmt.h( f"git ls-remote {ls_arg}" )
                     response = g.ls_remote( *ls_args )
                     if response: remote_hash = response.split()[0]
                 except GitCommandError as e:
                     if opts.debug: raise e
-                    hu(f"[yellow]Unable to determine remote reference.")
+                    fmt.hu(f"[yellow]Unable to determine remote reference.")
 
             if not remote_hash:
-                hu( f"disabling build: '{build.name}'" )
+                fmt.hu( f"disabling build: '{build.name}'" )
                 build.disabled = True
                 continue
 
-            hu(remote_hash)
+            fmt.hu(remote_hash)
             checked[ ls_arg ] = remote_hash
             build.gitdef['override'] = remote_hash
             build.source_dir += f".{remote_hash[:7]}"
@@ -175,15 +176,15 @@ def parse_args(opts:SimpleNamespace):
 # │ |___|_|_|_| .__/\___/_|  \__|   |_|\___/\___/_\__|_||_\__,_|_|_||_/__/     │
 # ╰───────────┤_├──────────────────────────────────────────────────────────────╯
 def import_toolchains( opts:SimpleNamespace ) -> dict:
-    t3( f"Importing Toolchains" )
+    fmt.t3( f"Importing Toolchains" )
     toolchain_glob = f"*/toolchains.py"
-    h( f"file glob: {toolchain_glob}" )
+    fmt.h( f"file glob: {toolchain_glob}" )
 
     # Import toolchain modules.
     toolchains: dict[str,SimpleNamespace] = {}
-    hu()
+    fmt.hu()
     for file in opts.path.glob( toolchain_glob ):
-        if opts.verbose: h(file)
+        if opts.verbose: fmt.h(file)
 
         # Create Module Spec
         spec = importlib.util.spec_from_file_location(
@@ -199,18 +200,18 @@ def import_toolchains( opts:SimpleNamespace ) -> dict:
         except Exception as e:
             if opts.debug: raise e
             else:
-                hu(str(e))
+                fmt.hu(str(e))
                 continue
 
         # generate the project configurations
         try: toolchains |= toolchain_module.generate( opts )
         except Exception as e:
             if opts.debug: raise e
-            else: hu( f'[red]{e}')
-    hd()
+            else: fmt.hu( f'[red]{e}')
+    fmt.hd()
 
     # Filter the results with the toolchain-regex
-    toolchains = {k: v for k, v in toolchains.items() if re.search( opts.toolchain_regex, v.name )}
+    toolchains = {k: v for k, v in toolchains.items() if fmt.re.search( opts.toolchain_regex, v.name )}
 
     # Fetch all the verbs from the toolchain for displaying help
     for toolchain in toolchains.values():
@@ -228,15 +229,15 @@ def import_toolchains( opts:SimpleNamespace ) -> dict:
 # │ |___|_|_|_| .__/\___/_|  \__|  \___\___/_||_|_| |_\__, /__/                │
 # ╰───────────┤_├─────────────────────────────────────┤___/────────────────────╯
 def import_projects(opts:SimpleNamespace) -> dict:
-    t3( f"Importing Projects" )
+    fmt.t3( f"Importing Projects" )
     project_glob = f"*/config.py"
-    h( f"file glob: {project_glob}" )
+    fmt.h( f"file glob: {project_glob}" )
 
     # Import project_config files.
     projects: dict[str,SimpleNamespace] = {}
-    hu()
+    fmt.hu()
     for config_file in opts.path.glob( project_glob ):
-        if opts.verbose: h(config_file)
+        if opts.verbose: fmt.h(config_file)
 
         # Create Module Spec
         spec = importlib.util.spec_from_file_location(
@@ -252,25 +253,25 @@ def import_projects(opts:SimpleNamespace) -> dict:
         except Exception as e:
             if opts.debug: raise e
             else:
-                hu( f'In {spec.name} [red]{e}')
+                fmt.hu( f'In {spec.name} [red]{e}')
                 continue
 
         # generate the project configurations
         try: projects |= project_module.generate( opts )
         except Exception as e:
             if opts.debug: raise e
-            else: hu( f'In {spec.name} [red]{e}')
+            else: fmt.hu( f'In {spec.name} [red]{e}')
 
     # Filter the results with the project-regex
     projects = {k: v for k, v in projects.items()
-        if re.search( opts.project_regex, v.name )}
+        if fmt.re.search( opts.project_regex, v.name )}
 
     # Verify required project ttributes
     # filter the build configurations
     for project in projects.values():
         # All project configs must have a valid gitdef with a URL
         if not getattr(project, 'gitdef', {} ).get('url', None):
-            hu("[red]project is missing gitdef['url']")
+            fmt.hu("[red]project is missing gitdef['url']")
             projects.build_configs = {}
             continue
         project.gitdef.setdefault('ref', 'HEAD')
@@ -278,7 +279,7 @@ def import_projects(opts:SimpleNamespace) -> dict:
         # match --filter <regex>
         builds: dict = project.build_configs
         project.build_configs = {k: v for k, v in builds.items()
-            if re.search( opts.build_regex, v.name )}
+            if fmt.re.search( opts.build_regex, v.name )}
 
     # filter projects with zero valid build configurations
     projects = {v.name: v for v in projects.values() if len( v.build_configs )}
@@ -328,9 +329,9 @@ def fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
     from git import GitCommandError
 
     if 'fetch' not in project.verbs: return
-    t3(project.name)
+    fmt.t3(project.name)
     if opts.dry:
-        h("Dry-Run: Skipping Fetch")
+        fmt.h("Dry-Run: Skipping Fetch")
         return
     g = git.cmd.Git()
 
@@ -344,26 +345,26 @@ def fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
 
     # Lets clone if we dont exist
     if not project.gitdir.exists():
-        h( 'Cloning Repository' )
+        fmt.h( 'Cloning Repository' )
         repo = git.Repo.clone_from( project.gitdef['url'], project.gitdir, progress=print,  bare=True, tags=True )
     else:
         repo = git.Repo( project.gitdir )
 
-        h("Prune Expired Worktrees")
+        fmt.h("Prune Expired Worktrees")
         repo.git.worktree('prune')
 
         if opts.verbose:
-            h("Worktrees")
+            fmt.h("Worktrees")
             for line in str(repo.git.worktree('list')).splitlines():
-                hu(line)
+                fmt.hu(line)
 
-    h("Existing Remotes:")
+    fmt.h("Existing Remotes:")
     for remote in repo.remotes:
-        hu(f"{remote.name}: {remote.url}")
+        fmt.hu(f"{remote.name}: {remote.url}")
 
     # Keep a dictionary of remote:{refs,} to skip already processed remotes.
-    h( "Looking for Updates" )
-    hu()
+    fmt.h( "Looking for Updates" )
+    fmt.hu()
     checked_list = []
     fetch_list = {}
 
@@ -383,9 +384,9 @@ def fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
 
         # add the remote to the repo if it doesnt already exist.
         if gitdef.remote not in [remote.name for remote in repo.remotes]:
-            h('adding remote:')
-            hu(gitdef.remote)
-            hu(gitdef.url)
+            fmt.h('adding remote:')
+            fmt.hu(gitdef.remote)
+            fmt.hu(gitdef.url)
             repo.create_remote(gitdef.remote, gitdef.url)
             fetch_list[gitdef.remote] = gitdef.ref
             continue
@@ -393,28 +394,28 @@ def fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
         # Check the remote for updates.
         try:
             ls_args = ['--exit-code', gitdef.url, gitdef.ref]
-            h( f"git ls-remote {' '.join(ls_args)}" )
+            fmt.h( f"git ls-remote {' '.join(ls_args)}" )
             response = g.ls_remote( *ls_args )
             if not response:
-                hu( f"git ls-remote returned '{response}'" )
+                fmt.hu( f"git ls-remote returned '{response}'" )
                 if opts.gitoverride: exit(1)
-                hu( f"disabling build: '{build.name}'" )
+                fmt.hu( f"disabling build: '{build.name}'" )
                 build.disabled = True
                 continue
 
             remote_hash:str = response.split()[0]
-            hu(remote_hash)
+            fmt.hu(remote_hash)
         except GitCommandError as e:
             if opts.debug: raise e
-            hu(f"[yellow]Unable to determine remote reference.")
+            fmt.hu(f"[yellow]Unable to determine remote reference.")
             # FIXME, I need to disable this configuration if this happens.
             continue
 
         try:
             cmd_arg = gitdef.ref if gitdef.remote == 'origin' else f"{gitdef.remote}/{gitdef.ref}"
-            h( f"git rev-parse {cmd_arg}" )
+            fmt.h( f"git rev-parse {cmd_arg}" )
             local_hash = repo.git.rev_parse(cmd_arg)
-            hu(local_hash)
+            fmt.hu(local_hash)
         except GitCommandError as e:
             if opts.debug: raise e
             # if the ref doesnt exist it will raise this exception.
@@ -422,17 +423,17 @@ def fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
 
         # Add to the list of repo's to fetch updates from
         if local_hash != remote_hash:
-            hu('Update Needed')
+            fmt.hu('Update Needed')
             fetch_list[gitdef.remote] = gitdef.ref
-    hd()
+    fmt.hd()
 
     if len(fetch_list):
-        h( "Fetching updates:" )
+        fmt.h( "Fetching updates:" )
         for remote, ref in fetch_list.items():
             fetch_args = ['--verbose', '--progress','--tags', '--force', remote, '*:*']
-            hu(f'git fetch {' '.join(fetch_args)}')
+            fmt.hu(f'git fetch {' '.join(fetch_args)}')
             repo.git.fetch( *fetch_args )
-    h( "[green]Up-To-Date" )
+    fmt.h( "[green]Up-To-Date" )
 
 # MARK: Build
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -446,7 +447,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     # Skip the build config if there are no actions to perform
 
     console.line()
-    s1( f'Process: {build.name}' )
+    fmt.s1( f'Process: {build.name}' )
     if opts.verbose:
         write_namespace( pretendio, build.toolchain, 'toolchain')
         write_namespace( pretendio, build, 'build')
@@ -481,9 +482,9 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         console.tee( name=build.name, new_console=build_console )
 
     # =================[ Build Heading / Config ]==================-
-    section = Section(f"Run Script")
+    section = fmt.Section(f"Run Script")
     section.start()
-    h( build.script_path.as_posix() )
+    fmt.h( build.script_path.as_posix() )
 
     # ==================[ Print Configuration ]====================-
     from rich.panel import Panel
@@ -560,7 +561,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         panels = [Panel( str(e), title='Exception', title_align='left' )]
         if errors: panels.append( Panel( '\n'.join( errors ), title='stderr', title_align='left'))
 
-        print( Panel( Group(*panels), expand=False, title='Errors', title_align='left', width=120 ) )
+        console.print( Panel( Group(*panels), expand=False, title='Errors', title_align='left', width=120 ) )
         if opts.debug: raise e
 
     # TODO create a timeout for the processing, something reasonable.
@@ -571,14 +572,14 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     table.add_row(
         build.name, f"{stats['status']}", f"{stats['duration']}",
         style="red" if stats["status"] == "Failed" else "green", )
-    print( table )
+    console.print( table )
 
     section.end()
     console.pop( build.name )
 
     # ==================[ Output Log Processing ]==================-
-    h1( "Post Run Actions" )
-    hu( "Clean Log" )
+    fmt.h1( "Post Run Actions" )
+    fmt.hu( "Clean Log" )
     cleanlog_path = (project.path / f"logs-clean/{build.name}.txt")
     if 'clean_log' in  get_interior_dict(build).keys():
         clean_log = build.clean_log
@@ -610,16 +611,16 @@ def process_project( opts:SimpleNamespace, project:SimpleNamespace ):
     project_console = Console( file=log_file, force_terminal=True )
     console.tee( project_console , project.name )
     console.line()
-    s1( f'Process: {project.name}' )
+    fmt.s1( f'Process: {project.name}' )
 
     # ================[ project Heading / Config ]==================-
     if opts.verbose:
-        t2( project.name )
-        t3("Project Config:")
+        fmt.t2( project.name )
+        fmt.t3("Project Config:")
         write_namespace( pretendio, project, 'project')
-        t3("Build Configurations")
+        fmt.t3("Build Configurations")
         for build in project.build_configs.values():
-            h(build.name)
+            fmt.h(build.name)
 
     project_total = len(project.build_configs)
     build_num = 0
@@ -638,7 +639,7 @@ def process_project( opts:SimpleNamespace, project:SimpleNamespace ):
                 raise e
             print("continuing")
 
-    send()
+    fmt.send()
     # remove the project output log.
     console.pop( project.name )
 
@@ -705,7 +706,7 @@ def show_statistics( opts:SimpleNamespace ):
                 else: r.append( str(sub['duration']) )
 
             table.add_row( *r )
-    print( table )
+    console.print(table)
 
 # MARK: Toolchain Actions
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -732,13 +733,13 @@ def main():
     console.set_window_title( "AutoBuild" )
 
     # Create the namespace before parsing, so we can add derived options from the system
-    opts = SimpleNamespace(**{
+    opts =  SimpleNamespace(**cast( Mapping[str,Any],{
         'command': " ".join( sys.argv ),
         'platform': platform.system(),
         'path': Path( __file__ ).parent,
         'toolchains': {},
         'projects': {}
-    })
+    }))
 
     # Log everything to a file
     console.tee( Console( file=open( opts.path / "build_log.txt", "w", encoding='utf-8' ), force_terminal=True ),
@@ -747,51 +748,51 @@ def main():
     parse_args(opts)
 
     if opts.quiet: console.quiet = True
-    t1( "AutoBuild" )
+    fmt.t1( "AutoBuild" )
 
     if opts.verbose:
-        t3( "Options" )
+        fmt.t3( "Options" )
         pprint( opts.__dict__, expand_all=True )
 
     opts.toolchains = toolchains = import_toolchains(opts)
     opts.projects   = projects   = import_projects(opts)
 
     if opts.gitoverride:
-        t3( "Processing Override" )
+        fmt.t3( "Processing Override" )
         git_override(opts)
 
     # TODO if help in any of the system verbs then display a list of verb help items.
 
     # List only.
     if opts.list:
-        with Section('List'):
-            t3(f'{len(toolchains)} Toolchains')
-            h(f"Available Verbs: {opts.toolchain_verbs or None}")
-            h('List:')
+        with fmt.Section('List'):
+            fmt.t3(f'{len(toolchains)} Toolchains')
+            fmt.h(f"Available Verbs: {opts.toolchain_verbs or None}")
+            fmt.h('List:')
             for toolchain_name in toolchains:
-                hu(toolchain_name)
+                fmt.hu(toolchain_name)
 
             n_builds = 0
-            t3(f'{len(projects)} Projects')
-            h(f"Available Verbs: {opts.project_verbs or None}")
-            h('List:')
+            fmt.t3(f'{len(projects)} Projects')
+            fmt.h(f"Available Verbs: {opts.project_verbs or None}")
+            fmt.h('List:')
             for project_name,project in projects.items():
                 n_builds += len(project.build_configs)
-                hu(project_name)
+                fmt.hu(project_name)
 
-            t3(f'{n_builds} Build Configurations')
-            h(f"Available Verbs: {opts.build_verbs or None}")
-            h('List:')
+            fmt.t3(f'{n_builds} Build Configurations')
+            fmt.h(f"Available Verbs: {opts.build_verbs or None}")
+            fmt.h('List:')
             for project_name,project in projects.items():
                 for build_name in project.build_configs:
-                    hu(f'{project_name} | {build_name}')
+                    fmt.hu(f'{project_name} | {build_name}')
 
         quit()
 
     process_toolchains( opts )
 
     if 'fetch' in opts.project_actions:
-        with Section( 'Fetching Projects' ):
+        with fmt.Section( 'Fetching Projects' ):
             for project in projects.values():
                 fetch_project( opts, project )
 

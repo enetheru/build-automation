@@ -233,7 +233,9 @@ def build_scons():
                 h(f"Building {target}")
                 build_command: str = " ".join(filter(None, cmd_chunks + [f"target={target}"]))
 
-                # I found that if i dont clean the repository then files are unfortunately wrong.
+                # FIXME  I found that if i dont clean the repository then files are unfortunately wrong.
+                # However if I am working on something then this isna n
+                # unnecessary step most of the time.
                 stream_command('scons --clean -s ', dry=opts['dry'])
                 stream_command(build_command, dry=opts['dry'])
 
@@ -274,8 +276,6 @@ def config_minim( cfg:SimpleNamespace ) -> bool:
 variations['minimum'] = config_minim
 
 def config_tracy( cfg:SimpleNamespace ) -> bool:
-    cfg.verbs.append( 'tracy' )
-
     setattr(cfg, 'gitdef', {
         'remote':'enetheru',
         'url':'https://github.com/enetheru/godot.git',
@@ -288,8 +288,6 @@ def config_tracy( cfg:SimpleNamespace ) -> bool:
 variations['tracy'] = config_tracy
 
 def config_tracy_dbg( cfg:SimpleNamespace ) -> bool:
-    cfg.verbs.append( 'tracy' )
-
     setattr(cfg, 'gitdef', {
         'remote':'enetheru',
         'url':'https://github.com/enetheru/godot.git',

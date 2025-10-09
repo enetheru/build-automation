@@ -187,6 +187,9 @@ function Right {
     }
 }
 
+
+# USAGE:
+# align -indent 4 -mode center "<string-to-align>" "<initial-string>"
 function Align {
     [CmdletBinding( )]
     param(
@@ -333,10 +336,35 @@ function CMakeH1 {
 # ║         ██████  ██████  ██████  ███████ ██████   ██████  ██   ██           ║
 # ╙────────────────────────────────────────────────────────────────────────────╜
 # The above with:  CodeBox "CodeBox" -border "╓─╖║ ║╙─╜" -compact
+[string]$codebox_help = '# CodeBox Help
+# -h, --help    | show this help message
+# -cols         | how many columns wide, default:-1 which is infinite
+# -comment      | what to use as a comment starter, default:#
+# -pad          | padding inside codebox
+# -border       | nine characters describing border see below
+# -compact      | reduce whitespace around text
+# -above        | Title in top edge
+# -below        | Title in bottom edge
+# -font         | which figlet font to use
+# -align        | align title within columns, (left, right, center)
+# -mark         | insert a "MARK: <text>" ahead of box.
+# <remaining text is interpreted as the title>
+#
+# Border:
+# Support surrounding border | 012 | ╓─╖ | ╭─╮ | ▛▀▜
+# and background             | 3B5 | ║ ║ | │ │ | ▌ ▐
+# using nine characters.     | 678 | ╙─╜ | ╰─╯ | ▙▄▟
+#
+# Examples:
+# "╓─╖║ ║╙─╜", "╔═╗║ ║╚═╝", "╭─╮│ │╰─╯", "▛▀▜▌ ▐▙▄▟",
+# "┌─┐│ │└─┘", "┏━┓┃ ┃┗━┛", "╒═╕│ │╘═╛"
+'
+
 function CodeBox {
     [CmdletBinding( PositionalBinding = $false )]
     param(
-        [int]$columns = 80,
+        [Alias( "h" )][switch]$help,
+        [Alias( "cols" )][int]$columns = -1,
         [string]$comment = '#',
         [string]$pad = ' ',
         [string]$border = "╒═╕│ │╘═╛",
@@ -345,40 +373,119 @@ function CodeBox {
         [string]$below,
         [string]$font = 'ANSI Regular',
         [string]$align = 'center',
-        [Parameter( ValueFromRemainingArguments = $true )]$message
+        [switch]$mark,
+        [Parameter( ValueFromRemainingArguments = $true )]$message = "Figlet Is Cool"
     )
-    # Support surrounding border | 012 | ╓─╖ | ╭─╮ | ▛▀▜
-    # and background             | 3B5 | ║ ║ | │ │ | ▌ ▐
-    # using nine characters.     | 678 | ╙─╜ | ╰─╯ | ▙▄▟
-    # Eg.
-    # "╓─╖║ ║╙─╜", "╔═╗║ ║╚═╝", "╭─╮│ │╰─╯", "▛▀▜▌ ▐▙▄▟",
-    # "┌─┐│ │└─┘", "┏━┓┃ ┃┗━┛", "╒═╕│ │╘═╛"
-    
+    if( $help ){
+        Write-Output $codebox_help
+        return
+    }
+
+    # get the columns width from the figlet output.
+    if( $columns -lt 0 ){
+        $columns = 0;
+        figlet -w 9001 -f "$font" ${message} | ForEach-Object {
+            $_ | ForEach-Object {
+                $length = $_.Length;
+                if ($length -gt $columns) {
+                    $columns = $length;
+                }
+            }
+        };
+        $columns = $columns + 1 + $comment.Length + $pad.Length + ($compact ? 0 : 4);
+
+    } else {
+        $columns = $columns - (($comment.Length + $pad.Length))
+    }
+
+
     if( $border.Length -lt 9 ) {
         [string[]]$edges = ("$($border[0])" * 9).ToCharArray()
         $edges[4] = ' '
     } else {
         [string[]]$edges = $border.ToCharArray()
     }
-    
-    if( -Not ($comment -eq $edges[3]) ){
-        0,3,6 | ForEach-Object { $edges[$_] = "${comment}${pad}$($edges[$_])" }
-    }
-    
+
+    # Setup the left
+#    if( -Not ($comment -eq $edges[3]) ){
+#        0,3,6 | ForEach-Object { $edges[$_] = "${comment}${pad}$($edges[$_])" }
+#    }
+
+    # expand into rows without content
     $top = Fill -width $columns -filler $edges[1] | Left $edges[0] | Right $edges[2]
     $mid = Fill -width $columns -filler $edges[4] | Left $edges[3] | Right $edges[5]
     $bottom = Fill -width $columns -filler $edges[7] | Left $edges[6] | Right $edges[8]
-    
-    "${comment}${pad}MARK: ${message}"
-    $above ? ($top | Center "$above") : $top
-    $compact ? $null : $mid
-    figlet -l -f "$font" ${message} | ForEach-Object {
-#        $mid | Center $_
-#
-        $mid | Align -mode $align $_ -indent 4
+
+    # Add the MARK
+    if( $mark ) {
+        "${comment}${pad}MARK: ${message}"
     }
-    $compact ? $null : $mid
-    $below ? ($bottom | Center "$below") : $bottom
+
+    # Top Row
+    "$comment$pad$($above ? ($top | Center "$above") : $top)"
+
+    # Additional inside top
+    $compact ? $null : "$comment$pad$mid"
+
+    # if we are aligning to the left, then what column is the first inside the box?
+    [int]$indent = 0
+    if( $align -eq 'left') {
+        $indent = $compact ? 1 : 3
+    }
+
+    # Create the figlet heading, and align inside middle rows.
+    figlet -w $columns -l -f "$font" ${message} | ForEach-Object {
+        "$comment$pad$($mid | Align -mode $align $_ -indent $indent)"
+    }
+
+    # Additional inside bottom
+    $compact ? $null : "$comment$pad$mid"
+    # Bottom Row
+    "$comment$pad$($below ? ($bottom | Center "$below") : $bottom)"
 }
 
+# MARK: GODOT-HEADER
+# Create a header for godot in the following style
 
+$example = "
+#                  ██████   ██████  ██████   ██████  ████████                  #
+#                 ██       ██    ██ ██   ██ ██    ██    ██                     #
+#                 ██   ███ ██    ██ ██   ██ ██    ██    ██                     #
+#                 ██    ██ ██    ██ ██   ██ ██    ██    ██                     #
+#                  ██████   ██████  ██████   ██████     ██                     #
+func                        __________GODOT__________              ()->void:pass
+"
+
+function gdh {
+    [CmdletBinding( PositionalBinding = $false )]
+    param(
+        [Alias( "h" )][switch]$help,
+        [int]$cols = 80,
+        [int]$outline_cols = 25,
+        [string]$font = 'ANSI Regular',
+        [string]$align = 'center',
+        [Parameter( ValueFromRemainingArguments = $true )]$msg
+    )
+    if( $help ){
+        Write-Output $example
+        return
+    }
+
+    # Output figlet heading
+    $mid = Fill -width $cols -filler ' ' | Left '#' | Right '#'
+    figlet -l -f "$font" ${msg} | ForEach-Object {
+        if( $align -eq "left"){
+            $mid | Align -mode $align $_ -indent 2
+        } else {
+            $mid | Align -mode $align $_
+        }
+    }
+    
+    # Output func __heading__ for script panel outliner
+    $func_name = Fill -width $outline_cols -filler '_' | Align ($msg.ToUpper() -replace '\W','_')
+
+    $test = fill -width $cols -filler ' ' | Left 'func ' | Right '()->void:pass'
+    Align $func_name $test
+
+    # Write-Output "func $func_name()->void:pass"
+}

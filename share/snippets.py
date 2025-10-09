@@ -1,5 +1,6 @@
 from share.script_preamble import *
 
+console = rich.console.Console()
 
 # MARK: Git Checkout
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -11,7 +12,6 @@ from share.script_preamble import *
 # TODO, if the work tree is already upto date, then skip
 # TODO Rename source_git to something like checkout, and replace all verbs
 def source_git():
-    console = rich.console.Console()
     config:dict = {}
     opts:dict = {}
     project:dict = {}
@@ -26,7 +26,7 @@ def source_git():
 
     if config['ok'] and 'source' in opts['build_actions']:
         console.set_window_title(f'Source - {build['name']}')
-        section = Section( "Git Checkout" )
+        section = fmt.Section( "Git Checkout" )
         section.start()
 
         # merge definitions project < build < opts
@@ -41,12 +41,13 @@ def source_git():
             raise fnf
 
         repo = git.Repo(gitdir)
-        h(f'git-dir: {gitdir.as_posix()}')
+        fmt.h(f'git-dir: {gitdir.as_posix()}')
 
         pattern = gitdef['ref'] if gitdef['remote'] == 'origin' else f'{gitdef['remote']}/{gitdef['ref']}'
+        bare_hash : git.RefLog = ()
         try:
             bare_hash = repo.git.log('--format=%h', '-1',  pattern)
-            hu( f'{repo.git.log('--oneline', '-1',  pattern)}' )
+            fmt.hu( f'{repo.git.log('--oneline', '-1',  pattern)}' )
         except GitCommandError as e:
             print(e)
             exit(1)
@@ -60,7 +61,7 @@ def source_git():
                 '--dry-run' if opts['dry'] else None ]
             repo.git.worktree( *filter(None, cmd_args) )
 
-            h("Create WorkTree")
+            fmt.h("Create WorkTree")
             os.chdir( gitdir )
 
             cmd_args = [ 'add', '--detach', worktree_path.as_posix(), pattern ]
@@ -71,25 +72,25 @@ def source_git():
 
         if worktree_path.exists():
             worktree = git.Repo( worktree_path )
-            h(f'worktree: {worktree_path.as_posix()}')
+            fmt.h(f'worktree: {worktree_path.as_posix()}')
 
             worktree_hash = worktree.git.log('--format=%h', '-1')
-            hu( f'{worktree.git.log('--oneline', '-1')}' )
+            fmt.hu( f'{worktree.git.log('--oneline', '-1')}' )
 
             if bare_hash != worktree_hash:
-                h("Updating WorkTree")
+                fmt.h("Updating WorkTree")
                 cmd_args = [ '--force', '--detach', pattern ]
                 if opts['dry']:
                     print(f'dry-run: git checkout {' '.join(filter(None, cmd_args))}')
                 else:
                     worktree.git.checkout( *filter(None, cmd_args) )
             else:
-                h("WorkTree is Up-to-Date")
+                fmt.h("WorkTree is Up-to-Date")
 
 
-            print( rPadding(
+            console.print( rPadding(
                 Panel( worktree.git.log( '-1'),  expand=False, title=pattern, title_align='left', width=120 ),
-                (0,0,0,pad.sizeu()) )
+                (0,0,0,fmt.pad.sizeu()) )
             )
 
         section.end()
@@ -112,7 +113,7 @@ def show_stats():
     for cmd_name, cmd_stats in stats.items():
         table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}')
 
-    rich.print( table )
+    console.print( table )
     if not config['ok']: exit(1)
 
 # MARK: CMake
@@ -146,7 +147,7 @@ def cmake_check():
 
     # Create Build Directory
     if not build_path.is_dir():
-        t3(f"Creating {cmake['build_dir']}")
+        fmt.t3(f"Creating {cmake['build_dir']}")
         os.mkdir(build_path)
 
     try:
@@ -169,8 +170,8 @@ def cmake_configure():
     cmake = build['cmake']
 
     if config['ok'] and 'configure' in opts['build_actions']:
-        h2("CMake Configure")
-        s1("CMake Configure")
+        fmt.h2("CMake Configure")
+        fmt.s1("CMake Configure")
         console.set_window_title(f'Configure - {build['name']}')
 
         config_opts = [
@@ -198,7 +199,7 @@ def cmake_configure():
             stream_command(f'cmake {' '.join(filter(None, config_opts))}', dry=opts['dry'])
             print('')
 
-        send()
+        fmt.send()
         stats['configure'] = timer.get_dict()
         config['ok'] = timer.ok()
 
@@ -217,7 +218,7 @@ def cmake_build():
     cmake = build['cmake']
 
     if config['ok'] and 'build' in opts['build_actions']:
-        t2("CMake Build")
+        fmt.t2("CMake Build")
         console.set_window_title('Build - {name}')
 
         build_path:Path = cmake['build_path']
@@ -231,7 +232,7 @@ def cmake_build():
 
         with Timer(name='build') as timer:
             targets = ' '.join(cmake.get('targets', []))
-            s2(f" Building targets: {targets or 'default'} ")
+            fmt.s2(f" Building targets: {targets or 'default'} ")
             target_opts = copy.copy(build_opts)
             if targets:
                 target_opts.append(f" --target {targets}")
@@ -255,6 +256,6 @@ def cmake_build():
             #     stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
             #     print('')
 
-        send()
+        fmt.send()
         stats['build'] = timer.get_dict()
         config['ok'] = timer.ok()

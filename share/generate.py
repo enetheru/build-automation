@@ -8,18 +8,17 @@
 import inspect
 import json
 from json import JSONEncoder
-from pathlib import Path
 from types import SimpleNamespace
 from typing import IO
 
-from share.format import *
+from share.script_preamble import *
 
 class MyEncoder(JSONEncoder):
     def default(self, o):
         if isinstance( o, SimpleNamespace ):
             return "Skipping in case of circular reference."
         if isinstance( o, Path ):
-            return os.fspath( o )
+            return fmt.os.fspath( o )
         return f"*** CANT JSON DUMP THIS '{type(o).__name__}'"
 
 json.JSONEncoder = MyEncoder
@@ -39,7 +38,7 @@ def func_to_string( func ) -> str:
     # No '# start_script' was found, so assume to use the whole thing.
     return source if skip else '\n'.join(lines)
 
-def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, level: int = 0) -> None:
+def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, level: int = 0):
     """Convert a SimpleNamespace to a dictionary-like buffer string with indentation."""
 
     pad = " " * (indent * level)
@@ -99,7 +98,7 @@ def write_preamble(buffer:IO, project: SimpleNamespace):
 
 
 def write_section( buffer:IO, section:SimpleNamespace, section_name:str ):
-    codebox = '\n'.join(code_box( section_name, width=120 ).splitlines())
+    codebox = '\n'.join(fmt.code_box( section_name, width=120 ).splitlines())
     buffer.writelines(['\n',codebox,'\n'])
     write_namespace( buffer, section, section_name )
     buffer.writelines(['\n', f"config['{section_name}'] = {section_name}", '\n'])
@@ -115,7 +114,7 @@ def write_section( buffer:IO, section:SimpleNamespace, section_name:str ):
 
 def generate_build_scripts( opts:SimpleNamespace ):
     projects = opts.projects
-    t3('Generating Build Scripts')
+    fmt.t3('Generating Build Scripts')
 
     for project in projects.values():
         for build in project.build_configs.values():
@@ -130,6 +129,6 @@ def generate_build_scripts( opts:SimpleNamespace ):
                     for part in getattr( section, f'script_parts', [] ):
                         script.write( func_to_string( part ) )
 
-    h("[green]OK")
+    fmt.h("[green]OK")
 
 

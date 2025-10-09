@@ -1,7 +1,9 @@
 import copy
 from types import SimpleNamespace
+from typing import cast, Mapping, Any
 
 from share.script_preamble import *
+
 
 # MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -15,27 +17,27 @@ def generate( opts:SimpleNamespace ) -> dict:
     from godot.config import godot_platforms, godot_arch
     from share.snippets import source_git, show_stats
     from share.expand_config import (
-        expand_host_env, expand_func, expand_list, expand_cmake, cmake_generators,
+        expand_host_env, expand_func, expand_list, cmake_generators,
         cmake_config_types
     )
 
     name = 'godot-cpp'
 
-    project = SimpleNamespace(**{
+    project = SimpleNamespace(**cast( Mapping[str,Any],{
         'name':name,
         'path': opts.path / name,
         'gitdef':{
-            'url':"https://github.com/enetheru/godot-cpp.git/",
-            'ref':'master'
+            'url':"https://github.com/godotengine/godot-cpp.git/",
+            'ref':'e83fd0904c13356ed1d4c3d09f8bb9132bdc6b77'
         },
         # TODO rename all 'build_configs' to 'builds'
         'build_configs' : dict[str,SimpleNamespace]()
-    })
+    }))
 
-    build_base = SimpleNamespace(**{
+    build_base = SimpleNamespace(**cast( Mapping[str,Any],{
         'verbs':['source'],
         'script_parts':[source_git]
-    })
+    }))
 
     # Host environment toolchain and build tools
     builds:list[SimpleNamespace] = expand_host_env( build_base, opts )
@@ -45,7 +47,7 @@ def generate( opts:SimpleNamespace ) -> dict:
     # target and variants
     builds = expand_func( builds, expand_variant )
 
-    # Naming upto now.
+    # Naming up to now.
     for build in builds:
 
         toolchain = build.toolchain.name
@@ -54,33 +56,57 @@ def generate( opts:SimpleNamespace ) -> dict:
 
         name_parts = [
             build.host,
+            build.buildtool,
             toolchain if toolchain != 'emscripten' else None,
-            platform if build.platform != 'android' else None,
             arch if arch != 'wasm32' else None,
-            build.variant
+            platform if build.platform != 'android' else None,
         ]
 
         srcdir_parts = [
             build.host,
+            build.buildtool,
             toolchain,
-            build.variant
         ]
 
         if build.buildtool == 'scons':
-            name_parts += ['scons']
-            srcdir_parts += ['scons']
+            scons = build.scons
+            name_parts += [
+                scons['target'],
+                build.variant if build.variant != 'default' else None,
+            ]
+            srcdir_parts = [
+                build.host,
+                build.buildtool,
+                toolchain,
+                scons['target']
+            ]
 
         elif build.buildtool == 'cmake':
             cmake = build.cmake
             short_gen = cmake_generators[cmake['generator']]
             short_type = cmake_config_types[cmake['config_type']]
+
+            srcdir_parts = [
+                build.host,
+                build.buildtool,
+            ]
             name_parts += [
-                short_gen if build.buildtool == 'cmake' else None,
-                short_type if build.buildtool == 'cmake' else None,
+                cmake['godotcpp_target'],
+                short_type,
+                build.variant if build.variant != 'default' else None,
+                short_gen,
             ]
-            srcdir_parts += [
-                short_gen if short_gen != build.toolchain.name else None
+
+            builddir_parts = [
+                'build',
+                toolchain,
+                cmake['godotcpp_target'],
+                build.variant if build.variant != 'default' else None,
+                short_type
             ]
+
+
+            cmake['build_dir'] = '-'.join(filter(None,builddir_parts))
 
         build.name = '.'.join(filter(None,name_parts))
         build.source_dir = '.'.join(filter(None, srcdir_parts))
@@ -92,13 +118,13 @@ def generate( opts:SimpleNamespace ) -> dict:
     return { project.name: project }
 
 # MARK: Scripts
-# ╓────────────────────────────────────────────────────────────────────────────────────────╖
-# ║                 ███████  ██████ ██████  ██ ██████  ████████ ███████                    ║
-# ║                 ██      ██      ██   ██ ██ ██   ██    ██    ██                         ║
-# ║                 ███████ ██      ██████  ██ ██████     ██    ███████                    ║
-# ║                      ██ ██      ██   ██ ██ ██         ██         ██                    ║
-# ║                 ███████  ██████ ██   ██ ██ ██         ██    ███████                    ║
-# ╙────────────────────────────────────────────────────────────────────────────────────────╜
+# ╓────────────────────────────────────────────────────────────────────────────╖
+# ║            ███████  ██████ ██████  ██ ██████  ████████ ███████             ║
+# ║            ██      ██      ██   ██ ██ ██   ██    ██    ██                  ║
+# ║            ███████ ██      ██████  ██ ██████     ██    ███████             ║
+# ║                 ██ ██      ██   ██ ██ ██         ██         ██             ║
+# ║            ███████  ██████ ██   ██ ██ ██         ██    ███████             ║
+# ╙────────────────────────────────────────────────────────────────────────────╜
 
 # MARK: Testing
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -126,7 +152,7 @@ def test_script():
     def collect_godots() -> dict:
         godot_arches = ['x86_64', 'x86_32', 'arm64', 'arm32', 'wasm32']
 
-        # find all builds in the godot build folder to test against.
+        # find all builds in the Godot build folder to test against.
         godot_path = Path( opts['path'] / 'godot' )
         godot_sets = {}
         for child in godot_path.glob(f'{build['host']}*/'):
@@ -141,7 +167,7 @@ def test_script():
             set_folder = child.name
 
             for f in files:
-                # Chop up the godot.windows.target... into pieces and process them
+                # Chop up the godot.windows.target.* in to pieces and process them
                 file_path = Path(child / 'bin' / f)
                 parts = f.split('.')[1:-1]
                 parts = [p for p in parts if p != 'llvm']
@@ -167,7 +193,7 @@ def test_script():
                     'variant':set_variant
                 })
 
-                # update the dict
+                # update the dictionary
                 godot_sets[set_name] |= {
                     set_target: file_path.as_posix()
                 }
@@ -236,13 +262,13 @@ def test_script():
     testing_results = []
 
     while config['ok'] and 'test' in opts['build_actions']:
-        with Section( "Testing" ):
+        with fmt.Section( "Testing" ):
             config['ok'] = False
             console.set_window_title(f'Test - {build['name']}')
 
             godot_sets = collect_godots()
             num_tests = len(godot_sets)
-            h(f'Found {num_tests} godot exe file sets to test with')
+            fmt.h(f'Found {num_tests} godot exe file sets to test with')
 
             test_project_dir = build['source_path'] / 'test/project'
             dot_godot_dir = test_project_dir / '.godot'
@@ -252,7 +278,7 @@ def test_script():
             for set_name, set_value in godot_sets.items():
                 if dot_godot_dir.exists():
                     break
-                h(f'Generating the .godot folder using: {set_name}')
+                fmt.h(f'Generating the .godot folder using: {set_name}')
                 try: gen_dot_folder( set_value )
                 except SubprocessError as e:
                     print( '[red]Godot exited abnormally during .godot folder creation')
@@ -266,15 +292,15 @@ def test_script():
                 break
 
             if opts['dry']:
-                h( 'Dry-Run: Test Completed' )
+                fmt.h( 'Dry-Run: Test Completed' )
                 config['ok'] = True
                 break
 
             talley = 0
             for set_name, set_value in godot_sets.items():
                 if opts['verbose']:
-                    t3("Running Test")
-                    h('Using Fileset:')
+                    fmt.t3("Running Test")
+                    fmt.h('Using Fileset:')
                     p( set_value, pretty=True )
                 result = run_test( set_value )
                 if result['status'] == 'Success': talley += 1
@@ -343,7 +369,7 @@ def clean_scons():
     if config['ok'] and 'clean' in opts['build_actions']:
         console.set_window_title(f'Clean - {build['name']}')
 
-        with Timer(name='clean', push=False) as timer, Section("SCons Clean"):
+        with Timer(name='clean', push=False) as timer, fmt.Section("SCons Clean"):
             try:
                 proc = stream_command( "scons --clean -s" , dry=opts['dry'])
                 # Change status depending on the truthiness of returnvalue
@@ -362,19 +388,15 @@ def build_scons():
     console = rich.console.Console()
     config:dict = {}
     opts:dict = {}
-    project:dict = {}
-    toolchain:dict = {}
     build:dict = {}
     stats:dict = {}
     # start_script
 
     #[=================================[ Build ]=================================]
-    from os import environ
-    from time import sleep
 
     if config['ok'] and 'build' in opts['build_actions']:
         console.set_window_title(f'Build - {build['name']}')
-        with Timer(name='build') as timer, Section('Scons Build'):
+        with Timer(name='build') as timer, fmt.Section('Scons Build'):
 
             scons: dict     = build["scons"]
 
@@ -392,10 +414,8 @@ def build_scons():
             if "build_vars" in scons.keys():
                 cmd_chunks += scons["build_vars"]
 
-            for target in scons["targets"]:
-                h(f"Building {target}")
-                build_command: str = " ".join(filter(None, cmd_chunks + [f"target={target}"]))
-                stream_command(build_command, dry=opts['dry'])
+            build_command: str = " ".join(filter(None, cmd_chunks))
+            stream_command(build_command, dry=opts['dry'])
 
         stats['build'] = timer.get_dict()
         config['ok'] = timer.ok()
@@ -415,6 +435,8 @@ def pre_cmake():
     # start_script
 
     #[==============================[ Pre-CMake ]==============================]
+    # This exists because we dont know the location of the build profiel until
+    # after the repo is cloned.
     cmake = build['cmake']
     if 'godot_build_profile' in cmake:
         profile_path:Path = build['source_path'] / cmake['godot_build_profile']
@@ -437,7 +459,7 @@ def pre_cmake():
 # │ |___/\_,_|_|_\__,_| |_|\___/\___/_/__/                                     │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def expand_buildtools( config:SimpleNamespace ) -> list[SimpleNamespace]:
-    from share.expand_config import expand_cmake
+    from share.expand_config import expand_cmake as shared_expand_cmake
 
     configs_out = []
     for tool in ['scons', 'cmake']:
@@ -452,10 +474,16 @@ def expand_buildtools( config:SimpleNamespace ) -> list[SimpleNamespace]:
                 cfg.script_parts += [pre_cmake]
                 setattr( cfg, 'cmake', {
                     'godot_build_profile':'test/build_profile.json',
-                    'targets':['godot-cpp.test.template_release','godot-cpp.test.template_debug','godot-cpp.test.editor'],
-                    'config_vars':  ['-DGODOTCPP_ENABLE_TESTING=ON']
+                    'targets':['godot-cpp-test'],
+                    'config_vars':  [
+                        '-DGODOTCPP_ENABLE_TESTING=ON',
+                        '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON'
+                    ]
                 })
-                configs_out += expand_cmake( cfg )
+
+                for cmake_config in shared_expand_cmake( cfg ):
+                    configs_out += expand_cmake( cmake_config )
+
     return configs_out
 
 # MARK: Scons
@@ -491,7 +519,6 @@ def expand_scons( config:SimpleNamespace ) -> list[SimpleNamespace]:
                                       f"arch={arch}",
                                       "build_profile=build_profile.json",
                                   ],
-                                  "targets": ["template_release", "template_debug", "editor"],
                               } | getattr( config, 'scons', {}) )
 
     match config.toolchain.name:
@@ -520,7 +547,40 @@ def expand_scons( config:SimpleNamespace ) -> list[SimpleNamespace]:
         case _:
             return []
 
-    return [config]
+    # Split the compile up into individual targets
+    configs_out = []
+    for target in ["template_release", "template_debug", "editor"]:
+        cfg = copy.deepcopy(config)
+
+        cfg.scons['target'] = target
+        cfg.scons['build_vars'].append(f'target={target}')
+
+        configs_out.append( cfg )
+
+    return configs_out
+
+# MARK: CMake
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ___ __  __      _                                                         │
+# │ / __|  \/  |__ _| |_____                                                   │
+# │| (__| |\/| / _` | / / -_)                                                  │
+# │ \___|_|  |_\__,_|_\_\___|                                                  │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+def expand_cmake( config:SimpleNamespace ) -> list[SimpleNamespace]:
+
+    if getattr(config, 'buildtool') != 'cmake': return [config]
+
+    # Split the compile up into individual targets
+    configs_out = []
+    for target in ["template_release", "template_debug", "editor"]:
+        cfg = copy.deepcopy(config)
+
+        cfg.cmake['godotcpp_target'] = target
+        cfg.cmake['config_vars'].append(f'-DGODOTCPP_TARGET={target}')
+
+        configs_out.append( cfg )
+    return configs_out
+
 
 # MARK: Variations
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -540,6 +600,17 @@ def expand_scons( config:SimpleNamespace ) -> list[SimpleNamespace]:
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 # MARK: double
+def variant_debug_symbols( cfg:SimpleNamespace ) -> bool:
+    setattr( cfg, 'variant', 'debug' )
+    if cfg.arch not in ['x86_64', 'arm64']: return False
+    match cfg.buildtool:
+        case 'scons':
+            cfg.scons["build_vars"].append("debug_symbols=yes")
+        case 'cmake':
+            return False
+    return True
+
+# MARK: double
 def variant_double( cfg:SimpleNamespace ) -> bool:
     setattr( cfg, 'variant', 'double' )
     if cfg.arch not in ['x86_64', 'arm64']: return False
@@ -550,12 +621,14 @@ def variant_double( cfg:SimpleNamespace ) -> bool:
             cfg.cmake["config_vars"].append("-DGODOTCPP_PRECISION=double")
     return True
 
+
 def expand_variant( config:SimpleNamespace ) -> list:
     configs_out:list = []
 
     variations = {
-        'default': lambda cfg: True,
-        'double': variant_double
+        'default': lambda default_accept: True,
+        'double': variant_double,
+        'debug': variant_debug_symbols,
         # TODO
         # nothreads
         # hotreload

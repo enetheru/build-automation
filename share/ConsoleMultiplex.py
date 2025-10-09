@@ -1,5 +1,3 @@
-from io import StringIO
-
 from rich.console import Console
 
 class ConsoleMultiplex(Console):
@@ -8,7 +6,7 @@ class ConsoleMultiplex(Console):
         self.quiet = False
         self.outputs: dict[str, Console] = dict[str, Console]()
 
-    def print(self, *args, **kwargs ) -> None:
+    def print(self, *args, **kwargs ):
         if not self.quiet: super().print(*args, **kwargs)
         for dest in self.outputs.values():
             dest.print(*args, **kwargs)
