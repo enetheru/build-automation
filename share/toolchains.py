@@ -1,10 +1,13 @@
 import itertools
+import subprocess
 from copy import deepcopy
 from types import SimpleNamespace, MethodType
 
 from typing import Mapping, Any, cast
 
 from share.script_preamble import *
+
+import share.android
 
 # Since these things are getting a little complicated lets try to make a little example for myself.
 example_mapping = SimpleNamespace(**cast(Mapping[str, Any], {
@@ -35,14 +38,22 @@ windows_toolchains:list = []
 # │ |_|  |_|___/ \_/ \___| │
 # ╰────────────────────────╯
 
-windows_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
-    'name':'msvc',
-    'desc':'# Microsoft Visual Studio',
-    'shell':[ "pwsh", "-Command",
-        """ "&{Import-Module 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell 5ff44efb -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'};" """ ],
-    "arch":['x86_64'],
-    'platform':['win32']
-})))
+def msvc_toolchain() -> SimpleNamespace:
+    # get the visual studio instance ID
+    instance_cmd  = "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe"
+    instance_id = subprocess.check_output([instance_cmd, '-property', 'instanceId']).strip().decode('utf-8')
+
+    toolchain = SimpleNamespace(**cast( Mapping[str,Any],{
+        'name':'msvc',
+        'desc':'# Microsoft Visual Studio',
+        'shell':[ "pwsh", "-Command",
+                  f""" "&{{Import-Module 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell {instance_id} -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'}};" """ ],
+        "arch":['x86_64'],
+        'platform':['win32']
+    }))
+    return toolchain
+
+windows_toolchains.append( msvc_toolchain() )
 
 # MARK: LLVM
 # ╭────────────────────────╮
@@ -72,6 +83,7 @@ windows_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
 # │ | |__| |_\ V /| |\/| |___| |\/| | | ' \ (_ |\ \/\/ /  │
 # │ |____|____\_/ |_|  |_|   |_|  |_|_|_||_\___| \_/\_/   │
 # ╰───────────────────────────────────────────────────────╯
+# C:\opt\llvm-mingw-20250305-ucrt-x86_64\bin\
 def llvm_mingw_expand( self, build:SimpleNamespace ) -> list:
     """Expand LLVM-MinGW toolchain configurations for supported architectures and platforms.
 
@@ -96,13 +108,18 @@ def llvm_mingw_expand( self, build:SimpleNamespace ) -> list:
     return configs_out
 
 def llvm_mingw_toolchain() -> SimpleNamespace:
+    sysroot = f'C:/opt/llvm-mingw-20250305-ucrt-x86_64'
+    toolchain_env = {k:v for k,v in os.environ.items()}
+    toolchain_env['PATH'] = f'{sysroot};{os.environ['PATH']}'
+
     toolchain = SimpleNamespace(**cast( Mapping[str,Any],{
         'name':"llvm-mingw",
         'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
-        'sysroot':Path('C:/llvm-mingw'),
+        'sysroot':Path(sysroot),
         'shell':[ "pwsh", "-Command"],
         "arch":['i686', 'x86_64', 'armv7', 'aarch64'],
         'platform':['win32'],
+        'env': toolchain_env,
         'cmake': { 'toolchain':'share\\toolchain-llvm-mingw.cmake' },
     }))
     setattr( toolchain, 'expand', MethodType(llvm_mingw_expand, toolchain) )
@@ -118,8 +135,8 @@ windows_toolchains.append( llvm_mingw_toolchain())
 # │ |_|  |_|_|_||_\___| \_/\_/\___/ |_|  │
 # ╰──────────────────────────────────────╯
 def mingw64_toolchain() -> SimpleNamespace:
-    env = {k:v for k,v in os.environ.items()}
-    env['PATH'] = f'C:/mingw64/bin;{os.environ['PATH']}'
+    toolchain_env = {k:v for k,v in os.environ.items()}
+    toolchain_env['PATH'] = f'C:/mingw64/bin;{os.environ['PATH']}'
 
     toolchain = SimpleNamespace(**cast( Mapping[str,Any],{
         'name':"mingw64",
@@ -127,7 +144,7 @@ def mingw64_toolchain() -> SimpleNamespace:
         'sysroot':Path('C:/mingw64'),
         "arch":['x86_64'],
         'platform':['win32'],
-        'env': env,
+        'env': toolchain_env,
         'cmake': {
             'toolchain':'share\\toolchain-mingw64.cmake'
         },
@@ -146,6 +163,12 @@ windows_toolchains.append( mingw64_toolchain())
 # │ | |\/| \__ \\ V /\__ \/ /  │
 # │ |_|  |_|___/ |_| |___/___| │
 # ╰────────────────────────────╯
+
+# It's unfortunate that the godot-cpp build system only looks for prefixed commands.
+# I have had to create symlinks for clang64 so that it can find the ar command
+# in C:\msys64/cang64/bin
+# ln -s ar.exe x86_64-w64-mingw32-llvm-ar.exe
+
 windows_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
     'name':"msys2-mingw32",
     'desc':'i686      gcc linking against msvcrt',
@@ -186,22 +209,27 @@ windows_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
 # │ /_/ \_\_||_\__,_|_| \___/_\__,_| │
 # ╰──────────────────────────────────╯
 # The variations of toolchains for mingw are listed here: https://www.mingw-w64.org/downloads/
-def android_update( self, opts:SimpleNamespace, console:Console ):
-    import os
-    from pathlib import Path
-
+def android_update( self, toolchain:SimpleNamespace,  opts:SimpleNamespace, console:Console ):
     console.set_window_title('Updating Android SDK')
     print(fmt.t2("Android Update"))
 
-    sdk_path = Path( self.path )
-    os.chdir(sdk_path / 'cmdline-tools/latest/bin')
+    packages = share.android.list_installed()
+    print( f"installed_packages: {packages}")
 
-    cmd_chunks = [
-        'sdkmanager.bat',
-        '--update',
-        '--verbose' if opts.quiet is False else None,
-    ]
-    stream_command( ' '.join(filter(None, cmd_chunks)), dry=opts.dry )
+    wanted = {
+        'platform-tools':'',
+        "build-tools":"35.0.0",
+        "platforms":"android-35",
+        "cmdline-tools":"latest",
+        "cmake":"3.10.2.4988404",
+        'ndk':'28.1.13356709',
+    }
+
+    for package,version in wanted.items():
+        print(f"Checking for {package};{version}")
+        if not any(package["package"] == package and package["version"] == version for package in packages):
+            share.android.install( f'{package};{version}' )
+
 
 def android_expand( self, config:SimpleNamespace ) -> list:
     configs_out:list = []
@@ -228,7 +256,17 @@ def android_toolchain() -> SimpleNamespace:
         'verbs':['update'],
         'arch':['armeabi-v7a','arm64-v8a','x86','x86_64'],
         'platform':['android'],
+        'sdk':Path('C:/androidsdk'),
         'android_platforms':['latest'],
+        'android_api_level':'24',
+        'packages': {
+            'platform-tools':'',
+            "build-tools":"35.0.0",
+            "platforms":"android-35",
+            "cmdline-tools":"latest",
+            "cmake":"3.10.2.4988404",
+            'ndk':'28.1.13356709',
+        },
         'cmake':{
             'toolchain':'C:/androidsdk/ndk/23.2.8568313/build/cmake/android.toolchain.cmake',
         }

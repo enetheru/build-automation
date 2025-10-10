@@ -49,6 +49,7 @@ def generate( opts:SimpleNamespace ) -> dict:
 
     # Host environment toolchain and build tools
     builds:list[SimpleNamespace] = expand_host_env( build_base, opts )
+    builds = expand_func( builds, expand_toolchains )
     builds = expand_list( builds, 'buildtool', ['scons','cmake'] )
     builds = expand_func( builds, expand_buildtools )
 
@@ -110,11 +111,12 @@ def generate( opts:SimpleNamespace ) -> dict:
                 toolchain,
                 cmake['godotcpp_target'],
                 build.variant if build.variant != 'default' else None,
-                short_type
+                short_type,
+                short_gen,
             ]
 
 
-            cmake['build_dir'] = '-'.join(filter(None,builddir_parts))
+            cmake['build_dir'] = '.'.join(filter(None,builddir_parts))
 
         build.name = '.'.join(filter(None,name_parts))
         build.source_dir = '.'.join(filter(None, srcdir_parts))
@@ -463,6 +465,29 @@ def pre_cmake():
 # │ ██       ██ ██  ██      ██   ██ ██  ██ ██      ██ ██ ██    ██ ██  ██ ██    │
 # │ ███████ ██   ██ ██      ██   ██ ██   ████ ███████ ██  ██████  ██   ████    │
 # ╰────────────────────────────────────────────────────────────────────────────╯
+
+# MARK: ToolChains
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │ _____         _  ___ _         _                                           │
+# │|_   _|__  ___| |/ __| |_  __ _(_)_ _  ___                                  │
+# │  | |/ _ \/ _ \ | (__| ' \/ _` | | ' \(_-<                                  │
+# │  |_|\___/\___/_|\___|_||_\__,_|_|_||_/__/                                  │
+# ╰────────────────────────────────────────────────────────────────────────────╯
+
+def expand_toolchains( config:SimpleNamespace ) -> list[SimpleNamespace]:
+    if config.toolchain.name != 'android':
+        return [config]
+    setattr(config, 'packages', {
+        'platform-tools':'',
+        "build-tools":"35.0.0",
+        "platforms":"android-35",
+        "cmdline-tools":"latest",
+        "cmake":"3.10.2.4988404",
+        'ndk':'28.1.13356709',
+    })
+    setattr(config, 'android_api_level', '24')
+
+    return [config]
 
 # MARK: BuildTools
 # ╭────────────────────────────────────────────────────────────────────────────╮
