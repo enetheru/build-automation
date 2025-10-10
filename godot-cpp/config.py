@@ -14,6 +14,14 @@ from share.script_preamble import *
 # │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def generate( opts:SimpleNamespace ) -> dict:
+    """Generate build configurations for the godot-cpp project.
+
+    Args:
+        opts (SimpleNamespace): Configuration options including the project path.
+
+    Returns:
+        dict: A dictionary mapping project names to their SimpleNamespace configurations with build configs.
+    """
     from godot.config import godot_platforms, godot_arch
     from share.snippets import source_git, show_stats
     from share.expand_config import (
@@ -136,6 +144,11 @@ def generate( opts:SimpleNamespace ) -> dict:
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def test_script():
+    """Generate test configurations for SCons-based builds.
+
+    Returns:
+        list[SimpleNamespace]: List of configurations for testing different targets (e.g., template_release, template_debug).
+    """
     console = rich.console.Console()
     config:dict = {}
     opts:dict = {}
@@ -567,6 +580,14 @@ def expand_scons( config:SimpleNamespace ) -> list[SimpleNamespace]:
 # │ \___|_|  |_\__,_|_\_\___|                                                  │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def expand_cmake( config:SimpleNamespace ) -> list[SimpleNamespace]:
+    """Expand CMake build configurations for different targets.
+
+    Args:
+        config (SimpleNamespace): The base build configuration.
+
+    Returns:
+        list[SimpleNamespace]: List of configurations for CMake targets (e.g., template_release, template_debug).
+    """
 
     if getattr(config, 'buildtool') != 'cmake': return [config]
 
@@ -601,6 +622,14 @@ def expand_cmake( config:SimpleNamespace ) -> list[SimpleNamespace]:
 
 # MARK: double
 def variant_debug_symbols( cfg:SimpleNamespace ) -> bool:
+    """Configure a build with debug symbols.
+
+    Args:
+        cfg (SimpleNamespace): The build configuration to modify.
+
+    Returns:
+        bool: True if the configuration was successfully applied, False otherwise.
+    """
     setattr( cfg, 'variant', 'debug' )
     if cfg.arch not in ['x86_64', 'arm64']: return False
     match cfg.buildtool:
@@ -612,6 +641,14 @@ def variant_debug_symbols( cfg:SimpleNamespace ) -> bool:
 
 # MARK: double
 def variant_double( cfg:SimpleNamespace ) -> bool:
+    """Configure a build with double precision.
+
+    Args:
+        cfg (SimpleNamespace): The build configuration to modify.
+
+    Returns:
+        bool: True if the configuration was successfully applied, False otherwise.
+    """
     setattr( cfg, 'variant', 'double' )
     if cfg.arch not in ['x86_64', 'arm64']: return False
     match cfg.buildtool:
@@ -623,6 +660,14 @@ def variant_double( cfg:SimpleNamespace ) -> bool:
 
 
 def expand_variant( config:SimpleNamespace ) -> list:
+    """Expand build configurations for different variants (e.g., debug, double).
+
+    Args:
+        config (SimpleNamespace): The base build configuration.
+
+    Returns:
+        list[SimpleNamespace]: List of configurations with applied variants.
+    """
     configs_out:list = []
 
     variations = {

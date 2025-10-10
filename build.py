@@ -42,6 +42,17 @@ def process_log_null( raw_file: IO, clean_file: IO ):
         clean_file.write( regex.sub('', line ) )
 
 def git_override( opts:SimpleNamespace):
+    """Override Git references for project builds by checking remote repositories.
+
+    Args:
+        opts (SimpleNamespace): Configuration options with Git URL and reference overrides.
+
+    Returns:
+        None: Updates build configurations with resolved Git references and source paths.
+
+    Raises:
+        GitCommandError: If Git operations fail and debug mode is enabled.
+    """
     from git import GitCommandError
     import git
 
@@ -102,6 +113,16 @@ rich._console = console
 # │           |___/                                                            │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def parse_args(opts:SimpleNamespace):
+    """Parse command-line arguments for the build system.
+
+    Args:
+        opts (SimpleNamespace): Namespace to store parsed arguments and derived options.
+
+    Returns:
+        None: Modifies the `opts` namespace in place with parsed arguments.
+
+    Adds options for debug mode, dry run, jobs, verbosity, listing, toolchain/project/build filters, and Git overrides.
+    """
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -599,6 +620,18 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
 # ╰────────────────────────────────────────\___/───────────────────────────────╯
 # TODO Setup a keyboard interrupt to cancel a job and exit the loop, rather than quit the whole script.
 def process_project( opts:SimpleNamespace, project:SimpleNamespace ):
+    """Process a project by executing its build configurations.
+
+    Args:
+        opts (SimpleNamespace): Configuration options for filtering and executing builds.
+        project (SimpleNamespace): Project configuration with build configurations.
+
+    Returns:
+        None: Executes build scripts for matching configurations and updates statistics.
+
+    Raises:
+        KeyboardInterrupt: If the process is interrupted by the user.
+    """
     os.chdir( project.path )
 
     # =====================[ stdout Logging ]======================-
@@ -653,6 +686,14 @@ def process_project( opts:SimpleNamespace, project:SimpleNamespace ):
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def show_statistics( opts:SimpleNamespace ):
+    """Display a table summarizing build status and durations.
+
+    Args:
+        opts (SimpleNamespace): Configuration options containing project and build statistics.
+
+    Returns:
+        None: Prints a rich table with build status, duration, and sub-action durations.
+    """
     table = Table( title="Stats", highlight=True, min_width=80 )
 
     # unique set of available data names
@@ -717,6 +758,14 @@ def show_statistics( opts:SimpleNamespace ):
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def process_toolchains( opts:SimpleNamespace ):
+    """Process toolchain-specific actions based on provided options.
+
+    Args:
+        opts (SimpleNamespace): Configuration options containing toolchain actions and definitions.
+
+    Returns:
+        None: Executes toolchain-specific actions (e.g., update, script) for matching toolchains.
+    """
     for verb in opts.toolchain_actions:
         for toolchain_name, toolchain in opts.toolchains.items():
             if verb in getattr( toolchain, 'verbs', [] ):

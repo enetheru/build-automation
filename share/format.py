@@ -72,6 +72,15 @@ except OSError:
 
 # Horizontal Rule
 def hr( filler:str=' ', width:int=columns ):
+    """Generate a horizontal rule string.
+
+    Args:
+        filler (str, optional): The character to repeat. Defaults to ' '.
+        width (int, optional): The width of the rule. Defaults to terminal width.
+
+    Returns:
+        str: The horizontal rule string.
+    """
     line:str = filler
     while len(line) < width: line += filler
     return line[0:width]
@@ -79,12 +88,32 @@ def hr( filler:str=' ', width:int=columns ):
 
 # Align some text within a line
 def align(msg:str='align', ratio:float=0.5, line:str=hr() ):
+    """Align text within a line at a specified position.
+
+    Args:
+        msg (str, optional): The text to align. Defaults to 'align'.
+        ratio (float, optional): The alignment position (0.0 for left, 1.0 for right). Defaults to 0.5.
+        line (str, optional): The background line to align within. Defaults to a horizontal rule.
+
+    Returns:
+        str: The aligned text within the line.
+    """
     if len(msg) > len(line): return msg # just return msg if we overwrite everything.
     pos:int = round((len(line) - len(msg)) * ratio)
     if pos < 0: return msg
     return f'{line[:pos]}{msg}{line[pos+len(msg):]}'
 
 def bend( start:str, end:str, line:str=hr()):
+    """Place text at both ends of a line.
+
+    Args:
+        start (str): Text to place at the start of the line.
+        end (str): Text to place at the end of the line.
+        line (str, optional): The background line. Defaults to a horizontal rule.
+
+    Returns:
+        str: The line with text at both ends.
+    """
     line = align( start, ratio=0, line=line ) # Left
     return align( end, ratio=1, line=line ) # Right
 
@@ -98,18 +127,45 @@ def bend( start:str, end:str, line:str=hr()):
 
 # Titles
 def t1( msg:str = 'Title One', endl:str=os.linesep ):
+    """Display a large title using the 'standard' figlet font.
+
+    Args:
+        msg (str, optional): The title text. Defaults to 'Title One'.
+        endl (str, optional): The line ending character. Defaults to os.linesep.
+
+    Returns:
+        None: Prints the title to the console.
+    """
     title = Figlet(font='standard', justify='center', width=columns).renderText(msg)
     pad.level = 1
     print( endl.join( [s for s in title.splitlines() if not re.match( r'^\s*$', s)] ) )
 
 
 def t2(msg:str = 'Title Two',  endl:str=os.linesep ):
+    """Display a medium title using the 'small' figlet font.
+
+    Args:
+        msg (str, optional): The title text. Defaults to 'Title Two'.
+        endl (str, optional): The line ending character. Defaults to os.linesep.
+
+    Returns:
+        None: Prints the title to the console.
+    """
     title = Figlet(font='small', justify='left', width=columns).renderText(msg)
     pad.level = 1
     print(endl.join( [s for s in title.splitlines() if not re.match( r'^\s*$', s)] ))
 
 
 def t3(msg:str = 'Title Three',  endl:str=os.linesep):
+    """Display a small title with simple formatting.
+
+    Args:
+        msg (str, optional): The title text. Defaults to 'Title Three'.
+        endl (str, optional): The line ending character. Defaults to os.linesep.
+
+    Returns:
+        None: Prints the title to the console.
+    """
     pad.level = 1
     print(f'{'\n' if endl else ''} == {msg} ==')
 
@@ -231,6 +287,23 @@ def code_box(msg:str = 'CodeBox',
              below:str = '',
              ratio:float=0,
              ffont:str='small') -> str:
+    """Generate a formatted code box with ASCII art borders.
+
+    Args:
+        msg (str, optional): The text to display in the box. Defaults to 'CodeBox'.
+        comment (str, optional): The comment character for borders. Defaults to '#'.
+        padding (str, optional): Padding character for borders. Defaults to ' '.
+        border (str, optional): Nine-character string defining the box borders. Defaults to '╭─╮│ │╰─╯'.
+        width (int, optional): The box width. Defaults to terminal width.
+        compact (bool, optional): If True, omit middle border lines. Defaults to True.
+        above (str, optional): Text to place above the box. Defaults to ''.
+        below (str, optional): Text to place below the box. Defaults to ''.
+        ratio (float, optional): Text alignment ratio within the box. Defaults to 0.
+        ffont (str, optional): Figlet font for the text. Defaults to 'small'.
+
+    Returns:
+        str: The formatted code box string.
+    """
 
     if  len(border) < 9:
         edges:list[str] = list(border[0] * 9)

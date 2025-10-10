@@ -73,6 +73,15 @@ windows_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
 # │ |____|____\_/ |_|  |_|   |_|  |_|_|_||_\___| \_/\_/   │
 # ╰───────────────────────────────────────────────────────╯
 def llvm_mingw_expand( self, build:SimpleNamespace ) -> list:
+    """Expand LLVM-MinGW toolchain configurations for supported architectures and platforms.
+
+    Args:
+        self (SimpleNamespace): The toolchain configuration.
+        build (SimpleNamespace): The build configuration to expand.
+
+    Returns:
+        list[SimpleNamespace]: List of expanded build configurations with architecture and platform settings.
+    """
     configs_out:list = []
     for arch, platform in itertools.product(self.arch, self.platform ):
         cfg = deepcopy(build)
@@ -332,6 +341,14 @@ darwin_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
 # │                        |_|                 │
 # ╰────────────────────────────────────────────╯
 def darwin_emscripten_script():
+    """Generate a script to activate the Emscripten SDK on macOS.
+
+    Returns:
+        None: Executes commands to check and activate the Emscripten SDK, updating environment variables.
+
+    Notes:
+        Requires the Emscripten SDK path to be set in the toolchain configuration.
+    """
     toolchain:dict = {}
     opts:dict = {}
     build:dict = {}
@@ -392,6 +409,14 @@ darwin_toolchains.append( SimpleNamespace(**cast( Mapping[str,Any],{
 # Copy the dictionary key into the toolchain as the name
 
 def generate(opts:SimpleNamespace) -> dict:
+    """Generate a dictionary of available toolchains for the current platform.
+
+    Args:
+        opts (SimpleNamespace): Configuration options including the platform.
+
+    Returns:
+        dict: A dictionary mapping toolchain names to their SimpleNamespace configurations.
+    """
     import sys
 
     toolchains:dict = {}

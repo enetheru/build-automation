@@ -26,7 +26,28 @@ def stream_command(
     stderr=PIPE,
     **kwargs,
 ):
-    """Mimic subprocess.run, while processing the command output in real time."""
+    """Execute a command and stream its output in real time.
+    Mimic subprocess.run, while processing the command output in real time.
+
+    Args:
+        args (str or list): The command to execute, as a string or list of arguments.
+        dry (bool, optional): If True, simulate execution without running the command. Defaults to False.
+        quiet (bool, optional): If True, suppress command output. Defaults to False.
+        env (dict, optional): Environment variables for the command. Defaults to None.
+        stdout_handler (callable, optional): Function to handle stdout lines. Defaults to print.
+        stderr_handler (callable, optional): Function to handle stderr lines. Defaults to print.
+        check (bool, optional): If True, raise an error on non-zero exit codes. Defaults to True.
+        text (bool, optional): If True, treat output as text. Defaults to True.
+        stdout (file, optional): Standard output destination. Defaults to subprocess.PIPE.
+        stderr (file, optional): Standard error destination. Defaults to subprocess.PIPE.
+        **kwargs: Additional arguments for subprocess.Popen.
+
+    Returns:
+        CompletedProcess: The result of the command execution.
+
+    Raises:
+        CalledProcessError: If check is True and the command exits with a non-zero code.
+    """
 
     if not quiet:
         for l in [f'CWD {os.getcwd()}',f'  $ {args}']: print(l)

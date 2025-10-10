@@ -24,6 +24,14 @@ class MyEncoder(JSONEncoder):
 json.JSONEncoder = MyEncoder
 
 def func_to_string( func ) -> str:
+    """Convert a function's source code to a string, skipping specified lines.
+
+    Args:
+        func (callable): The function to convert.
+
+    Returns:
+        str: The function's source code, excluding lines before '# start_script' if present.
+    """
     if func is None: return ''
     lines:list = ['']
     skip = True
@@ -39,7 +47,18 @@ def func_to_string( func ) -> str:
     return source if skip else '\n'.join(lines)
 
 def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, level: int = 0):
-    """Convert a SimpleNamespace to a dictionary-like buffer string with indentation."""
+    """Write a SimpleNamespace as a dictionary-like string to a buffer.
+
+    Args:
+        buffer (IO): The output buffer to write to.
+        namespace (SimpleNamespace): The namespace to serialize.
+        name (str): The variable name for the dictionary.
+        indent (int, optional): Number of spaces for indentation. Defaults to 2.
+        level (int, optional): Current indentation level. Defaults to 0.
+
+    Returns:
+        None: Writes the formatted string to the buffer.
+    """
 
     pad = " " * (indent * level)
     inner_pad = pad + " " * indent
@@ -76,6 +95,15 @@ def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, l
 
 
 def write_preamble(buffer:IO, project: SimpleNamespace):
+    """Write the script preamble with imports and setup to a buffer.
+
+    Args:
+        buffer (IO): The output buffer to write to.
+        project (SimpleNamespace): The project configuration with options.
+
+    Returns:
+        None: Writes the preamble to the buffer.
+    """
     lines = [
         "#!/bin/env python",
         "import sys",
@@ -98,6 +126,16 @@ def write_preamble(buffer:IO, project: SimpleNamespace):
 
 
 def write_section( buffer:IO, section:SimpleNamespace, section_name:str ):
+    """Write a configuration section to a buffer with a formatted header.
+
+    Args:
+        buffer (IO): The output buffer to write to.
+        section (SimpleNamespace): The section configuration to write.
+        section_name (str): The name of the section.
+
+    Returns:
+        None: Writes the section with a formatted code box header to the buffer.
+    """
     codebox = '\n'.join(fmt.code_box( section_name, width=120 ).splitlines())
     buffer.writelines(['\n',codebox,'\n'])
     write_namespace( buffer, section, section_name )
@@ -113,6 +151,14 @@ def write_section( buffer:IO, section:SimpleNamespace, section_name:str ):
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def generate_build_scripts( opts:SimpleNamespace ):
+    """Generate Python build scripts for each project configuration.
+
+    Args:
+        opts (SimpleNamespace): Configuration options with project definitions.
+
+    Returns:
+        None: Writes build scripts to disk for each build configuration.
+    """
     projects = opts.projects
     fmt.t3('Generating Build Scripts')
 
