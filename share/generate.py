@@ -78,12 +78,16 @@ def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, l
                 lines.append(f"{inner_pad}{qkey}:{{}},")
                 continue
             if isinstance(next(iter(value.values())), SimpleNamespace): continue
-            for line in f'{qkey}:{json.dumps( {k:v for k,v in value.items() if v }, indent=indent )},'.splitlines():
+            for line in f'{qkey}:{json.dumps( {k:v for k,v in value.items() if v and k not in ['verbs'] }, indent=indent )},'.splitlines():
                 lines.append(f'{inner_pad}{line}')
 
         elif isinstance(value, Path): # Handle Path objects
             lines.append(f"{inner_pad}{qkey}:Path({repr(str(value))}),")
         elif isinstance(value, SimpleNamespace): # Skip other SimpleNamespaces
+            if key in ['project', 'modules', 'toolchain', 'verbs']: continue
+            # write_namespace(buffer, value, f"'{key}'", indent, level+1)
+            for line in f'{qkey}:{json.dumps( {k:v for k,v in vars(value).items() if v and k not in ['verbs'] }, indent=indent )},'.splitlines():
+                lines.append(f'{inner_pad}{line}')
             continue
         elif isinstance(value, str) and '\n' in value: # Skip Multi-Line Scripts.
             continue
@@ -94,20 +98,20 @@ def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, l
     buffer.write( "\n".join(lines) )
 
 
-def write_preamble(buffer:IO, project: SimpleNamespace):
+def write_preamble(buffer:IO):
     """Write the script preamble with imports and setup to a buffer.
 
     Args:
         buffer (IO): The output buffer to write to.
-        project (SimpleNamespace): The project configuration with options.
 
     Returns:
         None: Writes the preamble to the buffer.
     """
+    from share.config import gopts
     lines = [
         "#!/bin/env python",
         "import sys",
-        f"sys.path.append({repr(str(project.opts.path))})"]
+        f"sys.path.append({repr(str(gopts.path))})"]
     with open(f'{Path( __file__ ).parent}/script_preamble.py') as script_imports:
         for line in script_imports.readlines()[1:]: lines.append( line.rstrip() )
     lines += [
@@ -165,13 +169,13 @@ def generate_build_scripts( opts:SimpleNamespace ):
     for project in projects.values():
         for build in project.build_configs.values():
             with open( build.script_path, "w", encoding='utf-8' ) as script:
-                write_preamble( script, project )
-                write_section( script, project.opts, 'opts' )
+                write_preamble(script)
+                write_section( script, opts, 'opts' )
                 write_section( script, build.toolchain, 'toolchain' )
                 write_section( script, project, 'project' )
                 write_section( script, build, 'build' )
 
-                for section in [project.opts, build.toolchain, project, build]:
+                for section in [opts, build.toolchain, project, build]:
                     for part in getattr( section, f'script_parts', [] ):
                         script.write( func_to_string( part ) )
 

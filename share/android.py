@@ -1,9 +1,11 @@
-import subprocess
 import re
+import subprocess
+from copy import deepcopy
+from types import SimpleNamespace, MethodType
+from typing import cast, Mapping, Any
 
-from share.run import stream_command
+from share.script_preamble import *
 
-sdkmanager = "C:/androidsdk/cmdline-tools/latest/bin/sdkmanager.bat"
 
 def strip_until_installed_packages(list_installed_raw) -> str:
     """Remove text before the 'Installed packages:' marker in SDK manager output.
@@ -39,18 +41,23 @@ def parse_sdk_output(list_installed_raw) -> list[dict]:
             })
     return pkgs
 
-def install( package_path : str ) -> str | None:
+def install( self:SimpleNamespace, package_path : str ) -> str | None:
     """Install an Android SDK package using sdkmanager.
 
     Args:
-        package_path (str): The package path to install (e.g., 'build-tools;34.0.0').
+        :param package_path: (str) The package path to install (e.g., 'build-tools;34.0.0')
+        :param self:(SimpleNamespace)
+
 
     Returns:
         str or None: The command output if successful, None if the command fails.
 
     Raises:
         subprocess.CalledProcessError: If the installation command fails.
+
     """
+
+    sdkmanager = f"{self.sdk_path}/cmdline-tools/latest/bin/sdkmanager.bat"
     try:
         # subprocess.check_output(
         #     [sdkmanager, package_path],
@@ -68,7 +75,7 @@ def install( package_path : str ) -> str | None:
         print(f"Command failed with exit code {e.returncode}")
 
 
-def list_installed() -> list[dict] | None:
+def list_installed(self:SimpleNamespace) -> list[dict] | None:
     """
    Parse the output of a command `sdkmanager.bat --list_installed` to extract the installed packages table.
    Removes everything up to and including the "Installed packages:" line and parses the table
@@ -84,6 +91,7 @@ def list_installed() -> list[dict] | None:
    Raises:
        ValueError: If the "Installed packages:" marker is not found or the table is malformed.
    """
+    sdkmanager = f"{self.sdk_path}/cmdline-tools/latest/bin/sdkmanager.bat"
     try:
         output = subprocess.check_output(
             [sdkmanager, "--list_installed"],
@@ -99,7 +107,63 @@ def list_installed() -> list[dict] | None:
         print(f"Command failed with exit code {e.returncode}")
 
 
+def update(self, toolchain:SimpleNamespace, console:Console):
+    console.set_window_title('Updating Android SDK')
+    print(fmt.t2("Android Update"))
 
+    packages = toolchain.list_installed()
+    print( f"installed_packages: {packages}")
+
+    for package,version in toolchain.packages.items():
+        print(f"Checking for {package};{version}")
+        if not any(package["package"] == package and package["version"] == version for package in packages):
+            self.install( f'{package};{version}' )
+
+
+def expand(self, config:SimpleNamespace) -> list:
+    configs_out:list = []
+    for abi in self.abi:
+        cfg = deepcopy(config)
+        setattr( cfg, 'android_abi', abi )
+        setattr( cfg, 'platform', 'android' )
+        configs_out.append( cfg )
+
+    return configs_out
+
+def configure_cmake( self:SimpleNamespace, build:SimpleNamespace ):
+    if build.buildtool != 'cmake': return
+
+    # create attribute if it doesnt exist, and ensure default values
+    if not hasattr(build, 'cmake'): setattr(build, 'cmake', {})
+
+    # add cmake flags.
+    build.cmake.setdefault('config_vars', []) # ensure it exists before we append to it.
+    build.cmake['config_vars'] += [
+        # f'-DANDROID_PLATFORM={build.platform}',
+        # f'-DANDROID_ABI={build.arch}']
+    ]
+
+    # set toolchain file.
+    build.cmake['toolchain'] = os.path.normpath(f'{self.ndk_path}/build/cmake/android.toolchain.cmake')
+
+
+def android_toolchain() -> SimpleNamespace:
+    toolchain = SimpleNamespace(**cast( Mapping[str,Any],{
+        'name':'android',
+        'desc':'[Android](https://developer.android.com/tools/sdkmanager)',
+        'verbs':['update'],
+        'abi':['armeabi-v7a','arm64-v8a','x86','x86_64'],
+        'platform':'',
+        'sdk_path':os.path.normpath(os.environ['ANDROID_HOME']),
+        'ndk_path':os.path.normpath(os.environ['ANDROID_NDK']),
+        # 'api_level':'latest',
+    }))
+    setattr(toolchain, 'update', MethodType(update, toolchain))
+    setattr(toolchain, 'expand', MethodType(expand, toolchain))
+    setattr(toolchain, 'install', MethodType(install, toolchain) )
+    setattr(toolchain, 'configure_cmake', MethodType(configure_cmake, toolchain))
+
+    return toolchain
 
 # Example Output
 # Loading local repository...

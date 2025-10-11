@@ -1,8 +1,7 @@
-import copy
 from types import SimpleNamespace
 
-from share.expand_config import cmake_config_types
-from share.script_preamble import *
+from share.config import git_base
+
 
 # MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -13,28 +12,38 @@ from share.script_preamble import *
 # │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-def generate( opts:SimpleNamespace ):
+def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     from godot.config import godot_platforms, godot_arch
 
-    from share.expand_config import expand_host_env, cmake_generators, expand_cmake, expand_func
+    from share.config import project_base, build_base, scons_base, cmake_base
+    from share.expand_config import expand_host_env, expand_cmake, expand_func
     from share.snippets import source_git, show_stats
 
-    project = SimpleNamespace(**{
-        'name':'godot-cpp-test',
-        'gitdef':{
-            'url':"https://github.com/enetheru/godot-cpp-test.git/",
-            'ref':"main",
+    project = SimpleNamespace({**vars(project_base), **{
+        'name': 'godot-cpp-test',
+        'gitdef': {
+
         },
-        'build_configs' : {}
-    })
+        'sources':{
+            'git': SimpleNamespace({**vars(git_base), **{
+                'url': "https://github.com/enetheru/godot-cpp-test.git/",
+                'ref': "main",
+            }}),
+        },
+        'buildtools': {
+            'scons': SimpleNamespace({ **vars(cmake_base), **{}}),
+            'cmake': SimpleNamespace({ **vars(scons_base), **{}})
+        },
+    }})
 
 
-    build_base = SimpleNamespace(**{
-        'verbs':['source'],
-        'script_parts':[source_git]
-    })
+    build_start = SimpleNamespace({**vars(build_base), **{
+        'verbs': ['source'],
+        'script_parts': [source_git],
+        'arch': 'x86_64'
+    }})
 
-    builds = expand_host_env( build_base, opts )
+    builds = expand_host_env( build_start, project )
     builds = expand_func( builds,  expand_cmake )
 
     # Rename
@@ -44,9 +53,14 @@ def generate( opts:SimpleNamespace ):
         arch = godot_arch[build.arch]
         platform = godot_platforms[build.platform]
 
-        cmake = build.cmake
-        short_gen = cmake_generators[cmake['generator']]
-        short_type = cmake_config_types[cmake['config_type']]
+        if build.buildtool.name == 'cmake':
+
+            cmake = build.buildtool
+            short_gen = cmake.generators[cmake.generator]
+            short_type = cmake.config_types[cmake.config_type]
+        else:
+            short_gen = None
+            short_type = None
 
         name_parts = [
             build.host,
@@ -67,7 +81,7 @@ def generate( opts:SimpleNamespace ):
         build.script_parts.append( show_stats )
 
     project.build_configs = {v.name: v for v in builds }
-    return { project.name: project }
+    return  project
 
 variations = ['default',
     'double',

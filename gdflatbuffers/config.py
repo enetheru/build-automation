@@ -1,5 +1,4 @@
 from types import SimpleNamespace
-from share.expand_config import cmake_config_types
 
 # MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -10,28 +9,36 @@ from share.expand_config import cmake_config_types
 # │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-def generate( opts:SimpleNamespace ):
-    from godot.config import godot_platforms, godot_arch
-
-    from share.expand_config import expand_host_env, cmake_generators, expand_cmake, expand_func
+def generate( opts:SimpleNamespace ) -> SimpleNamespace:
+    from share.expand_config import expand_host_env, expand_cmake, expand_func
     from share.snippets import source_git, show_stats
 
-    project = SimpleNamespace(**{
+    from godot.config import godot_platforms, godot_arch
+
+    from share.config import (git_base, project_base, build_base, cmake_base)
+
+    project = SimpleNamespace({**vars(project_base), **{
         'name':'gdflatbuffers',
-        'gitdef':{
-            'url':"https://github.com/enetheru/godot-flatbuffers.git/",
-            'ref':"main",
+        'sources':{
+            'git': SimpleNamespace({**vars(git_base), **{
+                'url': "https://github.com/enetheru/godot-flatbuffers.git/",
+                'ref': "main"
+            }}),
         },
-        'build_configs' : {}
-    })
+        'buildtools':{
+            'cmake':SimpleNamespace(**vars(cmake_base), **{}),
+        },
+    }})
 
 
-    build_base = SimpleNamespace(**{
+    build_start = SimpleNamespace({**vars(build_base), **{
         'verbs':['source'],
         'script_parts':[source_git],
-    })
+        'platform':'win32',
+        'arch':'x86_64',
+    }})
 
-    builds = expand_host_env( build_base, opts )
+    builds = expand_host_env( build_start, project )
     builds = expand_func( builds,  expand_cmake )
 
     # Rename
@@ -41,9 +48,9 @@ def generate( opts:SimpleNamespace ):
         arch = godot_arch[build.arch]
         platform = godot_platforms[build.platform]
 
-        cmake = build.cmake
-        short_gen = cmake_generators[cmake['generator']]
-        short_type = cmake_config_types[cmake['config_type']]
+        cmake = build.buildtool
+        short_gen = cmake.generators[cmake.generator]
+        short_type = cmake.config_types[cmake.config_type]
 
         name_parts = [
             build.host,
@@ -64,7 +71,7 @@ def generate( opts:SimpleNamespace ):
         build.script_parts.append( show_stats )
 
     project.build_configs = {v.name: v for v in builds }
-    return { project.name: project }
+    return  project
 
 # MARK: Scripts
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖

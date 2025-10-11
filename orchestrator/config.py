@@ -1,5 +1,7 @@
 from types import SimpleNamespace
+
 from share.expand_config import expand_func, expand_host_env, expand_cmake, cmake_config_types, cmake_generators
+from share.format import h, Section
 
 from share.script_preamble import *
 
@@ -10,29 +12,31 @@ from share.script_preamble import *
 # │ | (_ / -_) ' \/ -_) '_/ _` |  _/ -_)                                       │
 # │  \___\___|_||_\___|_| \__,_|\__\___|                                       │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def generate( opts:SimpleNamespace ) -> dict:
+def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     from share.snippets import source_git, show_stats, cmake_check, cmake_configure, cmake_build
+    from share.config import project_base, build_base, cmake_base
 
-    project = SimpleNamespace(**{
-        'name':'orchestrator',
-        'gitdef':{
-            'url':"https://github.com/CraterCrash/godot-orchestrator.git/",
-            'ref':'main'
+    from share.config import git_base
+    project = SimpleNamespace({ **vars(project_base), **{
+        'name': 'orchestrator',
+        'sources':{
+            'git': SimpleNamespace({**vars(git_base), **{
+                'url': "https://github.com/CraterCrash/godot-orchestrator.git/",
+                'ref': 'main'
+            }}),
         },
-        "build_configs": {}
-    })
+    }})
 
-    build_base = SimpleNamespace(**{
-        'name' : 'name_will_be_replaced',
+    build_base = SimpleNamespace({ **vars(build_base), **{
         'verbs':['source','configure', 'fresh', 'build'],
         'script_parts':[source_git, post_checkout, cmake_check, cmake_configure, cmake_build ],
         'godotcpp_profile':'extern/godot-cpp-profile.json',
-        'cmake':{
+        'buildtool': SimpleNamespace({ **vars(cmake_base), **{
             'targets':['orchestrator'],
-        },
-    })
+        }}),
+    }})
 
-    configs:list = expand_host_env( build_base, opts )
+    configs:list = expand_host_env( build_base, project )
 
     configs:list = expand_func( configs, expand_cmake )
 
@@ -52,7 +56,7 @@ def generate( opts:SimpleNamespace ) -> dict:
         project.build_configs[cfg.name] = cfg
 
 
-    return {project.name: project}
+    return project
 
 # MARK: Scripts
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖

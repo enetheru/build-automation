@@ -30,10 +30,10 @@ def source_git():
         section.start()
 
         # merge definitions project < build < opts
-        gitdef = project['gitdef'] | build['gitdef'] | opts['gitdef']
+        srcdef = project.get('srcdef', {}) | build.get('srcdef', {}) | opts.get('srcdef', {})
 
         # Verify we have cloned the repo.
-        gitdir = project['gitdir']
+        gitdir = Path(srcdef.get('gitdir', 'git'))
         if not gitdir.exists():
             fnf = FileNotFoundError()
             fnf.add_note(f'Missing bare git repo path: {gitdir}, project needs to be fetched')
@@ -43,8 +43,8 @@ def source_git():
         repo = git.Repo(gitdir)
         fmt.h(f'git-dir: {gitdir.as_posix()}')
 
-        pattern = gitdef['ref'] if gitdef['remote'] == 'origin' else f'{gitdef['remote']}/{gitdef['ref']}'
-        bare_hash : git.RefLog = ()
+        pattern = srcdef['ref'] if srcdef['remote'] == 'origin' else f'{srcdef['remote']}/{srcdef['ref']}'
+        bare_hash : git.RefLog
         try:
             bare_hash = repo.git.log('--format=%h', '-1',  pattern)
             fmt.hu( f'{repo.git.log('--oneline', '-1',  pattern)}' )
@@ -132,7 +132,7 @@ def cmake_check():
 
     # MARK: CMake-Check
     #[=============================[ CMake-Check ]=============================]
-    cmake = build['cmake']
+    cmake = build['buildtool']
 
     source_path = build.setdefault("source_path", project['path'] / build['source_dir'])
 
@@ -157,17 +157,15 @@ def cmake_check():
         raise fnf
 
 def cmake_configure():
-    console = rich.console.Console()
     config:dict = {}
     opts:dict = {}
     build:dict = {}
     stats:dict = {}
-    toolchain:dict = {}
     # start_script
 
     # MARK: CMake-Configure
     #[===========================[ CMake-Configure ]===========================]
-    cmake = build['cmake']
+    cmake = build['buildtool']
 
     if config['ok'] and 'configure' in opts['build_actions']:
         fmt.h2("CMake Configure")
@@ -181,13 +179,9 @@ def cmake_configure():
             f'-B "{cmake['build_path']}"',
         ]
 
-        if 'cmake' in toolchain:
-            tc = toolchain['cmake']
-            if 'toolchain' in tc:
-                toolchain_file = opts["path"] / toolchain['cmake']['toolchain']
-                config_opts.append( f'--toolchain "{os.fspath(toolchain_file)}"' )
-            for var in tc.get('config_vars', []):
-                config_opts.append(var)
+        if 'toolchain' in cmake:
+            toolchain_file = cmake['toolchain']
+            config_opts.append( f'--toolchain "{os.fspath(toolchain_file)}"' )
 
         if 'generator' in cmake:
             config_opts.append( f'-G "{cmake['generator']}"' )
@@ -205,7 +199,6 @@ def cmake_configure():
 
 
 def cmake_build():
-    console = rich.console.Console()
     config:dict = {}
     opts:dict = {}
     build:dict = {}
@@ -215,7 +208,7 @@ def cmake_build():
     # MARK: CMake-Build
     #[=============================[ CMake-Build ]=============================]
     import copy
-    cmake = build['cmake']
+    cmake = build['buildtool']
 
     if config['ok'] and 'build' in opts['build_actions']:
         fmt.t2("CMake Build")

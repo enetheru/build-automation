@@ -1,7 +1,7 @@
 import copy
-import os
 from types import SimpleNamespace
 
+from share.config import git_base
 from share.expand_config import expand_host_env, expand_func
 from share.script_preamble import *
 
@@ -50,14 +50,7 @@ godot_arch = {
     'wasm32':'wasm32'
 }
 
-project_base:dict = {
-    'name':'godot',
-    'verbs':['fetch'],
-    'gitdef':{
-        'url':"https://github.com/godotengine/godot.git/",
-        'ref':'master'
-    }
-}
+
 
 # MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -68,29 +61,41 @@ project_base:dict = {
 # │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-def generate( opts:SimpleNamespace ) -> dict:
+def generate( opts:SimpleNamespace ) -> SimpleNamespace:
+    from share.config import project_base, build_base, scons_base
+
     from share.snippets import source_git, show_stats
 
-    project_base.update({
-        'path': opts.path / project_base['name'],
-        "build_configs": {}
-    })
-    project = SimpleNamespace(**project_base)
+    project = SimpleNamespace({**vars(project_base), **{
+        'name': 'godot',
+        'verbs': ['fetch'],
+        'sources':{
+            'git': SimpleNamespace({**vars(git_base), **{
+                'url': "https://github.com/godotengine/godot.git/",
+                'ref': 'master'
+            }}),
+        },
+        'path': opts.path / 'godot',
+        'buildtools': {
+            'scons': SimpleNamespace({**vars(scons_base), **{}}),
+        }
+    }})
 
 
-    config_base = SimpleNamespace(**{
-        'name':[],
-        'variant':'null',
-        'source_dir':[],
-        'verbs':['source'],
-        'script_parts':[source_git, check_scons],
+    config_base = SimpleNamespace({**vars(build_base), **{
+        'name': [],
+        'variant': 'null',
+        'source_dir': [],
+        'verbs': ['source'],
+        'script_parts': [source_git, check_scons],
+        'arch': 'x86_64',
         "scons": {
             "targets": ["template_release", "template_debug", "editor"],
-            "build_vars":["compiledb=yes"]
+            "build_vars": ["compiledb=yes"]
         }
-    })
+    }})
 
-    configs = expand_host_env( config_base, opts )
+    configs = expand_host_env( config_base, project )
     for cfg in configs:
         platform = godot_platforms[cfg.platform]
         arch = godot_arch[cfg.arch]
@@ -112,7 +117,7 @@ def generate( opts:SimpleNamespace ) -> dict:
         if isinstance(cfg.source_dir, list): cfg.source_dir = '.'.join(cfg.source_dir)
         project.build_configs[cfg.name] = cfg
 
-    return {project.name:project}
+    return project
 
 # MARK: Scripts
 # ╓────────────────────────────────────────────────────────────────────────────────────────╖
@@ -147,8 +152,8 @@ def delete_translations():
 
     # MARK: Delete Translations
     #[=========================[ Delete Translations ]=========================]
-    t3("Removing Translations")
-    h( ' '.join(os.listdir(build['source_path'] / 'doc/translations/') ) )
+    fmt.t3("Removing Translations")
+    fmt.h( ' '.join(os.listdir(build['source_path'] / 'doc/translations/') ) )
     for file in Path(build['source_path'] / 'doc/translations/').glob('*.po'):
         os.remove( file )
 
@@ -209,7 +214,7 @@ def build_scons():
             profile_path = project['path'] / f'build_profiles/{profile_name}.py'
             scons['build_vars'].append(f'build_profile="{profile_path.as_posix()}"')
 
-        with Timer(name='build') as timer, Section('Scons Build'):
+        with Timer(name='build') as timer, fmt.Section('Scons Build'):
             try: os.chdir( scons['build_path'] )
             except FileNotFoundError as fnf:
                 fnf.add_note( f'Missing Folder {scons['build_path']}' )
@@ -230,7 +235,7 @@ def build_scons():
                 cmd_chunks += scons["build_vars"]
 
             for target in scons["targets"]:
-                h(f"Building {target}")
+                fmt.h(f"Building {target}")
                 build_command: str = " ".join(filter(None, cmd_chunks + [f"target={target}"]))
 
                 # FIXME  I found that if i dont clean the repository then files are unfortunately wrong.

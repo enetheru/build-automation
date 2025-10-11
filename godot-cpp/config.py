@@ -1,9 +1,7 @@
 import copy
 from types import SimpleNamespace
-from typing import cast, Mapping, Any
 
 from share.script_preamble import *
-
 
 # MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -13,7 +11,7 @@ from share.script_preamble import *
 # │ ██    ██ ██      ██  ██ ██ ██      ██   ██ ██   ██    ██    ██             │
 # │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def generate( opts:SimpleNamespace ) -> dict:
+def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     """Generate build configurations for the godot-cpp project.
 
     Args:
@@ -25,33 +23,49 @@ def generate( opts:SimpleNamespace ) -> dict:
     from godot.config import godot_platforms, godot_arch
     from share.snippets import source_git, show_stats
     from share.expand_config import (
-        expand_host_env, expand_func, expand_list, cmake_generators,
+        expand_host_env, expand_func, cmake_generators,
         cmake_config_types
     )
 
     name = 'godot-cpp'
 
-    project = SimpleNamespace(**cast( Mapping[str,Any],{
-        'name':name,
+    from share.config import (project_base, scons_base, cmake_base, git_base)
+    project = SimpleNamespace({**vars(project_base), **{
+        'name': name,
         'path': opts.path / name,
-        'gitdef':{
-            'url':"https://github.com/godotengine/godot-cpp.git/",
-            'ref':'e83fd0904c13356ed1d4c3d09f8bb9132bdc6b77'
+        'sources':{
+            'git': SimpleNamespace({**vars(git_base), **{
+                'remote': 'origin',
+                'tag': '4.5',
+                'type': 'git',
+                'url': "https://github.com/godotengine/godot-cpp.git/",
+                'ref': 'e83fd0904c13356ed1d4c3d09f8bb9132bdc6b77'
+            }}),
         },
-        # TODO rename all 'build_configs' to 'builds'
-        'build_configs' : dict[str,SimpleNamespace]()
-    }))
+        'buildtools': {
+            'scons': SimpleNamespace({**vars(scons_base), **{}}),
+            'cmake': SimpleNamespace({**vars(cmake_base), **{}}),
+        }
+    }})
 
-    build_base = SimpleNamespace(**cast( Mapping[str,Any],{
-        'verbs':['source'],
-        'script_parts':[source_git]
-    }))
+    from share.config import build_base
+    build_start = SimpleNamespace({ **vars(build_base), **{
+        'verbs': ['source'],
+        'script_parts': [source_git],
+        'arch': 'x86_64',
+        'srcdef':SimpleNamespace({**vars(git_base), **{
+            'remote': 'origin',
+            'tag': '4.5',
+            'type': 'git',
+            'url': "https://github.com/godotengine/godot-cpp.git/",
+            'ref': 'e83fd0904c13356ed1d4c3d09f8bb9132bdc6b77'
+        }})
+    }})
 
     # Host environment toolchain and build tools
-    builds:list[SimpleNamespace] = expand_host_env( build_base, opts )
-    builds = expand_func( builds, expand_toolchains )
-    builds = expand_list( builds, 'buildtool', ['scons','cmake'] )
-    builds = expand_func( builds, expand_buildtools )
+    builds:list[SimpleNamespace] = expand_host_env(build_start, project)
+    builds = expand_func(builds, configure_toolchain)
+    builds = expand_func( builds, expand_buildtools, project )
 
     # target and variants
     builds = expand_func( builds, expand_variant )
@@ -62,10 +76,11 @@ def generate( opts:SimpleNamespace ) -> dict:
         toolchain = build.toolchain.name
         arch = godot_arch[build.arch]
         platform = godot_platforms[build.platform]
+        toolname = build.buildtool.name
 
         name_parts = [
             build.host,
-            build.buildtool,
+            toolname,
             toolchain if toolchain != 'emscripten' else None,
             arch if arch != 'wasm32' else None,
             platform if build.platform != 'android' else None,
@@ -73,7 +88,7 @@ def generate( opts:SimpleNamespace ) -> dict:
 
         srcdir_parts = [
             build.host,
-            build.buildtool,
+            toolname,
             toolchain,
         ]
 
@@ -85,8 +100,9 @@ def generate( opts:SimpleNamespace ) -> dict:
             ]
             srcdir_parts = [
                 build.host,
-                build.buildtool,
+                toolname,
                 toolchain,
+                build.arch,
                 scons['target']
             ]
 
@@ -97,7 +113,7 @@ def generate( opts:SimpleNamespace ) -> dict:
 
             srcdir_parts = [
                 build.host,
-                build.buildtool,
+                toolname,
             ]
             name_parts += [
                 cmake['godotcpp_target'],
@@ -109,6 +125,7 @@ def generate( opts:SimpleNamespace ) -> dict:
             builddir_parts = [
                 'build',
                 toolchain,
+                build.arch,
                 cmake['godotcpp_target'],
                 build.variant if build.variant != 'default' else None,
                 short_type,
@@ -125,7 +142,7 @@ def generate( opts:SimpleNamespace ) -> dict:
         build.script_parts += [test_script, show_stats]
 
     project.build_configs = {v.name: v for v in builds }
-    return { project.name: project }
+    return project
 
 # MARK: Scripts
 # ╓────────────────────────────────────────────────────────────────────────────╖
@@ -474,18 +491,21 @@ def pre_cmake():
 # │  |_|\___/\___/_|\___|_||_\__,_|_|_||_/__/                                  │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-def expand_toolchains( config:SimpleNamespace ) -> list[SimpleNamespace]:
+def configure_toolchain(config:SimpleNamespace) -> list[SimpleNamespace]:
     if config.toolchain.name != 'android':
         return [config]
-    setattr(config, 'packages', {
+    tc = config.toolchain
+    ndk_version = '28.1.13356709'
+    setattr(tc, 'packages', {
         'platform-tools':'',
         "build-tools":"35.0.0",
         "platforms":"android-35",
         "cmdline-tools":"latest",
         "cmake":"3.10.2.4988404",
-        'ndk':'28.1.13356709',
+        'ndk':ndk_version,
     })
-    setattr(config, 'android_api_level', '24')
+    setattr(tc, 'ndk_path', f'{tc.sdk_path}\\ndk\\{ndk_version}')
+    setattr(tc, 'api_level', '35')
 
     return [config]
 
@@ -496,31 +516,31 @@ def expand_toolchains( config:SimpleNamespace ) -> list[SimpleNamespace]:
 # │ | _ \ || | | / _` | | |/ _ \/ _ \ (_-<                                     │
 # │ |___/\_,_|_|_\__,_| |_|\___/\___/_/__/                                     │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def expand_buildtools( config:SimpleNamespace ) -> list[SimpleNamespace]:
-    from share.expand_config import expand_cmake as shared_expand_cmake
+def expand_buildtools( config:SimpleNamespace, project:SimpleNamespace ) -> list[SimpleNamespace]:
+    from share.expand_config import expand_cmake
 
     configs_out = []
-    for tool in ['scons', 'cmake']:
+    for toolname in project.buildtools.keys():
         cfg = copy.deepcopy(config)
 
-        setattr(cfg, 'buildtool', tool )
-        match tool:
+        setattr(cfg, 'buildtool', project.buildtools[toolname] )
+
+        if hasattr( project, f'configure_{toolname}' ):
+            project.configure_cmake( cfg )
+
+        if hasattr( cfg.toolchain, f'configure_{toolname}' ):
+            cfg.toolchain.configure_cmake( cfg )
+
+        match toolname:
             case 'scons':
                 configs_out += expand_scons( cfg )
 
             case 'cmake':
-                cfg.script_parts += [pre_cmake]
-                setattr( cfg, 'cmake', {
-                    'godot_build_profile':'test/build_profile.json',
-                    'targets':['godot-cpp-test'],
-                    'config_vars':  [
-                        '-DGODOTCPP_ENABLE_TESTING=ON',
-                        '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON'
-                    ]
-                })
+                if hasattr( cfg.toolchain, 'configure_cmake' ):
+                    cfg.toolchain.configure_cmake( cfg )
 
-                for cmake_config in shared_expand_cmake( cfg ):
-                    configs_out += expand_cmake( cmake_config )
+                for cmake_config in expand_cmake( cfg ):
+                    configs_out += godotcpp_expand_cmake( cmake_config )
 
     return configs_out
 
@@ -604,7 +624,7 @@ def expand_scons( config:SimpleNamespace ) -> list[SimpleNamespace]:
 # │| (__| |\/| / _` | / / -_)                                                  │
 # │ \___|_|  |_\__,_|_\_\___|                                                  │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def expand_cmake( config:SimpleNamespace ) -> list[SimpleNamespace]:
+def godotcpp_expand_cmake( config:SimpleNamespace ) -> list[SimpleNamespace]:
     """Expand CMake build configurations for different targets.
 
     Args:
@@ -616,14 +636,29 @@ def expand_cmake( config:SimpleNamespace ) -> list[SimpleNamespace]:
 
     if getattr(config, 'buildtool') != 'cmake': return [config]
 
-    # Split the compile up into individual targets
+    # Add the cmake script section
+    config.script_parts += [pre_cmake]
+
+    # create attribute if it doesnt exist, and ensure default values
+    if not hasattr(config, 'cmake'): setattr(config, 'cmake', {})
+
+    # append to configuration variables.
+    config.cmake.setdefault('config_vars', []) # ensure it exists before we append to it.
+    config.cmake['config_vars'] += [
+        '-DGODOTCPP_ENABLE_TESTING=ON',
+        '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
+    ]
+
+    # Set the build target and profile
+    config.cmake['targets'] = ['godot-cpp-test']
+    config.cmake['godot_build_profile'] = 'test/build_profile.json'
+
+    # Split the compile between the godot-cpp target
     configs_out = []
     for target in ["template_release", "template_debug", "editor"]:
         cfg = copy.deepcopy(config)
-
         cfg.cmake['godotcpp_target'] = target
         cfg.cmake['config_vars'].append(f'-DGODOTCPP_TARGET={target}')
-
         configs_out.append( cfg )
     return configs_out
 
