@@ -125,27 +125,23 @@ def expand(self, config:SimpleNamespace) -> list:
     for abi in self.abi:
         cfg = deepcopy(config)
         setattr( cfg, 'android_abi', abi )
+        setattr( cfg, 'arch', abi )
         setattr( cfg, 'platform', 'android' )
         configs_out.append( cfg )
 
     return configs_out
 
-def configure_cmake( self:SimpleNamespace, build:SimpleNamespace ):
-    if build.buildtool != 'cmake': return
-
-    # create attribute if it doesnt exist, and ensure default values
-    if not hasattr(build, 'cmake'): setattr(build, 'cmake', {})
+def configure_cmake( build:SimpleNamespace ):
+    toolchain = build.toolchain
+    cmake = build.buildtool
 
     # add cmake flags.
-    build.cmake.setdefault('config_vars', []) # ensure it exists before we append to it.
-    build.cmake['config_vars'] += [
+    cmake.config_vars += [
         # f'-DANDROID_PLATFORM={build.platform}',
         # f'-DANDROID_ABI={build.arch}']
+
     ]
-
-    # set toolchain file.
-    build.cmake['toolchain'] = os.path.normpath(f'{self.ndk_path}/build/cmake/android.toolchain.cmake')
-
+    cmake.toolchain = os.path.normpath(f'{toolchain.ndk_path}/build/cmake/android.toolchain.cmake')
 
 def android_toolchain() -> SimpleNamespace:
     toolchain = SimpleNamespace(**cast( Mapping[str,Any],{
@@ -157,6 +153,7 @@ def android_toolchain() -> SimpleNamespace:
         'sdk_path':os.path.normpath(os.environ['ANDROID_HOME']),
         'ndk_path':os.path.normpath(os.environ['ANDROID_NDK']),
         # 'api_level':'latest',
+        'cmake':configure_cmake
     }))
     setattr(toolchain, 'update', MethodType(update, toolchain))
     setattr(toolchain, 'expand', MethodType(expand, toolchain))

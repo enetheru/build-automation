@@ -30,7 +30,7 @@ def source_git():
         section.start()
 
         # merge definitions project < build < opts
-        srcdef = project.get('srcdef', {}) | build.get('srcdef', {}) | opts.get('srcdef', {})
+        srcdef = project.get('srcdef', {}) | build.get('source_def', {}) | opts.get('srcdef', {})
 
         # Verify we have cloned the repo.
         gitdir = Path(srcdef.get('gitdir', 'git'))
@@ -128,11 +128,12 @@ def show_stats():
 def cmake_check():
     project:dict = {}
     build:dict = {}
+    buildtool:dict = {}
     # start_script
 
     # MARK: CMake-Check
     #[=============================[ CMake-Check ]=============================]
-    cmake = build['buildtool']
+    cmake = buildtool
 
     source_path = build.setdefault("source_path", project['path'] / build['source_dir'])
 
@@ -161,39 +162,38 @@ def cmake_configure():
     opts:dict = {}
     build:dict = {}
     stats:dict = {}
+    buildtool:dict = {}
     # start_script
 
     # MARK: CMake-Configure
     #[===========================[ CMake-Configure ]===========================]
-    cmake = build['buildtool']
+    cmake = buildtool
 
     if config['ok'] and 'configure' in opts['build_actions']:
-        fmt.h2("CMake Configure")
-        fmt.s1("CMake Configure")
-        console.set_window_title(f'Configure - {build['name']}')
+        with fmt.Section("CMake Configure"):
+            console.set_window_title(f'Configure - {build['name']}')
 
-        config_opts = [
-            "--fresh" if 'fresh' in opts['build_actions'] else None,
-            "--log-level=VERBOSE" if not opts["quiet"] else None,
-            f'-S "{build['source_path']}"',
-            f'-B "{cmake['build_path']}"',
-        ]
+            config_opts = [
+                "--fresh" if 'fresh' in opts['build_actions'] else None,
+                "--log-level=VERBOSE" if not opts["quiet"] else None,
+                f'-S "{build['source_path']}"',
+                f'-B "{cmake['build_path']}"',
+            ]
 
-        if 'toolchain' in cmake:
-            toolchain_file = cmake['toolchain']
-            config_opts.append( f'--toolchain "{os.fspath(toolchain_file)}"' )
+            if 'toolchain' in cmake:
+                toolchain_file = cmake['toolchain']
+                config_opts.append( f'--toolchain "{os.fspath(toolchain_file)}"' )
 
-        if 'generator' in cmake:
-            config_opts.append( f'-G "{cmake['generator']}"' )
+            if 'generator' in cmake:
+                config_opts.append( f'-G "{cmake['generator']}"' )
 
-        if "config_vars" in cmake:
-            config_opts += cmake["config_vars"]
+            if "config_vars" in cmake:
+                config_opts += cmake["config_vars"]
 
-        with Timer(name='configure') as timer:
-            stream_command(f'cmake {' '.join(filter(None, config_opts))}', dry=opts['dry'])
-            print('')
+            with Timer(name='configure') as timer:
+                stream_command(f'cmake {' '.join(filter(None, config_opts))}', dry=opts['dry'])
+                print('')
 
-        fmt.send()
         stats['configure'] = timer.get_dict()
         config['ok'] = timer.ok()
 
@@ -201,54 +201,54 @@ def cmake_configure():
 def cmake_build():
     config:dict = {}
     opts:dict = {}
-    build:dict = {}
     stats:dict = {}
+    buildtool:dict = {}
     # start_script
 
     # MARK: CMake-Build
     #[=============================[ CMake-Build ]=============================]
     import copy
-    cmake = build['buildtool']
+    cmake = buildtool
 
     if config['ok'] and 'build' in opts['build_actions']:
-        fmt.t2("CMake Build")
-        console.set_window_title('Build - {name}')
+        with fmt.Section("CMake Build"):
+            console.set_window_title('Build - {name}')
 
-        build_path:Path = cmake['build_path']
+            build_path:Path = cmake['build_path']
 
-        build_opts = [
-            f'--build {build_path.as_posix()}',
-            "--verbose" if not opts["quiet"] else None,
-            f"-j {opts['jobs']}",
-        ]
-        build_opts += cmake.get("build_vars", [])
+            build_opts = [
+                f'--build {build_path.as_posix()}',
+                "--verbose" if not opts["quiet"] else None,
+                f"-j {opts['jobs']}",
+            ]
+            build_opts += cmake.get("build_vars", [])
 
-        with Timer(name='build') as timer:
-            targets = ' '.join(cmake.get('targets', []))
-            fmt.s2(f" Building targets: {targets or 'default'} ")
-            target_opts = copy.copy(build_opts)
-            if targets:
-                target_opts.append(f" --target {targets}")
+            with Timer(name='build') as timer:
+                targets = ' '.join(cmake.get('targets', []))
+                fmt.s2(f" Building targets: {targets or 'default'} ")
+                target_opts = copy.copy(build_opts)
+                if targets:
+                    target_opts.append(f" --target {targets}")
 
-            if "tool_vars" in cmake:
-                target_opts.append('--')
-                target_opts += cmake["tool_vars"]
+                if "tool_vars" in cmake:
+                    target_opts.append('--')
+                    target_opts += cmake["tool_vars"]
 
-            stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
-            print('')
-            # TODO I was working on putting all or no --target arguments rather than looping over them.
-            # for target in cmake["targets"]:
-            #     s2(f" Building target: {target} ")
-            #     target_opts = copy.copy(build_opts)
-            #     target_opts.append(f" --target {target}")
-            #
-            #     if "tool_vars" in cmake:
-            #         target_opts.append('--')
-            #         target_opts += cmake["tool_vars"]
-            #
-            #     stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
-            #     print('')
+                stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
+                print('')
+                # TODO I was working on putting all or no --target arguments rather than looping over them.
+                # for target in cmake["targets"]:
+                #     s2(f" Building target: {target} ")
+                #     target_opts = copy.copy(build_opts)
+                #     target_opts.append(f" --target {target}")
+                #
+                #     if "tool_vars" in cmake:
+                #         target_opts.append('--')
+                #         target_opts += cmake["tool_vars"]
+                #
+                #     stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
+                #     print('')
 
-        fmt.send()
-        stats['build'] = timer.get_dict()
-        config['ok'] = timer.ok()
+            fmt.Section.pop()
+            stats['build'] = timer.get_dict()
+            config['ok'] = timer.ok()

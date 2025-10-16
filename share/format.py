@@ -1,11 +1,14 @@
 import os
 import re
 import typing
-from typing import Deque
+from copy import deepcopy
+from dataclasses import dataclass
+from typing import Deque, Callable
 
 from pyfiglet import Figlet
 from pyfiglet import FontNotFound
 from rich import print
+from rich.pretty import pprint
 
 
 # MARK: FORMAT
@@ -48,20 +51,25 @@ class Padding:
         self.indent = 2
         self.bullets = ['', '--', '*', '-']
 
+    def __add__(self, other) -> str:
+        return self.padchar * self.indent * self.level + other
+
+    def __str__(self):
+        return self.padchar * self.indent * self.level
+
     @property
     def level(self):  # Getter
         return self._level
+
     @level.setter
     def level(self, value):
         self._level = value if value >= 0 else 0
 
-    def str( self ) -> str:
-        return self.padchar * self.indent * self.level
-
     def size( self ) -> int:
-        return len( self.str() )
+        return len( str(self) )
+
     def sizeu( self ) -> int:
-        return len( self.str() ) + self.indent
+        return len( str(self) ) + self.indent
 
 pad = Padding()
 
@@ -137,7 +145,6 @@ def t1( msg:str = 'Title One', endl:str=os.linesep ):
         None: Prints the title to the console.
     """
     title = Figlet(font='standard', justify='center', width=columns).renderText(msg)
-    pad.level = 1
     print( endl.join( [s for s in title.splitlines() if not re.match( r'^\s*$', s)] ) )
 
 
@@ -152,7 +159,7 @@ def t2(msg:str = 'Title Two',  endl:str=os.linesep ):
         None: Prints the title to the console.
     """
     title = Figlet(font='small', justify='left', width=columns).renderText(msg)
-    pad.level = 1
+    
     print(endl.join( [s for s in title.splitlines() if not re.match( r'^\s*$', s)] ))
 
 
@@ -166,7 +173,7 @@ def t3(msg:str = 'Title Three',  endl:str=os.linesep):
     Returns:
         None: Prints the title to the console.
     """
-    pad.level = 1
+    
     print(f'{'\n' if endl else ''} == {msg} ==')
 
 # MARK: Sections
@@ -177,21 +184,47 @@ def t3(msg:str = 'Title Three',  endl:str=os.linesep):
 # │ |___/\___\__|\__|_\___/_||_/__/                                            │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-sections:Deque = Deque[str]()
+def style_start_fallback(self) -> str:
+    depth = '.'.join(str(i+1) for i in self.path)
+    return pad + f"{depth} - {self.name}"
+
+def style_end_fallback(self) -> str:
+    # return align(f'> End: {self.name} <', ratio=0, line=hr('- '))
+    return ''
+
+# 2D Index dataclass
+@dataclass
+class SectionIndex:
+    depth: int = 0
+    item: int = 0
+
+    def increment(self):
+        self.depth += 1
+        self.item += 1
+
+    def __str__(self) -> str:
+        return f"{self.depth}.{self.item}"
+
 
 class Section:
-    def __init__(self, title=None ):
-        self.title = title
+    last_index : SectionIndex = SectionIndex(-1,-1)
+    _styles:list[dict[str,Callable]] = [] # each depth can have its own style
 
-    def start( self ):
-        pad.level = 1
-        title = Figlet(font='small', justify='left', width=columns).renderText(self.title)
-        lines = [s for s in title.splitlines() if not re.match( r'^\s*$', s)]
-        print( '\n'.join(lines) )
+    _table_of_contents:dict['Section','Section'] = {}
+    _breadcrumbs : Deque['Section'] = Deque()
 
-    def end( self ):
-        pad.level = 1
-        print( align( f'> End: {self.title} <' , line=hr('- ', 80)) )
+    _style_fallback:dict[str,Callable] = {
+        'start':style_start_fallback,
+        'end':style_end_fallback,
+    }
+
+    def __init__(self, name=str()):
+        self.idx : SectionIndex = SectionIndex(depth=-1,item=-1)
+        self.name:str = name
+        self.parent = None
+        self.children = []
+        self.defunct = False
+        self.path : list[int] = []
 
     def __enter__(self):
         self.start()
@@ -201,22 +234,94 @@ class Section:
         self.end()
         return False
 
+    def start( self ):
+        # Set parent from breadcrumbs
+        crumbs = Section._breadcrumbs
+        self.parent = crumbs[-1] if len(crumbs) else None
+
+        # Walk the table of contents to get the current level.
+        toc : dict = Section._table_of_contents
+        for crumb in crumbs:
+            toc = toc[crumb]
+            self.path.append(crumb.idx.item)
+
+        self.idx = deepcopy(Section.last_index)
+        self.idx.depth += 1
+        self.idx.item = len(toc)
+        self.path.append(self.idx.item)
+        Section.last_index = self.idx
+
+        toc[self] = {}
+        self.print('start')
+
+        Section._breadcrumbs.append(self)
+        pad.level += 1
+
+
+
+    def end( self ):
+        if self.defunct: return
+        self.defunct = True
+
+        # Take ourselves off the deck
+        Section._breadcrumbs.pop()
+
+        # latest should be our parent
+        latest = Section.last()
+        if latest != self.parent:
+            raise Exception("these should be the same.")
+
+        Section.last_index = SectionIndex(-1,-1) if latest is None else latest.idx
+
+        self.print('end')
+        pad.level -=1
+
+    def print( self, mode:str ):
+        style_func:Callable
+
+        styles = Section._styles
+        style = styles[self.idx.depth] if 0 <= self.idx.depth < len(styles) else None
+
+        if style is None:
+            style_func = Section._style_fallback[mode]
+        else:
+            style_func = style.get(mode, Section._style_fallback[mode])
+
+        print( style_func(self) )
+
+    @staticmethod
+    def last() -> 'Section':
+        return Section._breadcrumbs[-1] if len(Section._breadcrumbs) else None
+
+    @staticmethod
+    def pop() -> 'Section':
+        section : Section = Section.last()
+        if not section: raise Exception()
+        section.end()
+        return section
+
+    @staticmethod
+    def set_styles( styles:list[dict[str,Callable]]):
+        Section._styles = styles
+
+    @staticmethod
+    def get_toc(section : dict = None) -> dict:
+        if section is None:
+            section = Section._table_of_contents
+        return { f'{k.idx} - {k.name}': Section.get_toc(v) for k,v in section.items() }
+
+
 # Sections
-def s1(msg:str = 'Section One'):
-    pad.level = 1
-    sections.append( msg )
-    print( align( f'[ {msg} ]' , line=hr('=', 80)) )
+def s1(msg:str = 'Section One') -> Section:
+    while Section.last_index.depth > 0:
+        Section.pop()
+    return Section( msg )
 
 
-def s2(msg:str = 'Section two'):
-    pad.level = 1
-    sections.append( msg )
-    print( align( f'- {msg} -' , line=hr('-', 80)) )
-
-def send():
-    pad.level = 1
-    if not len(sections): raise Exception()
-    print( align( f'> End: {sections.pop()} <' , line=hr('- ', 80)) )
+def s2(msg:str = 'Section two') -> Section:
+    while Section.last_index.depth > 1:
+        Section.pop()
+    return Section( msg )
 
 # MARK: Headings
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -228,11 +333,11 @@ def send():
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def h1(msg:str = 'Heading One' ):
-    pad.level = 1
+    
     h(msg)
 
 def h2(msg:str = 'Heading two' ):
-    pad.level = 2
+    
     h(msg)
 
 def hu( msg:str = '' ):
@@ -342,6 +447,11 @@ def code_box(msg:str = 'CodeBox',
 
     return os.linesep.join(lines)
 
+def style_s1(self) -> str:
+    return align( f'[ {self.name} ]' , line=hr('='))
+
+def style_s2(self) -> str:
+    return align( f'- {self.name} -' , line=hr('-'))
 
 def main():
     t1("Format Test")
@@ -405,6 +515,34 @@ print( capture.get() )""",
 
     with Section('Fetching Projects'):
         print( "Anything goes in the interior.")
+        print( pad +  "Anything goes in the interior.")
+        with Section('nested Sections'):
+            print( "Further to the interior.")
+
+        with Section('Sibling Sections'):
+            print( "Further to the interior.")
+
+        with Section('Breaking'):
+            with Section('Out'):
+                with Section('Of'):
+                    with Section('Deeply'):
+                        with s1('Nested'):
+                            with Section('Sections'):
+                                print("OK")
+
+    Section.set_styles(  [
+        { 'start':style_s1 },
+        { 'start':style_s2 }
+    ])
+    with Section('Section Styles'):
+        with Section('per Level'):
+            print("OK")
+
+    Section.set_styles([])
+
+    pprint( Section.get_toc(), expand_all=True )
+
+
 
 if __name__ == "__main__":
     main()

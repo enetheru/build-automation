@@ -6,7 +6,7 @@ from types import SimpleNamespace, MethodType
 from typing import Mapping, Any, cast
 
 from share import android
-from share.config import toolchain_base
+from share.config import toolchain_base, gopts
 from share.script_preamble import *
 
 # Since these things are getting a little complicated lets try to make a little example for myself.
@@ -64,6 +64,13 @@ windows_toolchains.append( msvc_toolchain() )
 # │ |____|____\_/ |_|  |_| │
 # ╰────────────────────────╯
 # Currently only clang-cl is supported.
+
+def llvm_cmake( build:SimpleNamespace ):
+    toolchain = build.toolchain
+    cmake = build.buildtool
+    cmake.toolchain = gopts.path / 'share' / 'toolchain-llvm.cmake'
+
+
 env = {k:v for k,v in os.environ.items()}
 env['PATH'] = f'C:/Program Files/LLVM/bin;{os.environ['PATH']}'
 windows_toolchains.append( SimpleNamespace({**vars(toolchain_base), **{
@@ -72,9 +79,7 @@ windows_toolchains.append( SimpleNamespace({**vars(toolchain_base), **{
     "arch":['x86_64'], # TODO support more architectures
     'platform':['win32'],
     'env': env,
-    'cmake':{
-        'toolchain':'share\\toolchain-llvm.cmake',
-    }
+    'cmake':llvm_cmake
 }}))
 
 # MARK: LLVM-MinGW
@@ -96,32 +101,36 @@ def llvm_mingw_expand( self, build:SimpleNamespace ) -> list:
         list[SimpleNamespace]: List of expanded build configurations with architecture and platform settings.
     """
     configs_out:list = []
-    for arch, platform in itertools.product(self.arch, self.platform ):
+    for arch, platform in itertools.product(self.archs, self.platforms ):
         cfg = deepcopy(build)
 
         setattr( cfg, 'arch', arch )
         setattr( cfg, 'platform', platform )
 
-        toolchain = cfg.toolchain
-        toolchain.cmake['config_vars'] = [f'-DLLVM_MINGW_PROCESSOR={arch}']
-
         configs_out.append( cfg )
     return configs_out
 
+def llvm_mingw_cmake( build:SimpleNamespace ):
+    cmake = build.buildtool
+    cmake.toolchain = gopts.path / 'share' / 'toolchain-llvm-mingw.cmake'
+    cmake.config_vars.append(f'-DLLVM_MINGW_PROCESSOR={build.arch}')
+
+
 def llvm_mingw_toolchain() -> SimpleNamespace:
-    sysroot = f'C:/opt/llvm-mingw-20250305-ucrt-x86_64'
+    sysroot = Path(f'C:/opt/llvm-mingw-20250305-ucrt-x86_64')
     toolchain_env = {k:v for k,v in os.environ.items()}
-    toolchain_env['PATH'] = f'{sysroot};{os.environ['PATH']}'
+    toolchain_env['PATH'] = f'{sysroot / 'bin'};{os.environ['PATH']}'
 
     toolchain = SimpleNamespace({**vars(toolchain_base), **{
         'name':"llvm-mingw",
         'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
         'sysroot':Path(sysroot),
         'shell':[ "pwsh", "-Command"],
-        "arch":['i686', 'x86_64', 'armv7', 'aarch64'],
-        'platform':['win32'],
+        "archs":['i686', 'x86_64', 'armv7', 'aarch64'],
+        'platforms':['win32'],
         'env': toolchain_env,
-        'cmake': { 'toolchain':'share\\toolchain-llvm-mingw.cmake' },
+        'cmake':llvm_mingw_cmake
+
     }})
     setattr( toolchain, 'expand', MethodType(llvm_mingw_expand, toolchain) )
     return toolchain
@@ -135,6 +144,12 @@ windows_toolchains.append( llvm_mingw_toolchain())
 # │ | |\/| | | ' \ (_ |\ \/\/ / _ \_  _| │
 # │ |_|  |_|_|_||_\___| \_/\_/\___/ |_|  │
 # ╰──────────────────────────────────────╯
+
+def mingw_cmake( build:SimpleNamespace ):
+    toolchain = build.toolchain
+    cmake = build.buildtool
+    cmake.toolchain = 'share\\toolchain-mingw64.cmake'
+
 def mingw64_toolchain() -> SimpleNamespace:
     toolchain_env = {k:v for k,v in os.environ.items()}
     toolchain_env['PATH'] = f'C:/mingw64/bin;{os.environ['PATH']}'
@@ -146,9 +161,7 @@ def mingw64_toolchain() -> SimpleNamespace:
         "arch":['x86_64'],
         'platform':['win32'],
         'env': toolchain_env,
-        'cmake': {
-            'toolchain':'share\\toolchain-mingw64.cmake'
-        },
+        'cmake': mingw_cmake
     }})
     return toolchain
 
@@ -262,6 +275,11 @@ def win32_emscripten_script():
             dry=opts['dry'] )
         quit()
 
+def win32_emscripten_cmake( build:SimpleNamespace ):
+    toolchain = build.toolchain
+    cmake = build.buildtool
+    cmake.toolchain = 'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake',
+    cmake.generators = ['Ninja','Ninja Multi-Config']
 
 def win32_emscripten_toolchain() -> SimpleNamespace:
     toolchain = SimpleNamespace({**vars(toolchain_base), **{
@@ -269,14 +287,11 @@ def win32_emscripten_toolchain() -> SimpleNamespace:
         'desc':'[Emscripten](https://emscripten.org/)',
         'sdk_path':Path('C:/emsdk'),
         'version':'3.1.64',
-        'verbs':['update', 'script'],
+        'verbs':['update'],
         'script_parts':[win32_emscripten_script],
         "arch":['wasm32'], #wasm64
         'platform':['emscripten'],
-        'cmake':{
-            'toolchain':'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake',
-            'generators':['Ninja','Ninja Multi-Config']
-        }
+        'cmake':win32_emscripten_cmake
     }})
     setattr( toolchain, 'update', MethodType(emscripten_update, toolchain) )
     return toolchain
@@ -359,6 +374,10 @@ def darwin_emscripten_script():
         stream_command( f'{cmd_prefix} "source {env_script}; python {build['script_path']}"', dry=opts['dry'] )
         quit()
 
+def darwin_emscripten_cmake( build:SimpleNamespace ):
+    toolchain = build.toolchain
+    cmake = build.buildtool
+    cmake.toolchain = '/Users/enetheru/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
 
 darwin_toolchains.append( SimpleNamespace({**vars(toolchain_base), **{
     'name':'emscripten',
@@ -370,9 +389,7 @@ darwin_toolchains.append( SimpleNamespace({**vars(toolchain_base), **{
     'script_parts':[darwin_emscripten_script],
     "arch":['wasm32'], #wasm64
     'platform':['emscripten'],
-    'cmake':{
-        'toolchain':'/Users/enetheru/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
-    }
+    'cmake':darwin_emscripten_cmake
 }}))
 
 # MARK: Select

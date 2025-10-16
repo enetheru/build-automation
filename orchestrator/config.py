@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from share.expand_config import expand_func, expand_host_env, expand_cmake, cmake_config_types, cmake_generators
+from share.expand_config import expand_func, expand_host_env, expand_cmake
 from share.format import h, Section
 
 from share.script_preamble import *
@@ -44,10 +44,10 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         cfg.script_parts += [show_stats]
 
         setattr(cfg, 'source_dir', f'{cfg.host}.{cfg.toolchain.name}')
-        short_type = cmake_config_types[cfg.cmake['config_type']]
-        short_gen = cmake_generators[cfg.cmake['generator']]
-        cfg.name = f'{cfg.host}.{cfg.toolchain.name}.{cfg.arch}.{short_gen}.{short_type}'
-        cfg.cmake['build_dir'] = f'{short_gen}.{short_type}'
+        # short_type = cmake_config_types[cfg.cmake['config_type']]
+        # short_gen = cmake_generators[cfg.cmake['generator']]
+        # cfg.name = f'{cfg.host}.{cfg.toolchain.name}.{cfg.arch}.{short_gen}.{short_type}'
+        # cfg.cmake['build_dir'] = f'{short_gen}.{short_type}'
 
         if cfg.name in project.build_configs:
             h( f"[yellow]Skipping duplicate config name: {cfg.name}" )

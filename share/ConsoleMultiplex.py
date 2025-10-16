@@ -62,3 +62,25 @@ class ConsoleMultiplex(Console):
 
         console.file.close()
         return console
+
+
+class TeeOutput:
+    #     console.tee( project_console , project.name )
+    def __init__(self, multiplexer:ConsoleMultiplex, new_console:Console, name ):
+        self.multiplexer = multiplexer
+        self.console = new_console
+        self.name = name
+
+    def start( self ):
+        self.multiplexer.tee( self.console, self.name )
+
+    def end( self ):
+        self.multiplexer.pop(self.name)
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.end()
+        return False

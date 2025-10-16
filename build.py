@@ -11,13 +11,14 @@ from types import SimpleNamespace
 from typing import IO
 
 import rich
+from rich import print
 from rich.console import Console, Group
 from rich.pretty import pprint
 from rich.table import Table
 
-from share import format as fmt
 # Local Imports
-from share.ConsoleMultiplex import ConsoleMultiplex
+from share import format as fmt
+from share.ConsoleMultiplex import ConsoleMultiplex, TeeOutput
 from share.config import gopts
 from share.generate import generate_build_scripts, write_namespace
 from share.run import stream_command
@@ -197,7 +198,6 @@ def parse_args( opts:SimpleNamespace ):
 # │ |___|_|_|_| .__/\___/_|  \__|   |_|\___/\___/_\__|_||_\__,_|_|_||_/__/     │
 # ╰───────────┤_├──────────────────────────────────────────────────────────────╯
 def import_toolchains( opts:SimpleNamespace ):
-    fmt.t3( f"Importing Toolchains" )
     toolchain_glob = f"*/toolchains.py"
     fmt.h( f"file glob: {toolchain_glob}" )
 
@@ -248,17 +248,15 @@ def import_toolchains( opts:SimpleNamespace ):
 # ╰───────────┤_├─────────────────────────────────────┤___/────────────────────╯
 def import_projects( opts:SimpleNamespace ) -> dict:
     dbghelp = '[default]( add --debug for more )'
-    fmt.t3( f"Importing Projects" )
     project_glob = f"*/config.py"
     fmt.h( f"file glob: {project_glob}" )
 
     # Import project_config files.
     projects = opts.projects
-    fmt.hu()
     for config_file in opts.path.glob( project_glob ):
         # FIXME, I should seprate the usage of the tool from the tool directory.
         if os.path.basename(config_file.parent) == 'share': continue
-        if opts.verbose: fmt.h(config_file)
+        fmt.hu(config_file)
 
         # Create Module Spec
         spec = importlib.util.spec_from_file_location(
@@ -275,16 +273,16 @@ def import_projects( opts:SimpleNamespace ) -> dict:
         except Exception as e:
             if opts.debug: raise e
             else:
-                fmt.hu( f'In {spec.name} [red]{e} {dbghelp}')
+                fmt.h( f'In {spec.name} [red]{e} {dbghelp}')
                 continue
 
     # Filter the results with the project-regex
     opts.modules = {k: v for k, v in opts.modules.items()
                 if fmt.re.search( opts.project_regex, k )}
 
-    fmt.hd("generating")
+    fmt.h("generating")
     for k,v in opts.modules.items():
-        fmt.h(f"{k} - generating project")
+        fmt.hu(f"{k}")
         # generate the project configurations
         try: project : SimpleNamespace = v.generate( opts )
         except Exception as e:
@@ -338,7 +336,7 @@ def import_projects( opts:SimpleNamespace ) -> dict:
             # is the expected full path to the source of the code
             # if no existing source_dir is set we will use the build name.
             source_path = project.path / getattr( build, 'source_dir', build.name )
-            setattrdefault( build, 'source_path', source_path )
+            setattr( build, 'source_path', source_path )
             # FIXME, if opts.gitdef['override'] == 'yes', then we need to add the shorthash
 
     return projects
@@ -479,13 +477,13 @@ def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace, key : str 
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     project = build.project
-    # Skip the build config if there are no actions to perform
 
-    console.line()
-    fmt.s1( f'Process: {build.name}' )
     if opts.verbose:
-        write_namespace( pretendio, build.toolchain, 'toolchain')
+        console.line()
+        fmt.t2( f'Process: {build.name}' )
         write_namespace( pretendio, build, 'build')
+        write_namespace( pretendio, build.toolchain, 'toolchain')
+        write_namespace( pretendio, build.buildtool, 'buildtool')
 
     setattr( build, 'stats', {
         'status': "dnf",
@@ -494,6 +492,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     })
     stats = build.stats
 
+    # Skip the build config if there are no actions to perform
     skip:bool=True
     for k in opts.build_actions:
         if k in build.verbs:
@@ -510,107 +509,103 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         return
 
     # =====================[ stdout Logging ]======================-
-    log_path = project.path / f"logs-raw/{build.name}.txt"
-    if not skip:
-        build_log = open( file=log_path, mode='w', buffering=1, encoding="utf-8" )
-        build_console = Console( file=build_log, force_terminal=True )
-        console.tee( name=build.name, new_console=build_console )
+    log_path = project.path / f"logs-raw/{build.name}.log"
+    with (
+        open( file=log_path, mode='w', buffering=1, encoding="utf-8" ) as build_log,
+        TeeOutput(console, Console( file=build_log, force_terminal=True ), build.name ),
+        fmt.Section(build.name)
+    ):
 
-    # =================[ Build Heading / Config ]==================-
-    section = fmt.Section(f"Run Script")
-    section.start()
-    fmt.h( build.script_path.as_posix() )
+        # =================[ Build Heading / Config ]==================-
+        fmt.h( build.script_path.as_posix() )
 
-    # ==================[ Print Configuration ]====================-
-    from rich.panel import Panel
-    from rich.syntax import Syntax
+        # ==================[ Print Configuration ]====================-
+        from rich.panel import Panel
+        from rich.syntax import Syntax
 
-    # Show the script.
-    if opts.show:
-        with open(build.script_path, "rt") as code_file:
-            syntax = Syntax(code_file.read(),
-                lexer="python",
-                code_width=110,
-                line_numbers=True,
-                tab_size=2,
-                dedent=True,
-                word_wrap=True)
-        print( Panel( syntax,
-            title=str(build.script_path),
-            title_align='left',
-            expand=False,
-            width=120 ) )
+        # Show the script.
+        if opts.show:
+            with open(build.script_path, "rt") as code_file:
+                syntax = Syntax(code_file.read(),
+                    lexer="python",
+                    code_width=110,
+                    line_numbers=True,
+                    tab_size=2,
+                    dedent=True,
+                    word_wrap=True)
+            print( Panel( syntax,
+                title=str(build.script_path),
+                title_align='left',
+                expand=False,
+                width=120 ) )
 
-    # ====================[ Run Build Script ]=====================-
-    # Out little output handler which captures the lines and looks for data to
-    # use in the statistics
-    def monitor_output( line ):
-        if line.startswith('json:'): stats['subs'].update(json.loads( line[6:] ))
-        else: print( line )
+        # ====================[ Run Build Script ]=====================-
+        # Out little output handler which captures the lines and looks for data to
+        # use in the statistics
+        def monitor_output( line ):
+            if line.startswith('json:'): stats['subs'].update(json.loads( line[6:] ))
+            else: print( line )
 
-    errors:list = []
-    shell = getattr(build.toolchain, 'shell', [])
-    env = getattr(build.toolchain, 'env', None )
+        errors:list = []
+        shell = getattr(build.toolchain, 'shell', [])
+        env = getattr(build.toolchain, 'env', None )
 
-    cmd = f'python {build.script_path.as_posix()}'
-    run_cmd = ' '.join( shell + [f'"{cmd}"']) if shell else cmd
-    try:
-        stats |= { 'start_time':datetime.now() }
-        proc = stream_command( run_cmd, env=env,
-            stdout_handler=monitor_output,
-            stderr_handler=lambda msg: errors.append(msg)
-        )
-        print( "Post process")
-        end_time = datetime.now()
-        stats |= {
-            'status': "Dry-Run" if opts.dry else "Completed",
-            'end_time': end_time,
-            'duration': end_time - stats["start_time"]
-        }
-        print( "status updated after process")
-        proc.check_returncode()
-    except KeyboardInterrupt:
-        end_time = datetime.now()
-        stats |= {
-            "status": "Cancelled",
-            "end_time": end_time,
-            "duration": end_time - stats["start_time"]
-        }
+        cmd = f'python {build.script_path.as_posix()}'
+        run_cmd = ' '.join( shell + [f'"{cmd}"']) if shell else cmd
+        try:
+            stats |= { 'start_time':datetime.now() }
+            proc = stream_command( run_cmd, env=env,
+                stdout_handler=monitor_output,
+                stderr_handler=lambda msg: errors.append(msg)
+            )
+            print( "Post process")
+            end_time = datetime.now()
+            stats |= {
+                'status': "Dry-Run" if opts.dry else "Completed",
+                'end_time': end_time,
+                'duration': end_time - stats["start_time"]
+            }
+            print( "status updated after process")
+            proc.check_returncode()
+        except KeyboardInterrupt:
+            end_time = datetime.now()
+            stats |= {
+                "status": "Cancelled",
+                "end_time": end_time,
+                "duration": end_time - stats["start_time"]
+            }
 
-        print("Build Cancelled with 'KeyboardInterrupt'")
-        console.pop( build.name )
+            print("Build Cancelled with 'KeyboardInterrupt'")
+            console.pop( build.name )
 
-        print("Waiting 3s before continuing, CTRL+C to cancel project")
-        try: sleep(3)
-        except KeyboardInterrupt as e: raise e
-        print("continuing...")
-    except Exception as e:
-        print( "Exception raised")
-        end_time = datetime.now()
-        stats |= {
-            "status": "Failed",
-            "end_time": end_time,
-            "duration": end_time - stats["start_time"]
-        }
-        print( "Status Updated after exception")
-        panels = [Panel( str(e), title='Exception', title_align='left' )]
-        if errors: panels.append( Panel( '\n'.join( errors ), title='stderr', title_align='left'))
+            print("Waiting 3s before continuing, CTRL+C to cancel project")
+            try: sleep(3)
+            except KeyboardInterrupt as e: raise e
+            print("continuing...")
+        except Exception as e:
+            print( "Exception raised")
+            end_time = datetime.now()
+            stats |= {
+                "status": "Failed",
+                "end_time": end_time,
+                "duration": end_time - stats["start_time"]
+            }
+            print( "Status Updated after exception")
+            panels = [Panel( str(e), title='Exception', title_align='left' )]
+            if errors: panels.append( Panel( '\n'.join( errors ), title='stderr', title_align='left'))
 
-        console.print( Panel( Group(*panels), expand=False, title='Errors', title_align='left', width=120 ) )
-        if opts.debug: raise e
+            console.print( Panel( Group(*panels), expand=False, title='Errors', title_align='left', width=120 ) )
+            if opts.debug: raise e
 
-    # TODO create a timeout for the processing, something reasonable.
-    #   this should be defined in the build config as the largest possible build time that is expected.
-    #   that way it can trigger a check of the system if it is failing this test.
+        # TODO create a timeout for the processing, something reasonable.
+        #   this should be defined in the build config as the largest possible build time that is expected.
+        #   that way it can trigger a check of the system if it is failing this test.
 
-    table = Table( highlight=True, min_width=80, show_header=False )
-    table.add_row(
-        build.name, f"{stats['status']}", f"{stats['duration']}",
-        style="red" if stats["status"] == "Failed" else "green", )
-    console.print( table )
-
-    section.end()
-    console.pop( build.name )
+        table = Table( highlight=True, min_width=80, show_header=False )
+        table.add_row(
+            build.name, f"{stats['status']}", f"{stats['duration']}",
+            style="red" if stats["status"] == "Failed" else "green", )
+        console.print( table )
 
     # ==================[ Output Log Processing ]==================-
     fmt.h1( "Post Run Actions" )
@@ -653,42 +648,39 @@ def process_project( opts:SimpleNamespace, project:SimpleNamespace ):
     os.makedirs( project.path / "logs-clean", exist_ok=True )
 
     # Tee stdout to log file.
-    log_path = project.path / f"logs-raw/{project.name}.txt"
-    log_file = open( file=log_path, mode='w', buffering=1, encoding="utf-8" )
-    project_console = Console( file=log_file, force_terminal=True )
-    console.tee( project_console , project.name )
-    console.line()
-    fmt.s1( f'Process: {project.name}' )
+    log_path = project.path / f"logs-raw/{project.name}.log"
+    with (
+        open( file=log_path, mode='w', buffering=1, encoding="utf-8" ) as log_file,
+        TeeOutput(console, Console( file=log_file, force_terminal=True ), project.name ),
+        fmt.Section(project.name)
+    ):
+        # ================[ project Heading / Config ]==================-
+        if opts.verbose:
+            fmt.t2( project.name )
+            fmt.t3("Project Config:")
+            write_namespace( pretendio, project, 'project')
+            fmt.t3("Build Configurations")
+            for build in project.build_configs.values():
+                fmt.h(build.name)
+        else:
+            print(f"Processing {project.name}")
 
-    # ================[ project Heading / Config ]==================-
-    if opts.verbose:
-        fmt.t2( project.name )
-        fmt.t3("Project Config:")
-        write_namespace( pretendio, project, 'project')
-        fmt.t3("Build Configurations")
+        project_total = len(project.build_configs)
+        build_num = 0
         for build in project.build_configs.values():
-            fmt.h(build.name)
-
-    project_total = len(project.build_configs)
-    build_num = 0
-    for build in project.build_configs.values():
-        build_num += 1
-        console.set_window_title( f"{project.name}[{build_num}:{project_total}] - {build.name}" )
-        try:
-            process_build( opts, build )
-        except KeyboardInterrupt:
-            print( f'"Cancelling project "{project.name}", CTRL+C again to cancel all projects"')
+            build_num += 1
+            console.set_window_title( f"{project.name}[{build_num}:{project_total}] - {build.name}" )
             try:
-                sleep(3)
-            except KeyboardInterrupt as e:
-                # Cleanup
-                console.pop( project.name )
-                raise e
-            print("continuing")
-
-    fmt.send()
-    # remove the project output log.
-    console.pop( project.name )
+                process_build( opts, build )
+            except KeyboardInterrupt:
+                print( f'"Cancelling project "{project.name}", CTRL+C again to cancel all projects"')
+                try:
+                    sleep(3)
+                except KeyboardInterrupt as e:
+                    # Cleanup
+                    console.pop( project.name )
+                    raise e
+                print("continuing")
 
 
 # MARK: Statistics
@@ -798,7 +790,7 @@ def main():
     console.set_window_title( "AutoBuild" )
 
     # Log everything to a file
-    console.tee( Console( file=open( gopts.path / "build_log.txt", "w", encoding='utf-8' ), force_terminal=True ),
+    console.tee( Console( file=open( gopts.path / "build_log.log", "w", encoding='utf-8' ), force_terminal=True ),
         name="build_log" )
 
     parse_args(gopts)
@@ -810,11 +802,13 @@ def main():
         fmt.t3( "Options" )
         pprint( gopts.__dict__, expand_all=True )
 
-    import_toolchains(gopts)
-    toolchains = gopts.toolchains
+    with fmt.Section("Import Toolchains"):
+        import_toolchains(gopts)
+        toolchains = gopts.toolchains
 
-    import_projects(gopts)
-    projects = gopts.projects
+    with fmt.Section("Import Projects"):
+        import_projects(gopts)
+        projects = gopts.projects
 
     if gopts.gitoverride:
         fmt.t3( "Processing Override" )
@@ -824,45 +818,63 @@ def main():
 
     # List only.
     if gopts.list:
-        with fmt.Section('List'):
-            fmt.t3(f'{len(toolchains)} Toolchains')
-            fmt.h(f"Available Verbs: {gopts.toolchain_verbs or None}")
-            fmt.h('List:')
-            for toolchain_name in toolchains:
-                fmt.hu(toolchain_name)
+        with fmt.Section('List Items'):
+            with fmt.Section(f"Toolchains ({len(toolchains)})"):
+                for toolchain in toolchains.values():
+                    verbs:str = ''
+                    if len(toolchain.verbs):
+                        verbs = f' - available actions:{toolchain.verbs}'
+                    fmt.h(f'{toolchain.name}{verbs}')
 
             n_builds = 0
-            fmt.t3(f'{len(projects)} Projects')
-            fmt.h(f"Available Verbs: {gopts.project_verbs or None}")
-            fmt.h('List:')
-            for project_name,project in projects.items():
-                n_builds += len(project.build_configs)
-                fmt.hu(project_name)
+            with fmt.Section(f"Projects ({len(projects)})"):
+                for project_name,project in projects.items():
+                    n_builds += len(project.build_configs)
+                    verbs:str = ''
+                    if len(project.verbs):
+                        verbs = f' - available actions:{project.verbs}'
+                    fmt.h(f'{project.name}{verbs}')
 
-            fmt.t3(f'{n_builds} Build Configurations')
-            fmt.h(f"Available Verbs: {gopts.build_verbs or None}")
-            fmt.h('List:')
-            for project_name,project in projects.items():
-                for build_name in project.build_configs:
-                    fmt.hu(f'{project_name} | {build_name}')
+            with fmt.Section(f"Build Configurations ({n_builds})"):
+                fmt.h(f"Available Actions: {gopts.build_verbs or None}")
+                for project_name,project in projects.items():
+                    for build_name in project.build_configs:
+                        fmt.h(f'{project_name} | {build_name}')
 
-        quit()
+    # perform any actions triggered by verbs for toolchains.
+    with fmt.Section("Process Toolchain Actions"):
+        if len(gopts.toolchain_actions) == 0:
+            fmt.h("No toolchain actions specified")
+        else:
+            process_toolchains( gopts )
 
-    process_toolchains( gopts )
+    # Basically the same thing again for the fetch command in prject, should be re-arranged
+    with fmt.Section("Process Project Actions"):
+        if len(gopts.project_actions) == 0:
+            fmt.h("No project actions specified")
+        else:
+            if 'fetch' in gopts.project_actions:
+                with fmt.Section( 'Fetching Projects' ):
+                    for project in projects.values():
+                        fetch_project( gopts, project )
 
-    if 'fetch' in gopts.project_actions:
-        with fmt.Section( 'Fetching Projects' ):
+    # Generate the build scripts
+    with fmt.Section("Generate Build Scripts"):
+        generate_build_scripts( gopts )
+
+    # This one is the processing script for the build itself, should be renamed.something like
+    # for build_config in project.configs process_build( build ) since the build has a handle to its parent
+    with fmt.Section("Process Builds"):
+        if len(gopts.build_actions) == 0:
+            fmt.h("No build actions specified")
+        else:
             for project in projects.values():
-                fetch_project( gopts, project )
+                try: process_project( gopts, project )
+                except KeyboardInterrupt:
+                    print("Processing Cancelled")
 
-    generate_build_scripts( gopts )
-
-    for project in projects.values():
-        try: process_project( gopts, project )
-        except KeyboardInterrupt:
-            print("Processing Cancelled")
-
-    show_statistics( gopts )
+    with fmt.Section("Show Statistics"):
+        show_statistics( gopts )
 
     console.pop( "build_log" )
 

@@ -65,8 +65,8 @@ def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, l
 
     lines = [f"{pad}{name} = {{"]
 
-    skip_keys = ['script_parts']
-    skip_keys += getattr(namespace, 'skip_keys', [])
+    skip_keys = ['script_parts', 'skipkeys']
+    skip_keys += getattr(namespace, 'skipkeys', [])
 
     for key, value in namespace.__dict__.items():
         if key in skip_keys or callable(value): # Skip specified keys and functions
@@ -83,14 +83,14 @@ def write_namespace( buffer:IO, namespace:SimpleNamespace, name:str, indent=2, l
 
         elif isinstance(value, Path): # Handle Path objects
             lines.append(f"{inner_pad}{qkey}:Path({repr(str(value))}),")
-        elif isinstance(value, SimpleNamespace): # Skip other SimpleNamespaces
-            if key in ['project', 'modules', 'toolchain', 'verbs']: continue
-            # write_namespace(buffer, value, f"'{key}'", indent, level+1)
+
+        elif isinstance(value, SimpleNamespace):
             for line in f'{qkey}:{json.dumps( {k:v for k,v in vars(value).items() if v and k not in ['verbs'] }, indent=indent )},'.splitlines():
                 lines.append(f'{inner_pad}{line}')
-            continue
+
         elif isinstance(value, str) and '\n' in value: # Skip Multi-Line Scripts.
             continue
+
         else: # Default case for simple values
             lines.append(f"{inner_pad}{qkey}:{repr(value)},")
 
@@ -164,21 +164,19 @@ def generate_build_scripts( opts:SimpleNamespace ):
         None: Writes build scripts to disk for each build configuration.
     """
     projects = opts.projects
-    fmt.t3('Generating Build Scripts')
-
     for project in projects.values():
+        fmt.h(f'{project.name}')
         for build in project.build_configs.values():
             with open( build.script_path, "w", encoding='utf-8' ) as script:
                 write_preamble(script)
                 write_section( script, opts, 'opts' )
-                write_section( script, build.toolchain, 'toolchain' )
                 write_section( script, project, 'project' )
                 write_section( script, build, 'build' )
+                write_section( script, build.toolchain, 'toolchain' )
+                write_section( script, build.buildtool, 'buildtool' )
 
                 for section in [opts, build.toolchain, project, build]:
                     for part in getattr( section, f'script_parts', [] ):
                         script.write( func_to_string( part ) )
-
-    fmt.h("[green]OK")
 
 
