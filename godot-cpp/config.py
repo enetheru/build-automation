@@ -149,6 +149,8 @@ def test_script():
     opts:dict = {}
     build:dict = {}
     stats:dict = {}
+    toolchain:dict = {}
+
     # start_script
 
     #[==================================[ Test ]==================================]
@@ -157,13 +159,71 @@ def test_script():
     from share.format import p
     from json import dumps
 
+    import re
+
+    def get_export_templates() -> list[SimpleNamespace]:
+
+        export_set_template = SimpleNamespace(**{
+            'type':'export_template',
+            'version':str(),
+            'platform':str(),
+            'arch':str(),
+            'editor':str(),
+            'release':str(),
+            'debug':str(),
+        })
+
+        set_list = list[SimpleNamespace]()
+        path = Path('C:/Users/nicho/AppData/Roaming/Godot/export_templates')
+
+        # Regular expression pattern
+        export_template_pattern = re.compile(
+            r"^(?P<platform>linux|windows)_(?P<type>debug|release)[_.](?P<arch>arm32|arm64|x86_32|x86_64)"
+        )
+
+        if not (path.exists() and path.is_dir()):
+            return []
+        try:
+            for export_folder in Path(path).iterdir():
+                if not export_folder.is_dir(): continue
+
+                for file in export_folder.iterdir():
+                    match = export_template_pattern.match(file.name)
+                    if not match: continue
+
+                    search_criteria = {"version": export_folder.name}
+
+                    info = match.groupdict()
+
+                    # Clean up: Remove None values and handle console flag
+                    info = {k: v for k, v in info.items() if v is not None}
+
+                    search_criteria['platform'] = info.pop('platform')
+                    search_criteria['arch'] = info.pop('arch')
+
+                    export_set = next(
+                        (d for d in set_list
+                         if all( hasattr(d,k) and getattr(d,k) == v
+                                 for k, v in search_criteria.items()
+                        )), None)
+                    if export_set is None:
+                        export_set = SimpleNamespace({**vars(export_set_template), **search_criteria})
+                        set_list.append(export_set)
+
+                    setattr(export_set, info['type'], file)
+
+        except PermissionError:
+            print("Permission denied")
+
+        return set_list
+
     def collect_godots() -> dict:
         godot_arches = ['x86_64', 'x86_32', 'arm64', 'arm32', 'wasm32']
 
         # find all builds in the Godot build folder to test against.
         godot_path = Path( opts['path'] / 'godot' )
         godot_sets = {}
-        for child in godot_path.glob(f'{build['host']}*/'):
+        for child in godot_path.glob(f'{toolchain['host']}*/'):
             # Get all the executables in the folder
             files = [f.name for f in (child / 'bin').glob('*.exe')]
             files = [*filter( lambda f: 'godot' in f , files )]
@@ -266,64 +326,102 @@ def test_script():
 
         return result
 
+    def run_tests( data : SimpleNamespace ):
+        config['ok'] = False
+        console.set_window_title(f'Test - {build['name']}')
 
-    testing_results = []
+        # FIXME use fresh to delete the .godot folder
 
-    while config['ok'] and 'test' in opts['build_actions']:
-        with fmt.Section( "Testing" ):
+        for set_name, set_value in data.godot_sets.items():
+            if data.dot_godot_dir.exists():
+                break
+            fmt.h(f'Generating the .godot folder using: {set_name}')
+            try: gen_dot_folder( set_value )
+            except SubprocessError as e:
+                print( '[red]Godot exited abnormally during .godot folder creation')
+                if opts['debug']: raise e
+
+
+        if not data.dot_godot_dir.exists() and not opts['dry']:
+            print('[red]Error: Creating .godot folder')
+            testing_results += ['Creation of .godot folder failed.']
             config['ok'] = False
-            console.set_window_title(f'Test - {build['name']}')
+            return []
 
-            godot_sets = collect_godots()
-            num_tests = len(godot_sets)
-            fmt.h(f'Found {num_tests} godot exe file sets to test with')
+        if opts['dry']:
+            fmt.h( 'Dry-Run: Test Completed' )
+            config['ok'] = True
+            return []
 
-            test_project_dir = build['source_path'] / 'test/project'
-            dot_godot_dir = test_project_dir / '.godot'
+        talley = 0
+        for set_name, set_value in godot_sets.items():
+            if opts['verbose']:
+                fmt.t3("Running Test")
+                fmt.h('Using Fileset:')
+                p( set_value, pretty=True )
+            result = run_test( set_value )
+            if result['status'] == 'Success': talley += 1
+            testing_results.append( result )
 
-            # FIXME use fresh to delete the .godot folder
+        test_data['results'] = testing_results
 
-            for set_name, set_value in godot_sets.items():
-                if dot_godot_dir.exists():
-                    break
-                fmt.h(f'Generating the .godot folder using: {set_name}')
-                try: gen_dot_folder( set_value )
-                except SubprocessError as e:
-                    print( '[red]Godot exited abnormally during .godot folder creation')
-                    if opts['debug']: raise e
+    def testing_setup() -> SimpleNamespace:
+        export_templates =  get_export_templates()
+
+        godot_sets = collect_godots()
+        num_sets = len(godot_sets)
+
+        fmt.h(f'Found {num_sets} godot exe file sets to test with')
+        # if not num_sets:
+        #     raise Exception( "There are no godot executables found")
+
+        test_case = SimpleNamespace(**{
+            'name':str(),
+            'result':False,
+            'msg':str(),
+            'exe_set':SimpleNamespace()
+        })
+
+        rig = SimpleNamespace(**{
+            'test_dir':build['source_path'] / 'test/project',
+            'num_tests':len(godot_sets),
+            'godot_sets':godot_sets,
+            'num_sets':num_sets,
+            'talley':0,
+            'cases':list[SimpleNamespace](),
+            'results':list[SimpleNamespace]()
+        })
+
+        for template in export_templates:
+            if template.platform != 'windows':
+                continue
+            rig.cases.append( SimpleNamespace({**vars(test_case),**{
 
 
-            if not dot_godot_dir.exists() and not opts['dry']:
-                print('[red]Error: Creating .godot folder')
-                testing_results += ['Creation of .godot folder failed.']
+            }}))
+
+        if not rig.cases:
+            raise Exception( "There are no test cases")
+
+        return rig
+
+
+    if config['ok'] and 'test' in opts['build_actions']:
+        with fmt.Section( "Testing" ):
+            test_rig = testing_setup()
+            if test_rig is None:
                 config['ok'] = False
-                break
+            else:
+                run_tests( test_rig )
 
-            if opts['dry']:
-                fmt.h( 'Dry-Run: Test Completed' )
-                config['ok'] = True
-                break
+                success = test_rig.talley == test_rig.num_tests
 
-            talley = 0
-            for set_name, set_value in godot_sets.items():
-                if opts['verbose']:
-                    fmt.t3("Running Test")
-                    fmt.h('Using Fileset:')
-                    p( set_value, pretty=True )
-                result = run_test( set_value )
-                if result['status'] == 'Success': talley += 1
-                testing_results.append( result )
-
-            success = talley == num_tests
-            if success: config['ok'] = True
-
-            results:dict = {
-                'status': 'Success' if success else 'Failed',
-                'duration': f'{talley} / {num_tests}',
-            }
-            print('json:', dumps({'test':results}, default=str))
-            stats['test'] = results
-            break
+                results:dict = {
+                    'status': 'Success' if success else 'Failed',
+                    'duration': f'{test_rig.talley} / {test_rig.num_tests}',
+                }
+                print('json:', dumps({'test':results}, default=str))
+                stats['test'] = results
 
 
 # MARK: SCons Script

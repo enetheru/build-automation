@@ -5,6 +5,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Deque, Callable
 
+import rich
 from pyfiglet import Figlet
 from pyfiglet import FontNotFound
 from rich import print
@@ -73,13 +74,9 @@ class Padding:
 
 pad = Padding()
 
-try:
-    columns:int = os.get_terminal_size().columns
-except OSError:
-    columns:int = 80
 
 # Horizontal Rule
-def hr( filler:str=' ', width:int=columns ):
+def hr( filler:str=' ', width:int=rich.get_console().width ):
     """Generate a horizontal rule string.
 
     Args:
@@ -144,7 +141,7 @@ def t1( msg:str = 'Title One', endl:str=os.linesep ):
     Returns:
         None: Prints the title to the console.
     """
-    title = Figlet(font='standard', justify='center', width=columns).renderText(msg)
+    title = Figlet(font='standard', justify='center', width=rich.get_console().width).renderText(msg)
     print( endl.join( [s for s in title.splitlines() if not re.match( r'^\s*$', s)] ) )
 
 
@@ -158,7 +155,7 @@ def t2(msg:str = 'Title Two',  endl:str=os.linesep ):
     Returns:
         None: Prints the title to the console.
     """
-    title = Figlet(font='small', justify='left', width=columns).renderText(msg)
+    title = Figlet(font='small', justify='left', width=rich.get_console().width).renderText(msg)
     
     print(endl.join( [s for s in title.splitlines() if not re.match( r'^\s*$', s)] ))
 
@@ -386,7 +383,7 @@ def code_box(msg:str = 'CodeBox',
              comment:str = '#',
              padding:str = ' ',
              border:str = "╭─╮│ │╰─╯",
-             width:int = columns,
+             width:int = rich.get_console().width,
              compact:bool = True,
              above:str = '',
              below:str = '',

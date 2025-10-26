@@ -4,18 +4,21 @@ import json
 import os
 import re
 from argparse import RawTextHelpFormatter
+from pathlib import Path
 from types import SimpleNamespace
 from typing import List, Dict, Optional, Tuple, Set
 
 from rich.console import Console
+from rich.pretty import pretty_repr
 from rich.table import Table
 
-import format as fmt  # Assuming this is a custom module; no changes needed.
+import format as fmt
 
 script_path = os.path.abspath(__file__)
 
+
 def load_json(json_file: str) -> List[Dict]:
-    """Load and validate the compile_commands.json file."""
+    """Load and validate the .json file."""
     if not os.path.exists(json_file):
         raise FileNotFoundError(f"Error: {json_file} does not exist.")
     with open(json_file, 'r') as f:
@@ -24,11 +27,6 @@ def load_json(json_file: str) -> List[Dict]:
         except json.JSONDecodeError as e:
             raise ValueError(f"Error: Invalid JSON in {json_file}: {e}")
 
-def split_command(command: str) -> List[str]:
-    """Split a command into tokens, handling MSVC and GCC-style arguments."""
-    if command.startswith(('clang-cl', 'cl ', 'link ', 'lib ')):
-        return re.findall(r'"[^"]*"|[^\s"]+', command)
-    return command.split()
 
 def load_glossary_config() -> Dict[str, Dict[str, str]]:
     """Load flag descriptions and links from a glossary config file."""
@@ -39,54 +37,6 @@ def load_glossary_config() -> Dict[str, Dict[str, str]]:
     with open(glossary_file, 'r') as f:
         # Assume JSON as {flag: {"description": "...", "link": "..."}}}
         return json.load(f)
-
-def parse_build_log(log_file: str) -> List[Dict]:
-    """Parse a build log to extract commands."""
-    if not os.path.exists(log_file):
-        raise FileNotFoundError(f"Error: {log_file} does not exist.")
-    with open(log_file, 'r') as f:
-        lines = f.readlines()
-
-    commands = []
-    current_command = ""
-    for line in lines:
-        line = line.strip()
-        if line.endswith(".exe") or line.startswith(("cl ", "link ", "lib ", "clang-cl ")):
-            if current_command:
-                commands.append({"command": current_command, "file": ""})  # File not available in log
-            current_command = line
-        elif current_command:
-            current_command += " " + line
-    if current_command:
-        commands.append({"command": current_command, "file": ""})
-
-    return commands
-
-
-def extract_config(sourcedir: str, builddir: str, raw_command: str) -> SimpleNamespace:
-    """Extract configuration from directories and command."""
-    sourcedir_values = os.path.basename(sourcedir).split('.')
-    sourcedir_keys = ['host', 'buildtool', 'toolchain', 'godotcpp_target', 'variant']
-    config_dict = {k: v for k, v in zip(sourcedir_keys, sourcedir_values)}
-
-    if config_dict.get('buildtool') == 'cmake':
-        builddir_values = os.path.basename(builddir).split('-')
-        builddir_keys = ['stub', 'toolchain', 'godotcpp_target', 'variant', 'type']
-        config_dict.update({k: v for k, v in zip(builddir_keys, builddir_values)})
-
-    name_parts = [
-        config_dict.get('host'),
-        config_dict.get('buildtool'),
-        config_dict.get('toolchain'),
-        config_dict.get('godotcpp_target'),
-        config_dict.get('variant'),
-        config_dict.get('type'),
-    ]
-    config_dict['name'] = ' '.join([part for part in name_parts if part is not None])
-    config_dict['raw_command'] = raw_command
-    config_dict['sourcedir'] = sourcedir
-    config_dict['builddir'] = builddir
-    return SimpleNamespace(**config_dict)
 
 
 def display_glossary(glossary, all_flags: Dict[str, Dict[str, List[str]]]):
@@ -170,12 +120,68 @@ class CompileCommandsCleaner:
         self.sourcedir = ''
         self.builddir = ''
 
+    @staticmethod
+    def parse_build_log(log_file: str) -> List[Dict]:
+        """Parse a build log to extract commands."""
+        if not os.path.exists(log_file):
+            raise FileNotFoundError(f"Error: {log_file} does not exist.")
+        with open(log_file, 'r') as f:
+            lines = f.readlines()
+
+        commands = []
+        current_command = ""
+        for line in lines:
+            line = line.strip()
+            if line.endswith(".exe") or line.startswith(("cl ", "link ", "lib ", "clang-cl ")):
+                if current_command:
+                    commands.append({"command": current_command, "file": ""})  # File not available in log
+                current_command = line
+            elif current_command:
+                current_command += " " + line
+        if current_command:
+            commands.append({"command": current_command, "file": ""})
+
+        return commands
+
+    @staticmethod
+    def extract_config(sourcedir: str, builddir: str) -> SimpleNamespace:
+        """Extract configuration from directories and command."""
+        sourcedir_values = os.path.basename(sourcedir).split('.')
+        sourcedir_keys = ['host', 'buildtool', 'toolchain', 'arch', 'platform', 'godotcpp_target', 'variant']
+        config_dict = {k: v for k, v in zip(sourcedir_keys, sourcedir_values)}
+
+        if config_dict.get('buildtool') == 'cmake':
+            builddir_values = os.path.basename(builddir).split('.')
+            builddir_keys = ['stub', 'toolchain', 'arch', 'platform', 'godotcpp_target', 'variant', 'type', 'tool']
+            config_dict.update({k: v for k, v in zip(builddir_keys, builddir_values)})
+
+        name_parts = [
+            # config_dict.get('host'),
+            config_dict.get('buildtool'),
+            config_dict.get('toolchain'),
+            # config_dict.get('arch'),
+            # config_dict.get('godotcpp_target'),
+            # config_dict.get('variant'),
+            # config_dict.get('type'),
+        ]
+        config_dict['name'] = ' '.join([part for part in name_parts if part is not None])
+        config_dict['sourcedir'] = sourcedir
+        config_dict['builddir'] = builddir
+        return SimpleNamespace(**config_dict)
+
     def get_command_type(self, command: str) -> Optional[str]:
         """Determine the command type (compile, link, archive)."""
         for cmd_type, pattern in self.config['command_types'].items():
             if pattern.search(command):
                 return cmd_type
         return None
+
+    @staticmethod
+    def split_command(command: str) -> List[str]:
+        """Split a command into tokens, handling MSVC and GCC-style arguments."""
+        if command.startswith(('clang-cl', 'cl ', 'link ', 'lib ')):
+            return re.findall(r'"[^"]*"|[^\s"]+', command)
+        return command.split()
 
     def clean_token(self, token: str) -> str:
         """Apply erase patterns to a single token."""
@@ -189,10 +195,11 @@ class CompileCommandsCleaner:
             token = os.path.normpath(token)
             # Normalize gen\include paths by removing builddir prefix
             if 'gen\\include' in token.replace('/', '\\'):
-                token = token[len(os.path.commonprefix([self.builddir, token]))+1:] if self.builddir in token else token
+                token = token[
+                    len(os.path.commonprefix([self.builddir, token])) + 1:] if str(self.builddir) in token else token
                 token = os.path.join('gen', 'include') if 'gen\\include' in token.replace('/', '\\') else token
             elif self.sourcedir in token:
-                token = token[len(os.path.commonprefix([self.sourcedir, token]))+1:]
+                token = token[len(os.path.commonprefix([self.sourcedir, token])) + 1:]
         return token
 
     def categorize_token(self, token: str) -> str:
@@ -261,12 +268,17 @@ class CompileCommandsCleaner:
             categorized[category].sort()
         return categorized
 
-    def process(self, files: List[str], is_json: bool = True, filter_regex: Optional[str] = None) -> Tuple[Dict[str, SimpleNamespace], Dict[str, Dict[str, List[str]]]]:
+    def process_files(self,
+                      files: List[str],
+                      is_json: bool = True,
+                      filter_regex: Optional[str] = None,
+                      match_file: str = '*') -> Tuple[
+        Dict[str, SimpleNamespace], Dict[str, Dict[str, List[str]]]]:
         """Process the files and return results and all_flags."""
         if is_json:
-            results = self.clean_commands(files)
+            results = self.analyse_compile_commands(files, match_file)
         else:
-            results = self.clean_build_log(files)
+            results = self.analyse_build_log(files)
 
         # Filter results based on config['name'] matching the regex
         if filter_regex:
@@ -298,54 +310,77 @@ class CompileCommandsCleaner:
 
         return results, all_flags
 
-
-    def clean_commands(self, json_files: List[str]) -> Dict[str, SimpleNamespace]:
+    def analyse_compile_commands(self,
+                                 json_files: List[str],
+                                 match_file:str = '.*'
+                                 ) -> Dict[str, SimpleNamespace]:
         """Process multiple compile_commands.json files and return one command per type per file."""
         results = {}
         for json_file in json_files:
+            result = SimpleNamespace(**{
+                'filename': json_file,
+                'config':None,
+                'commands':None,
+                'commands_raw':None
+            })
+
             compile_commands = load_json(json_file)
             processed_types: Set[str] = set()
             commands_by_type: Dict[str, Dict[str, List[str]]] = {}
-            config = None
+            result.commands = commands_by_type
+
+            commands_raw_by_type: Dict[str, str] = {}
+            result.commands_raw = commands_raw_by_type
 
             for entry in compile_commands:
                 command = entry['command']
                 cmd_type = self.get_command_type(command)
                 if not cmd_type or cmd_type in processed_types:
                     continue
+                if not match_file in command:
+                    continue
+                else:
+                    print( command )
 
-                file_path = os.path.normpath(entry['file'])
-                directory = os.path.normpath(entry['directory'])
+                directory = Path(entry['directory'])
+                file_path = Path(entry['file'])
+                if not file_path.is_absolute():
+                    file_path = directory / file_path
+
                 self.sourcedir = os.path.commonpath([directory, file_path])
                 self.builddir = directory
+                print( self.sourcedir )
+                print( self.builddir )
 
-                if config is None:
-                    config = extract_config(self.sourcedir, self.builddir, command)
+                result.config = self.extract_config(self.sourcedir, self.builddir)
+                # config_dict['raw_command'] = raw_command
 
-                categorized_tokens = self.process_tokens(split_command(command))
+                categorized_tokens = self.process_tokens(self.split_command(command))
                 if not any(categorized_tokens.values()):
                     print(f"Debug: No valid tokens after processing: {command[:50]}...")
                     continue
 
                 commands_by_type[cmd_type] = categorized_tokens
+                commands_raw_by_type[cmd_type] = command
                 processed_types.add(cmd_type)
 
             if commands_by_type:
-                results[json_file] = SimpleNamespace(config=config or SimpleNamespace(name='Unknown'), commands=commands_by_type)
+                results[json_file] = result
 
         return results
 
-    def clean_build_log(self, log_files: List[str]) -> Dict[str, SimpleNamespace]:
+    def analyse_build_log(self, log_files: List[str]) -> Dict[str, SimpleNamespace]:
         """Process multiple build log files and return one command per type per file."""
         results = {}
         for log_file in log_files:
-            compile_commands = parse_build_log(log_file)
-            entries = self.clean_commands_from_entries(compile_commands, log_file)
+            compile_commands = self.parse_build_log(log_file)
+            entries = self.analyse_log_commands(compile_commands, log_file)
             if entries:
                 results[log_file] = entries[0]  # Only one entry per log file
         return results
 
-    def clean_commands_from_entries(self, compile_commands: List[Dict], fallback_name: str = '') -> List[SimpleNamespace]:
+    def analyse_log_commands(self, compile_commands: List[Dict], fallback_name: str = '') -> List[
+        SimpleNamespace]:
         """Helper to process commands from JSON or log entries."""
         processed_types: Set[str] = set()
         commands_by_type: Dict[str, Dict[str, List[str]]] = {}
@@ -363,7 +398,7 @@ class CompileCommandsCleaner:
             if not cmd_type or cmd_type in processed_types:
                 continue
 
-            tokens = split_command(command)
+            tokens = self.split_command(command)
             categorized_tokens = self.process_tokens(tokens)
             if not any(categorized_tokens.values()):
                 continue
@@ -378,16 +413,21 @@ class CompileCommandsCleaner:
     def display_configs(self, results: Dict[str, SimpleNamespace], selected_categories: Optional[List[str]] = None):
         """Display the parsed configurations, filtered by selected categories."""
         available_categories = set(self.categories.keys())
-        categories_to_show = available_categories if selected_categories is None else set(selected_categories) & available_categories
+        categories_to_show = available_categories if selected_categories is None else set(
+            selected_categories) & available_categories
 
         for file, entry in results.items():
+
             print()
-            fmt.s1(file)
-            fmt.h(f"Config: {entry.config.name}", level=1)
+            fmt.t3(file)
+            fmt.h(f"Config: {pretty_repr(vars(entry.config), indent_size=8)}", level=1)
+
             for cmd_type, categorized in entry.commands.items():
                 if not any(categorized.values()):
                     continue
+
                 fmt.h(f"{cmd_type.capitalize()}", level=1)
+                fmt.h(f"Raw: '{entry.commands_raw[cmd_type]}'", level=2)
                 for category, tokens in categorized.items():
                     if category not in categories_to_show or not tokens:
                         continue
@@ -395,13 +435,14 @@ class CompileCommandsCleaner:
                     for token in tokens:
                         fmt.h(token, level=3)
 
-
-    def display_table_comparison(self, results: Dict[str, SimpleNamespace], selected_categories: Optional[List[str]] = None):
+    def display_table_comparison(self, results: Dict[str, SimpleNamespace],
+                                 selected_categories: Optional[List[str]] = None):
         """Display a table for side-by-side comparison of flags across builds, filtered by selected categories."""
         console = Console()
         skip_these = ['output', 'ignored', 'defaults', 'source', 'executable']
         available_categories = set(self.categories.keys())
-        categories_to_show = available_categories if selected_categories is None else set(selected_categories) & available_categories
+        categories_to_show = available_categories if selected_categories is None else set(
+            selected_categories) & available_categories
 
         all_data = {}
         for file, entry in results.items():
@@ -422,7 +463,7 @@ class CompileCommandsCleaner:
         for cmd_type, categories in all_data.items():
             if len(categories) == 0:
                 continue
-            fmt.t2(f"Comparison Table for {cmd_type.capitalize()}")
+            fmt.t2(f"Compare {cmd_type.capitalize()} Flags")
             for category, flags in categories.items():
                 table = Table(title=category.capitalize(), show_header=True, header_style="bold magenta")
                 table.add_column("Flag", no_wrap=True)
@@ -452,14 +493,18 @@ def main():
         description="Clean compile_commands.json or build log files to extract one command per type with categorized flags.",
         formatter_class=RawTextHelpFormatter
     )
-    parser.add_argument('files', nargs='*', default=None, help="Paths to compile_commands.json or build log files (space-separated or individual)")
+    parser.add_argument('files', nargs='*', default=None,
+                        help="Paths to compile_commands.json or build log files (space-separated or individual)")
     parser.add_argument('--json', action='store_true', help="Process as JSON files (default)")
     parser.add_argument('--log', action='store_true', help="Process as build log files")
     parser.add_argument('--filter', default=None, help="Regex pattern to filter configurations based on config name")
     parser.add_argument('--hide-configs', action='store_true', help="Hide the list of configs")
     parser.add_argument('--hide-table', action='store_true', help="Hide the table of options")
     parser.add_argument('--hide-glossary', action='store_true', help="Hide the glossary of flags")
-    parser.add_argument('--categories', default=None, help=f"""Comma-separated list of categories to display (default: all).\nAvailable categories:\n\t{'\n\t'.join(available_categories)}""")
+    parser.add_argument('--categories', default=None,
+                        help=f"""Comma-separated list of categories to display (default: all).\nAvailable categories:\n\t{'\n\t'.join(available_categories)}""")
+    parser.add_argument('--sort', nargs='+', help="list of config keys to sort by", default=None)
+    parser.add_argument('--match-file', default=None, help="Regex pattern to match a source file")
 
     args = parser.parse_args()
 
@@ -475,6 +520,9 @@ def main():
         else:
             file_list = args.files
 
+    if not file_list:
+        file_list = [str(path) for path in Path('.').rglob('compile_commands.json')]
+
     for file in file_list:
         if not os.path.exists(file):
             raise FileNotFoundError(f"Error: File {file} does not exist")
@@ -488,18 +536,32 @@ def main():
         selected_categories = [cat.strip() for cat in args.categories.split(',')]
         invalid_categories = set(selected_categories) - available_categories
         if invalid_categories:
-            parser.error(f"Invalid categories: {', '.join(invalid_categories)}. Available categories: {', '.join(available_categories)}")
+            parser.error(
+                f"Invalid categories: {', '.join(invalid_categories)}. Available categories: {', '.join(available_categories)}")
 
     fmt.t2("Cleaned Build Commands")
-    results, all_flags = cleaner.process(file_list, is_json=args.json, filter_regex=args.filter)
+    results, all_flags = cleaner.process_files(file_list, is_json=args.json, filter_regex=args.filter, match_file=args.match_file)
     if not results:
+        print("There were no results.")
         return
+
+    def sort_func(item:Tuple) -> str:
+        result:SimpleNamespace = item[1]
+        if hasattr(result.config, key):
+            return getattr(result.config, key)
+        return ''
+
+    if args.sort:
+        print(f'sort by `{args.sort}`')
+        for key in reversed(args.sort):
+            results = dict(sorted(results.items(), key=sort_func))
+
 
     if not args.hide_configs:
         cleaner.display_configs(results)
 
     if not args.hide_glossary:
-        display_glossary( glossary, all_flags)
+        display_glossary(glossary, all_flags)
 
     if not args.hide_table:
         cleaner.display_table_comparison(results, selected_categories)

@@ -29,13 +29,14 @@ gopts = SimpleNamespace(**{
 })
 # MARK: Toolchain
 toolchain_base = SimpleNamespace(**{
-    'name'          :str(),         # The name of the toolchain.
-    'verbs'         :list[str](),   # keywords presented on the command line that can be used to trigger a functions
-    'desc'          :str(),         # Description of the toolchain
-    'shell'         :list[str](),   # shell command eg. [ "bash", "-c", """ "echo \"shell and script to pass to shell, can be a little awkward to write due to escaping\"" """ ],
-    'archs'         :list[str](),   # List of target architectures eg. ['x86_64', 'arm64'],
-    'platforms'     :list[str](),   # List of target platforms that match values from sys.platform
-    'skipkeys'      :[              # A list of keys that are skipped when writing out configuration to build scripts.
+    'name'          :str(),             # The name of the toolchain.
+    'host'          :platform.system(), # The host platform
+    'verbs'         :list[str](),       # keywords presented on the command line that can be used to trigger a functions
+    'desc'          :str(),             # Description of the toolchain
+    'shell'         :list[str](),       # shell command eg. [ "bash", "-c", """ "echo \"shell and script to pass to shell, can be a little awkward to write due to escaping\"" """ ],
+    'archs'         :list[str](),       # List of target architectures eg. ['x86_64', 'arm64'],
+    'platforms'     :list[str](),       # List of target platforms that match values from sys.platform
+    'skipkeys'      :[                  # A list of keys that are skipped when writing out configuration to build scripts.
         'platforms',
         'archs'
     ]
