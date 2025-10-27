@@ -22,6 +22,24 @@ def expand_list( configs_in:list[SimpleNamespace], prop:str, items:list ) -> lis
         configs_out.append( cfg )
     return configs_out
 
+def expand_attr_list( config_in:SimpleNamespace, attr:str, items:list[SimpleNamespace] ) -> list:
+    configs_out:list[SimpleNamespace] = []
+
+    for item in items:
+        cfg = deepcopy(config_in)
+
+        setattr(cfg, attr, deepcopy(item) )
+
+        if hasattr( item, 'configure' ):
+            cfg.configure_funcs.append( getattr(item, 'configure') )
+
+        if hasattr( item, 'expand' ):
+            configs_out += expand_func([cfg], getattr(item, 'expand') )
+            continue
+
+        configs_out.append( cfg )
+    return configs_out
+
 
 def expand_sourcedefs( config_in:SimpleNamespace, project:SimpleNamespace ) -> list:
     configs_out:list[SimpleNamespace] = []
@@ -31,7 +49,7 @@ def expand_sourcedefs( config_in:SimpleNamespace, project:SimpleNamespace ) -> l
         cfg.source_def = srcdef
 
         if hasattr( srcdef, 'configure' ):
-            srcdef.configure(cfg)
+            cfg.configure_funcs.append(srcdef.configure)
 
         if hasattr( srcdef, 'expand' ):
             configs_out += expand_func([cfg], srcdef.expand)
@@ -50,7 +68,7 @@ def expand_buildtools( config_in:SimpleNamespace, project:SimpleNamespace ) -> l
         setattr(cfg, 'buildtool', buildtool)
 
         if hasattr( buildtool, 'configure' ):
-            buildtool.configure(cfg)
+            cfg.configure_funcs.append(buildtool.configure)
 
         if hasattr( buildtool, 'expand' ):
             configs_out += expand_func([cfg], buildtool.expand)
@@ -169,7 +187,7 @@ def expand_host_env( config:SimpleNamespace, project:SimpleNamespace ) -> list:
 
     configs_out = expand_func( [config], expand_buildtools, project )
 
-    configs_out = expand_func( configs_out, expand_toolchains )
+    configs_out = expand_func( configs_out, expand_toolchains, project )
 
     for config in configs_out:
         if not getattr(config, 'name', None):

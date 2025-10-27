@@ -3,20 +3,22 @@ import shlex
 import subprocess
 from copy import deepcopy
 from types import SimpleNamespace, MethodType
-from typing import Mapping, Any, cast
 
 from share import android
 from share.config import toolchain_base, gopts
 from share.script_preamble import *
 
-# Since these things are getting a little complicated lets try to make a little example for myself.
-example_mapping = SimpleNamespace(**cast(Mapping[str, Any], {
-    'name'      :'name of the compiler, keep short',
-    'desc'      :'description of the compiler, can be any length',
-    'shell'     :[ "bash", "-c", """ "echo \"shell and script to pass to shell, can be a little awkward to write due to escaping\"" """ ],
-    'arch'      :['list','of', 'target', 'architectures', 'like', 'x86_64', 'arm64', 'etc'],
-    'platform'  :['list','of', 'target', 'platforms', 'matches', 'values', 'from', 'sys.platform']
-}))
+def generic_toolchain_expand( self:SimpleNamespace, cfg:SimpleNamespace ) -> list:
+    configs_out:list = []
+
+    for arch, platform in itertools.product(self.arch_list, self.platform_list):
+        cfg = deepcopy(cfg)
+        setattr(cfg, 'toolchain', self )
+        setattr(cfg, 'arch', arch )
+        setattr(cfg, 'platform', platform )
+        configs_out.append( cfg )
+
+    return configs_out
 
 
 # MARK: Windows
@@ -49,9 +51,10 @@ def msvc_toolchain() -> SimpleNamespace:
         'desc':'# Microsoft Visual Studio',
         'shell':[ "pwsh", "-Command",
                   f""" "&{{Import-Module '{shlex.quote(installation_path).strip("'")}\\Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell {instance_id} -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'}};" """ ],
-        "arch":['x86_64'],
-        'platform':['win32']
+        "arch_list":['x86_64'],
+        'platform_list':['win32'],
     }})
+    setattr( toolchain, 'expand', MethodType(generic_toolchain_expand, toolchain ) )
     return toolchain
 
 windows_toolchains.append( msvc_toolchain() )
@@ -65,22 +68,30 @@ windows_toolchains.append( msvc_toolchain() )
 # ╰────────────────────────╯
 # Currently only clang-cl is supported.
 
-def llvm_cmake( build:SimpleNamespace ):
-    toolchain = build.toolchain
-    cmake = build.buildtool
-    cmake.toolchain = gopts.path / 'share' / 'toolchain-llvm.cmake'
+def configure_llvm( self:SimpleNamespace, config:SimpleNamespace ) -> bool:
+    match config.buildtool.name:
+        case 'cmake':
+            cmake = config.buildtool
+            cmake.toolchain = gopts.path / 'share' / 'toolchain-llvm.cmake'
+
+    return True
 
 
-env = {k:v for k,v in os.environ.items()}
-env['PATH'] = f'C:/Program Files/LLVM/bin;{os.environ['PATH']}'
-windows_toolchains.append( SimpleNamespace({**vars(toolchain_base), **{
-    'name':'llvm',
-    'desc':'# Use Clang-Cl from llvm.org',
-    "arch":['x86_64'], # TODO support more architectures
-    'platform':['win32'],
-    'env': env,
-    'cmake':llvm_cmake
-}}))
+def llvm_toolchain() -> SimpleNamespace:
+    env = {k:v for k,v in os.environ.items()}
+    env['PATH'] = f'C:/Program Files/LLVM/bin;{os.environ['PATH']}'
+    toolchain = SimpleNamespace({**vars(toolchain_base), **{
+        'name':'llvm',
+        'desc':'# Use Clang-Cl from llvm.org',
+        "arch_list":['x86_64'], # TODO support more architectures
+        'platform_list':['win32'],
+        'env': env,
+    }})
+    setattr( toolchain, 'expand', MethodType(generic_toolchain_expand, toolchain ) )
+    setattr( toolchain, 'configure', MethodType(configure_llvm, toolchain ) )
+    return toolchain
+
+windows_toolchains.append( llvm_toolchain() )
 
 # MARK: LLVM-MinGW
 # ╭───────────────────────────────────────────────────────╮
@@ -90,30 +101,15 @@ windows_toolchains.append( SimpleNamespace({**vars(toolchain_base), **{
 # │ |____|____\_/ |_|  |_|   |_|  |_|_|_||_\___| \_/\_/   │
 # ╰───────────────────────────────────────────────────────╯
 # C:\opt\llvm-mingw-20250305-ucrt-x86_64\bin\
-def llvm_mingw_expand( self, build:SimpleNamespace ) -> list:
-    """Expand LLVM-MinGW toolchain configurations for supported architectures and platforms.
 
-    Args:
-        self (SimpleNamespace): The toolchain configuration.
-        build (SimpleNamespace): The build configuration to expand.
+def configure_llvm_mingw( self:SimpleNamespace, config:SimpleNamespace ) -> bool:
+    match config.buildtool.name:
+        case 'cmake':
+            cmake = config.buildtool
+            cmake.toolchain = gopts.path / 'share' / 'toolchain-llvm-mingw.cmake'
+            cmake.config_vars.append(f'-DLLVM_MINGW_PROCESSOR={config.arch}')
 
-    Returns:
-        list[SimpleNamespace]: List of expanded build configurations with architecture and platform settings.
-    """
-    configs_out:list = []
-    for arch, platform in itertools.product(self.archs, self.platforms ):
-        cfg = deepcopy(build)
-
-        setattr( cfg, 'arch', arch )
-        setattr( cfg, 'platform', platform )
-
-        configs_out.append( cfg )
-    return configs_out
-
-def llvm_mingw_cmake( build:SimpleNamespace ):
-    cmake = build.buildtool
-    cmake.toolchain = gopts.path / 'share' / 'toolchain-llvm-mingw.cmake'
-    cmake.config_vars.append(f'-DLLVM_MINGW_PROCESSOR={build.arch}')
+    return True
 
 
 def llvm_mingw_toolchain() -> SimpleNamespace:
@@ -126,13 +122,12 @@ def llvm_mingw_toolchain() -> SimpleNamespace:
         'desc':'[llvm based mingw-w64 toolchain](https://github.com/mstorsjo/llvm-mingw)',
         'sysroot':Path(sysroot),
         'shell':[ "pwsh", "-Command"],
-        "archs":['i686', 'x86_64', 'armv7', 'aarch64'],
-        'platforms':['win32'],
+        "arch_list":['i686', 'x86_64', 'armv7', 'aarch64'],
+        'platform_list':['win32'],
         'env': toolchain_env,
-        'cmake':llvm_mingw_cmake
-
     }})
-    setattr( toolchain, 'expand', MethodType(llvm_mingw_expand, toolchain) )
+    setattr( toolchain, 'expand', MethodType(generic_toolchain_expand, toolchain ) )
+    setattr( toolchain, 'configure', MethodType(configure_llvm_mingw, toolchain ) )
     return toolchain
 
 windows_toolchains.append( llvm_mingw_toolchain())
@@ -145,10 +140,11 @@ windows_toolchains.append( llvm_mingw_toolchain())
 # │ |_|  |_|_|_||_\___| \_/\_/\___/ |_|  │
 # ╰──────────────────────────────────────╯
 
-def mingw_cmake( build:SimpleNamespace ):
-    toolchain = build.toolchain
-    cmake = build.buildtool
-    cmake.toolchain = 'share\\toolchain-mingw64.cmake'
+def configure_mingw( self:SimpleNamespace, config:SimpleNamespace ):
+    match config.buildtool.name:
+        case 'cmake':
+            cmake = config.buildtool
+            cmake.toolchain = 'share\\toolchain-mingw64.cmake'
 
 def mingw64_toolchain() -> SimpleNamespace:
     toolchain_env = {k:v for k,v in os.environ.items()}
@@ -158,11 +154,12 @@ def mingw64_toolchain() -> SimpleNamespace:
         'name':"mingw64",
         'desc':'[mingw](https://github.com/niXman/mingw-builds-binaries/releases,), This is also the default toolchain for clion',
         'sysroot':Path('C:/mingw64'),
-        "arch":['x86_64'],
-        'platform':['win32'],
+        "arch_list":['x86_64'],
+        'platform_list':['win32'],
         'env': toolchain_env,
-        'cmake': mingw_cmake
     }})
+    setattr( toolchain, 'expand', MethodType(generic_toolchain_expand, toolchain ) )
+    setattr( toolchain, 'configure', MethodType(configure_mingw, toolchain ) )
     return toolchain
 
 
@@ -182,38 +179,55 @@ windows_toolchains.append( mingw64_toolchain())
 # I have had to create symlinks for clang64 so that it can find the ar command
 # in C:\msys64/cang64/bin
 # ln -s ar.exe x86_64-w64-mingw32-llvm-ar.exe
+def msys2_mingw32_toolchain() -> SimpleNamespace:
+    toolchain = SimpleNamespace({**vars(toolchain_base), **{
+        'name':"msys2-mingw32",
+        'desc':'i686      gcc linking against msvcrt',
+        'shell': [ "C:/msys64/msys2_shell.cmd", "-mingw32", "-defterm", "-no-start", "-c"],
+        "arch_list":['x86_32'],
+        'platform_list':['win32'],
+    }})
+    setattr( toolchain, 'expand', MethodType(generic_toolchain_expand, toolchain ) )
+    return toolchain
 
-windows_toolchains.append( SimpleNamespace({**vars(toolchain_base), **{
-    'name':"msys2-mingw32",
-    'desc':'i686      gcc linking against msvcrt',
-    'shell': [ "C:/msys64/msys2_shell.cmd", "-mingw32", "-defterm", "-no-start", "-c"],
-    "arch":['x86_32'],
-    'platform':['win32'],
-}}))
+windows_toolchains.append( msys2_mingw32_toolchain() )
 
-windows_toolchains.append( SimpleNamespace({**vars(toolchain_base), **{
-    'name':"msys2-mingw64",
-    'desc':'x86_64    gcc linking against msvcrt',
-    'shell': ["C:/msys64/msys2_shell.cmd", "-mingw64", "-defterm", "-no-start", "-c"],
-    "arch":['x86_64'],
-    'platform':['win32'],
-}}))
 
-windows_toolchains.append( SimpleNamespace({**vars(toolchain_base), **{
-    'name':"msys2-ucrt64",
-    'desc':'x86_64    gcc linking against ucrt',
-    'shell': ["C:/msys64/msys2_shell.cmd", "-ucrt64", "-defterm", "-no-start", "-c"],
-    "arch":['x86_64'],
-    'platform':['win32'],
-}}))
+def msys2_mingw64_toolchain() -> SimpleNamespace:
+    toolchain = SimpleNamespace({**vars(toolchain_base), **{
+        'name':"msys2-mingw64",
+        'desc':'x86_64    gcc linking against msvcrt',
+        'shell': ["C:/msys64/msys2_shell.cmd", "-mingw64", "-defterm", "-no-start", "-c"],
+        "arch_list":['x86_64'],
+        'platform_list':['win32'],
+    }})
+    setattr( toolchain, 'expand', MethodType(generic_toolchain_expand, toolchain ) )
+    return toolchain
+windows_toolchains.append( msys2_mingw64_toolchain() )
 
-windows_toolchains.append( SimpleNamespace({**vars(toolchain_base), **{
-    'name':"msys2-clang64",
-    'desc':'x86_64    clang linking against ucrt',
-    'shell': ["C:/msys64/msys2_shell.cmd", "-clang64", "-defterm", "-no-start", "-c"],
-    "arch":['x86_64'],
-    'platform':['win32'],
-}}))
+def msys2_ucrt64_toolchain() -> SimpleNamespace:
+    toolchain = SimpleNamespace({**vars(toolchain_base), **{
+        'name':"msys2-ucrt64",
+        'desc':'x86_64    gcc linking against ucrt',
+        'shell': ["C:/msys64/msys2_shell.cmd", "-ucrt64", "-defterm", "-no-start", "-c"],
+        "arch_list":['x86_64'],
+        'platform_list':['win32'],
+    }})
+    setattr( toolchain, 'expand', MethodType(generic_toolchain_expand, toolchain ) )
+    return toolchain
+windows_toolchains.append( msys2_ucrt64_toolchain() )
+
+def msys2_clang64_toolchain() -> SimpleNamespace:
+    toolchain = SimpleNamespace({**vars(toolchain_base), **{
+        'name':"msys2-clang64",
+        'desc':'x86_64    clang linking against ucrt',
+        'shell': ["C:/msys64/msys2_shell.cmd", "-clang64", "-defterm", "-no-start", "-c"],
+        "arch_list":['x86_64'],
+        'platform_list':['win32'],
+    }})
+    setattr( toolchain, 'expand', MethodType(generic_toolchain_expand, toolchain ) )
+    return toolchain
+windows_toolchains.append( msys2_clang64_toolchain() )
 
 # MARK: Android
 # ╭──────────────────────────────────╮
@@ -289,10 +303,11 @@ def win32_emscripten_toolchain() -> SimpleNamespace:
         'version':'3.1.64',
         'verbs':['update'],
         'script_parts':[win32_emscripten_script],
-        "arch":['wasm32'], #wasm64
-        'platform':['emscripten'],
-        'cmake':win32_emscripten_cmake
+        "arch_list":['wasm32'], #wasm64
+        'platform_list':['emscripten'],
+        'cmake':win32_emscripten_cmake,
     }})
+    setattr( toolchain, 'expand', MethodType(generic_toolchain_expand, toolchain ) )
     setattr( toolchain, 'update', MethodType(emscripten_update, toolchain) )
     return toolchain
 

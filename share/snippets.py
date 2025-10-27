@@ -102,6 +102,7 @@ def show_stats():
     stats:dict = {}
     # start_script
 
+    # MARK: ShowStats
     #[=================================[ Stats ]=================================]
     from rich.table import Table
     table = Table(title="Stats", highlight=True, min_width=80)

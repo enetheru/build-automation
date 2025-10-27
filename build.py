@@ -127,7 +127,7 @@ def parse_args( opts:SimpleNamespace ):
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog="Build-Automation", description="Builds Things", epilog="Build All The Things!!", )
+        prog="build", description="Build All the Things", epilog="Go on, build.. do it.", )
 
     parser.add_argument( "--debug", action="store_true" ) # dont continue on some failures.
     parser.add_argument( "--dry",action='store_true' )
@@ -350,7 +350,6 @@ def import_projects( opts:SimpleNamespace ) -> dict:
 # ╰──────────────────────────────────────────────\___/─────────────────────────╯
 
 def fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
-    fmt.t3(project.name)
     if opts.dry:
         fmt.h("Dry-Run: Skipping Fetch")
         return
@@ -407,7 +406,7 @@ def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace, key : str 
     for build in project.build_configs.values():
         # collate the dictionaries, skipping empty keys
         # Make this a SimpleNamespace so we can use dot referencing
-        gitdef:SimpleNamespace = SimpleNamespace({**vars(srcdef), **vars(build.srcdef), **vars(opts.srcdef) })
+        gitdef:SimpleNamespace = SimpleNamespace({**vars(srcdef), **vars(build.source_def), **vars(opts.srcdef) })
 
         # We need to check each remote/reference pair to see if we need to update.
         # But since we update all references for any remote, then if the remote is

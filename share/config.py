@@ -2,7 +2,9 @@ import os.path
 import platform
 import sys
 from pathlib import Path
-from types import SimpleNamespace
+from types import SimpleNamespace, MethodType
+
+from share.snippets import source_git
 
 gopts = SimpleNamespace(**{
     'command'       :" ".join( sys.argv ),      # The command used to run the tool
@@ -50,7 +52,7 @@ project_base = SimpleNamespace(**{
     'sourcedir'     :Path(),                        #
     'sources'       :list[SimpleNamespace](),       #
     'buildtools'    :list[SimpleNamespace](),       #
-    'toolchains'    :list[SimpleNamespace](),       #
+    'toolchains'    :gopts.toolchains.values(),     # default is all of them
     'build_configs' :dict[str,SimpleNamespace](),   #
     'skipkeys'      :[                              # A list of keys that are skipped when writing out configuration to build scripts.
         'sources',
@@ -68,16 +70,19 @@ build_base = SimpleNamespace(**{
     'verbs'         :list[str](),
     'script_parts'  :list(),
     'arch'          :'x86_64',
+    'toolchain'     :SimpleNamespace(), # The toolchain used to build the target
     'buildtool'     :SimpleNamespace(),
     'source_dir'    :Path(),            # project relative path to put sources
     'source_path'   :Path(),            # absolute path is set at project import
     'source_def'    :SimpleNamespace(), #
     'disabled'      :False,
+    'configure_funcs':list(),
     'skipkeys'      :[  # A list of keys that are skipped when writing out configuration to build scripts.
         'project',
         'toolchain',
         'buildtool',
-    ]
+        'configure_funcs',
+    ],
 })
 
 # MARK: BuildTool
@@ -127,13 +132,19 @@ scons_base = SimpleNamespace({**vars(buildtool_base), **{
     'build_vars'    :list[str]()
 }})
 
-# MARK: Source
+# MARK: SourceDef
 source_base = SimpleNamespace(**{
     'name'          :str(),
     'type'          :str(),
     'verbs'         :list[str](),
     'url'           :str(),
+    # 'skipkeys'      :[                  # A list of keys that are skipped when writing out configuration to build scripts.
+    #     'configure',
+    #     'expand'
+    # ]
 })
+
+
 
 # MARK: Git
 git_base = SimpleNamespace({**vars(source_base), **{
@@ -143,4 +154,12 @@ git_base = SimpleNamespace({**vars(source_base), **{
     'url'           :str(),
     'ref'           :'HEAD',
     'gitdir'        :'git', # relative to project path.
+
 }})
+def configure_git(self, config:SimpleNamespace) -> bool:
+    config.verbs.append('source')
+    config.script_parts.append(source_git)
+    return True
+
+setattr( git_base, 'configure', MethodType( configure_git, git_base ) )
+

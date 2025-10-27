@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from share.expand_config import expand_func, expand_host_env, expand_cmake
+from share.expand_config import expand_func, expand_host_env, expand_cmake, expand_toolchains
 from share.format import h, Section
 
 from share.script_preamble import *
@@ -27,6 +27,8 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         },
     }})
 
+    return project
+
     build_base = SimpleNamespace({ **vars(build_base), **{
         'verbs':['source','configure', 'fresh', 'build'],
         'script_parts':[source_git, post_checkout, cmake_check, cmake_configure, cmake_build ],
@@ -36,9 +38,9 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         }}),
     }})
 
-    configs:list = expand_host_env( build_base, project )
-
-    configs:list = expand_func( configs, expand_cmake )
+    # configs:list = expand_host_env( build_base, project )
+    builds:list[SimpleNamespace] = expand_func([build_base], expand_cmake )
+    configs = expand_func( builds, expand_toolchains, project )
 
     for cfg in configs:
         cfg.script_parts += [show_stats]

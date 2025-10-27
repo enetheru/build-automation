@@ -3,7 +3,6 @@ from copy import deepcopy
 from types import SimpleNamespace
 
 import share.expand_config
-from share.config import gopts
 from share.expand_config import expand_sourcedefs, expand_toolchains, expand_buildtools, short_host, expand_func
 from share.script_preamble import *
 
@@ -26,23 +25,22 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         dict: A dictionary mapping project names to their SimpleNamespace configurations with build configs.
     """
     from share.snippets import source_git, show_stats
-    from share.expand_config import (
-        expand_func
-    )
+    from share.config import project_base, scons_base, cmake_base, git_base, build_base
+    from share.expand_config import expand_func
 
     name = 'godot-cpp'
 
-    from share.config import (project_base, scons_base, cmake_base, git_base)
+    origin = SimpleNamespace({**vars(git_base), **{
+        'tag': '4.5',
+        'url': "https://github.com/godotengine/godot-cpp.git/",
+        'ref': 'e83fd0904c13356ed1d4c3d09f8bb9132bdc6b77'
+    }})
+
+
     project = SimpleNamespace({**vars(project_base), **{
         'name': name,
         'path': opts.path / name,
-        'sources':{
-            'git': SimpleNamespace({**vars(git_base), **{
-                'tag': '4.5',
-                'url': "https://github.com/godotengine/godot-cpp.git/",
-                'ref': 'e83fd0904c13356ed1d4c3d09f8bb9132bdc6b77'
-            }}),
-        },
+        'sources':{ 'origin': origin },
         'buildtools': {
             'scons': SimpleNamespace({**vars(scons_base), **{
                 'expand':expand_scons,
@@ -56,10 +54,8 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
                 ]
             }}),
         },
-        'toolchains': gopts.toolchains.values() # get all of them
     }})
 
-    from share.config import build_base
     build_start = SimpleNamespace({ **vars(build_base), **{
         'verbs': ['source'],
         'script_parts': [source_git],
@@ -115,7 +111,8 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
             build.buildtool.build_dir = '.'.join(filter(None,builddir_parts))
 
         build.verbs += ['test']
-        build.script_parts += [test_script, show_stats]
+        # build.script_parts += [test_script, show_stats]
+        build.script_parts += [show_stats]
 
     project.build_configs = {v.name: v for v in builds }
     return project
