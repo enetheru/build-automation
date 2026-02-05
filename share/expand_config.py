@@ -41,24 +41,6 @@ def expand_attr_list( config_in:SimpleNamespace, attr:str, items:list[SimpleName
     return configs_out
 
 
-def expand_sourcedefs( config_in:SimpleNamespace, project:SimpleNamespace ) -> list:
-    configs_out:list[SimpleNamespace] = []
-    for srcdef in project.sources.values():
-        cfg = deepcopy(config_in)
-
-        cfg.source_def = srcdef
-
-        if hasattr( srcdef, 'configure' ):
-            cfg.configure_funcs.append(srcdef.configure)
-
-        if hasattr( srcdef, 'expand' ):
-            configs_out += expand_func([cfg], srcdef.expand)
-            continue
-
-        configs_out.append( cfg )
-    return configs_out
-
-
 def expand_buildtools( config_in:SimpleNamespace, project:SimpleNamespace ) -> list:
     configs_out:list = []
     for tool in project.buildtools.keys():
@@ -144,8 +126,8 @@ def expand_cmake( config:SimpleNamespace ) -> list:
         setattr(cmake, 'short_gen', generator_key)
         setattr(cmake, 'short_type', ctype_key)
 
-        cmake.config_vars.append( f'--debug-output')
-        cmake.config_vars.append( f'--debug-trycompile')
+        if gopts.debug:
+            cmake.config_vars.extend([ f'--debug-output', f'--debug-trycompile' ])
         cmake.config_vars.append( f'--fresh')
         # cmake.config_vars.append( f'--trace')
 

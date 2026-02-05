@@ -3,7 +3,7 @@ from copy import deepcopy
 from types import SimpleNamespace
 
 import share.expand_config
-from share.expand_config import expand_sourcedefs, expand_toolchains, expand_buildtools, short_host, expand_func
+from share.expand_config import expand_toolchains, expand_buildtools, short_host, expand_func, expand_attr_list
 from share.script_preamble import *
 
 
@@ -25,7 +25,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         dict: A dictionary mapping project names to their SimpleNamespace configurations with build configs.
     """
     from share.snippets import source_git, show_stats
-    from share.config import project_base, scons_base, cmake_base, git_base, build_base
+    from share.config import project_base, scons_base, cmake_base, git_base, build_base, godot_platforms, godot_arch, gopts
     from share.expand_config import expand_func
 
     name = 'godot-cpp'
@@ -35,12 +35,16 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         'url': "https://github.com/godotengine/godot-cpp.git/",
         'ref': 'e83fd0904c13356ed1d4c3d09f8bb9132bdc6b77'
     }})
+    sources:dict = {
+        'origin': origin,
+    }
+    sources |= gopts.sources
 
 
     project = SimpleNamespace({**vars(project_base), **{
         'name': name,
         'path': opts.path / name,
-        'sources':{ 'origin': origin },
+        'sources': sources,
         'buildtools': {
             'scons': SimpleNamespace({**vars(scons_base), **{
                 'expand':expand_scons,
@@ -63,8 +67,15 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         'godotcpp_build_profile' : 'test/build_profile.json',
     }})
 
+    # Expand the source definitions.
+    builds:list[SimpleNamespace] = expand_func(
+        [build_start],
+        expand_attr_list,
+        'source_def',
+        sources.values() )
+
     # Host environment toolchain and build tools
-    builds:list[SimpleNamespace] = expand_func([build_start], expand_sourcedefs, project)
+    # builds:list[SimpleNamespace] = expand_func([build_start], expand_attr_list, 'buildtools', project.buildtools.values())
     builds = expand_func( builds, expand_toolchains, project )
     builds = expand_func( builds, configure_toolchain )
 
@@ -91,6 +102,11 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
             build.godotcpp_target
         #     build.variant if build.variant != 'default' else None,
         ]
+        src_name = build.source_def.name
+        if src_name != 'origin':
+            ref = build.source_def.ref
+            suffix = ref[:8] if len(ref) >= 8 else ref
+            name_parts.append(suffix)
 
         if buildtool.name == 'scons':
             build.name = '.'.join(filter(None,srcdir_parts+name_parts))
@@ -107,7 +123,10 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
             builddir_parts = ['build'] + name_parts
 
             build.name = '.'.join(filter(None,srcdir_parts+name_parts))
-            build.source_dir = '.'.join(filter(None, srcdir_parts))
+            source_dir_parts = srcdir_parts[:]
+            if src_name != 'origin':
+                source_dir_parts.append(suffix)
+            build.source_dir = '.'.join(filter(None, source_dir_parts))
             build.buildtool.build_dir = '.'.join(filter(None,builddir_parts))
 
         build.verbs += ['test']
@@ -160,15 +179,15 @@ def test_script():
 
     def get_export_templates() -> list[SimpleNamespace]:
 
-        export_set_template = SimpleNamespace(**{
-            'type':'export_template',
-            'version':str(),
-            'platform':str(),
-            'arch':str(),
-            'editor':str(),
-            'release':str(),
-            'debug':str(),
-        })
+        export_set_template = SimpleNamespace(
+            type      = 'export_template',
+            version   = str(),
+            platform  = str(),
+            arch      = str(),
+            editor    = str(),
+            release   = str(),
+            debug     = str(),
+        )
 
         set_list = list[SimpleNamespace]()
         path = Path('C:/Users/nicho/AppData/Roaming/Godot/export_templates')
@@ -269,7 +288,7 @@ def test_script():
         # godot_sets = {k:v for k,v in godot_sets.items() if v['platform'] == build['platform'] and v['arch'] == build['arch']}
 
         #FIXME, detect current platform and arch and use them to filter
-        return {k:v for k,v in godot_sets.items() if v['platform'] == 'windows' and v['arch'] in ['x86_64']}
+        return {k: v for k, v in godot_sets.items() if v['platform'] == godot_platforms.get(opts.platform, opts.platform) and v['arch'] in godot_arch.values()}
 
     def gen_dot_folder( godot_set ):
         cmd_parts = [
@@ -372,22 +391,22 @@ def test_script():
         # if not num_sets:
         #     raise Exception( "There are no godot executables found")
 
-        test_case = SimpleNamespace(**{
-            'name':str(),
-            'result':False,
-            'msg':str(),
-            'exe_set':SimpleNamespace()
-        })
+        test_case = SimpleNamespace(
+            name    = str(),
+            result  = False,
+            msg     = str(),
+            exe_set = SimpleNamespace()
+        )
 
-        rig = SimpleNamespace(**{
-            'test_dir':build['source_path'] / 'test/project',
-            'num_tests':len(godot_sets),
-            'godot_sets':godot_sets,
-            'num_sets':num_sets,
-            'talley':0,
-            'cases':list[SimpleNamespace](),
-            'results':list[SimpleNamespace]()
-        })
+        rig = SimpleNamespace(
+            test_dir   = build['source_path'] / 'test/project',
+            num_tests  = len(godot_sets),
+            godot_sets = godot_sets,
+            num_sets   = num_sets,
+            talley     = 0,
+            cases      = list[SimpleNamespace](),
+            results    = list[SimpleNamespace]()
+        )
 
         for template in export_templates:
             if template.platform != 'windows':

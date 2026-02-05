@@ -172,6 +172,7 @@ def generate_build_scripts( opts:SimpleNamespace ):
                 write_section( script, opts, 'opts' )
                 write_section( script, project, 'project' )
                 write_section( script, build, 'build' )
+                write_section( script, build.source_def, 'source' )
                 write_section( script, build.toolchain, 'toolchain' )
                 write_section( script, build.buildtool, 'buildtool' )
 

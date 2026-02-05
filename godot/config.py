@@ -1,9 +1,7 @@
 import copy
-from types import SimpleNamespace
 
-from share.config import git_base, gopts
-from share.expand_config import expand_host_env, expand_func, expand_sourcedefs, expand_toolchains, expand_buildtools, \
-    short_host, expand_attr_list
+from share.config import gopts, project_base, git_base, scons_base, godot_platforms, godot_arch
+from share.expand_config import expand_func, short_host, expand_attr_list
 from share.script_preamble import *
 
 # MARK: Notes
@@ -26,30 +24,27 @@ from share.script_preamble import *
 # But in the github action runner, it's 3.1.64
 # And all of the issues related show 3.1.64
 
-# Platform Mapping from python 3.13 to what godot-cpp scons expects
-godot_platforms = {
-    'android':'android',
-    'ios':'ios',
-    'linux':'linux',
-    'emscripten':'web',
-    'darwin':'macos',
-    'win32':'windows'
-    # aix, cygwin, wasi, are unsupported
+# MARK: Notes
+
+origin = SimpleNamespace({**vars(git_base), **{
+    'name':'origin',
+    'url': "https://github.com/godotengine/godot.git/",
+    'ref': 'master'
+}})
+
+sources:dict = {
+    'origin': origin,
+    '4.5': SimpleNamespace({**vars(origin), **{
+        'name':'4.5',
+        'ref': '4.5'
+    }}),
 }
 
-godot_arch = {
-    'armv32': 'arm32',
-    'armv7': 'arm32',
-    'armeabi-v7a': 'arm32',
-    'arm64':'arm64',
-    'arm64-v8a':'arm64',
-    'aarch64':'arm64',
-    'x86_32':'x86_32',
-    'i686':'x86_32',
-    'x86':'x86_32',
-    'x86_64':'x86_64',
-    'wasm32':'wasm32'
-}
+project = SimpleNamespace({**vars(project_base), **{
+    'name': 'godot',
+    'verbs': ['fetch'],
+    'sources': sources
+}})
 
 # MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -61,44 +56,17 @@ godot_arch = {
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def generate( opts:SimpleNamespace ) -> SimpleNamespace:
-    from share.config import project_base, build_base, scons_base
+    from share.config import build_base
 
-    from share.snippets import source_git, show_stats
+    from share.snippets import show_stats
 
-    sources:dict = {
-        'origin': SimpleNamespace({**vars(git_base), **{
-            'name':'origin',
-            'url': "https://github.com/godotengine/godot.git/",
-            'ref': 'master'
+    setattr(project, 'path', opts.path / 'godot')       # type: ignore[attr-defined]
+    setattr(project, 'buildtools', {             # type: ignore[attr-defined]
+        'scons': SimpleNamespace({**vars(scons_base), **{
+            'expand':expand_scons,
+            'configure':configure_scons,
         }}),
-        'ivor-tracy':SimpleNamespace({**vars(git_base), **{
-            'name':'ivor-tracy',
-            'remote':'ivorforce',
-            'url':'https://github.com/Ivorforce/godot.git',
-            'ref':'tracy',
-            'configure':ivor_tracy_configure,
-        }}),
-        'enetheru-tracy':SimpleNamespace({**vars(git_base), **{
-            'name':'enetheru-tracy',
-            'remote':'enetheru',
-            'url':'https://github.com/enetheru/godot.git',
-            'ref':'4.4-tracy',
-            'configure':enetheru_tracy_configure,
-        }})
-    }
-
-    project = SimpleNamespace({**vars(project_base), **{
-        'name': 'godot',
-        'verbs': ['fetch'],
-        'sources': sources,
-        'path': opts.path / 'godot',
-        'buildtools': {
-            'scons': SimpleNamespace({**vars(scons_base), **{
-                'expand':expand_scons,
-                'configure':configure_scons,
-            }}),
-        }
-    }})
+    })
 
     # Expand the source definitions.
     builds:list[SimpleNamespace] = expand_func(
@@ -213,7 +181,6 @@ def delete_translations():
 # │                                      |_|                                   │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def check_scons():
-    project:dict = {}
     build:dict = {}
     buildtool:dict = {}
     # start_script
@@ -233,7 +200,8 @@ def check_scons():
 
     try: os.chdir(build_dir)
     except FileNotFoundError as fnf:
-        fnf.add_note( f'Missing Folder {build_dir}' )
+        fnf.add_note( f'\nMissing Folder {build_dir}' )
+        fnf.add_note( f'\nProbably need to source the build first.' )
         raise fnf
 
     # requires SConstruct file existing in the current directory.
@@ -247,7 +215,6 @@ def build_scons():
     config:dict = {}
     stats:dict = {}
     opts:dict = {}
-    project:dict = {}
     build:dict = {}
     buildtool:dict = {}
     # start_script
@@ -272,6 +239,7 @@ def build_scons():
 
             jobs = opts["jobs"]
             cmd_chunks = [
+                "--clean -s" if 'clean' in opts['build_actions'] else None,
                 "scons",
                 f"-j {jobs}" if jobs > 0 else None,
                 "verbose=yes" if opts["verbose"] else None,
@@ -282,9 +250,7 @@ def build_scons():
             build_command: str = " ".join(filter(None, cmd_chunks))
 
             # FIXME  I found that if i dont clean the repository then files are unfortunately wrong.
-            # However if I am working on something then this isna n
-            # unnecessary step most of the time.
-            stream_command('scons --clean -s ', dry=opts['dry'])
+            #  However if I am working on something then this is an unnecessary step most of the time.
             stream_command(build_command, dry=opts['dry'])
 
         stats['build'] = timer.get_dict()
@@ -419,21 +385,6 @@ def configure_scons( config:SimpleNamespace ) -> bool:
 
     return True
 
-
-def ivor_tracy_configure( cfg:SimpleNamespace ) -> bool:
-    scons = cfg.buildtool
-    # profiler_path: Path to the Profiler framework. Only tracy and perfetto are supported at the moment.
-    scons.build_vars.append("profiler_path=C:/git/wolfpld/tracy")
-
-    # profiler_sample_callstack: Profile random samples application-wide using a callstack based sampler. (yes|no)
-    # scons.build_vars.append("profiler_sample_callstack=yes")
-    return True
-
-
-def enetheru_tracy_configure( cfg:SimpleNamespace ) -> bool:
-    cfg.buildtool.build_vars.append('extra_suffix=tracy')
-    return True
-
 # def config_tracy_dbg( cfg:SimpleNamespace ) -> bool:
 #     cfg.source_dir.append( 'tracy' )
 #     cfg.scons['build_vars'].append('debug_symbols=yes')
@@ -473,6 +424,24 @@ def config_minim( cfg:SimpleNamespace ) -> bool:
     return True
 
 variations['minimum'] = config_minim
+
+def config_tracy( cfg:SimpleNamespace ) -> bool:
+    # tracy was introduced in master within the 4.6 dev cycle.
+    valid_branches = ['master', '4.6']
+    if not cfg.source_def.ref in valid_branches: return False
+    scons = cfg.buildtool
+
+    # profiler_path: Path to the Profiler framework. Only tracy and perfetto are supported at the moment.
+    scons.build_vars.append("profiler_path=C:/git/wolfpld/tracy")
+
+    # profiler_sample_callstack: Profile random samples application-wide using a callstack based sampler. (yes|no)
+    scons.build_vars.append("profiler_sample_callstack=yes")
+
+    cfg.buildtool.build_vars.append('extra_suffix=tracy')
+
+    return True
+
+variations['tracy'] = config_tracy
 
 # MARK: Configs
 # ╭────────────────────────────────────────────────────────────────────────────╮

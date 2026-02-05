@@ -30,7 +30,14 @@ def source_git():
         section.start()
 
         # merge definitions project < build < opts
-        srcdef = project.get('srcdef', {}) | build.get('source_def', {}) | opts.get('srcdef', {})
+        srcdef = project.get('srcdef', {}) | source | opts.get('srcdef', {})
+
+        # # After you have srcdef
+        # if hasattr(srcdef, 'resolved_commit'):
+        #     short = srcdef.resolved_commit[:7]
+        #     if not build.source_dir.endswith(short):
+        #         build.source_dir += f".{short}"
+        #     build.source_path = project.path / build.source_dir
 
         # Verify we have cloned the repo.
         gitdir = Path(srcdef.get('gitdir', 'git'))

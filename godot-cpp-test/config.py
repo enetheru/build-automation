@@ -44,7 +44,13 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     }})
 
     builds = expand_host_env( build_start, project )
-    builds = expand_func( builds,  expand_cmake )
+
+    # Only expand cmake on configs that actually use cmake
+    cmake_builds = [b for b in builds if getattr(b.buildtool, 'name', None) == 'cmake']
+    if cmake_builds: cmake_builds = expand_func(cmake_builds, expand_cmake)
+    # Put them back (or replace the cmake ones)
+    builds = [b for b in builds if getattr(b.buildtool, 'name', None) != 'cmake'] + cmake_builds
+
 
     # Rename
     for build in builds:

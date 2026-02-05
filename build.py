@@ -7,10 +7,10 @@ import sys
 from datetime import datetime
 from io import StringIO
 from time import sleep
+from pathlib import Path
 from types import SimpleNamespace
 from typing import IO
 
-import rich
 import rich.box
 from rich import print
 from rich.console import Console, Group
@@ -20,15 +20,15 @@ from rich.table import Table
 # Local Imports
 from share import format as fmt
 from share.ConsoleMultiplex import ConsoleMultiplex, TeeOutput
-from share.config import gopts
+from share.config import gopts, git_base
 from share.generate import generate_build_scripts, write_namespace
 from share.run import stream_command
 
 
 def setattrdefault[T]( namespace:SimpleNamespace, field:str, default:T ) -> T:
-    existing = getattr( namespace, field, None )
+    existing = getattr( namespace, field, None ) # type: ignore[attr-defined]
     if existing: return existing
-    setattr(namespace, field, default)
+    setattr(namespace, field, default) # type: ignore[attr-defined]
     return default
 
 
@@ -43,56 +43,60 @@ def process_log_null( raw_file: IO, clean_file: IO ):
     for line in raw_file:
         clean_file.write( regex.sub('', line ) )
 
-def git_override( opts:SimpleNamespace):
-    """Override Git references for project builds by checking remote repositories.
+def git_override(opts: SimpleNamespace):
+    """Add ONE transient source definition (copied from 'origin') when --giturl/--gitref is used.
+    The normal expand_attr_list pipeline will automatically multiply it across all builds.
+    This keeps the bare repo untouched and creates isolated worktrees via short hash."""
 
-    Args:
-        opts (SimpleNamespace): Configuration options with Git URL and reference overrides.
-
-    Returns:
-        None: Updates build configurations with resolved Git references and source paths.
-
-    Raises:
-        GitCommandError: If Git operations fail and debug mode is enabled.
-    """
     from git import GitCommandError
     import git
+    from copy import deepcopy
 
     g = git.cmd.Git()
 
-    checked = {}
     for project in opts.projects.values():
-        for build in project.build_configs.values():
+        if 'origin' not in getattr(project, 'sources', {}):
+            fmt.h("Skipping project: {name} ".format(name=project.name))
+            continue
 
-            gitdef:SimpleNamespace = SimpleNamespace(
-                **{k:v for k,v in project.gitdef.items() if v}
-                  | {k:v for k,v in build.gitdef.items() if v}
-                  | {k:v for k,v in opts.gitdef.items() if v})
+        # Start from a fresh copy of the default origin source
+        origin_src = project.sources['origin']
+        override_src = deepcopy(origin_src)
 
-            ls_args = [gitdef.url, gitdef.ref]
-            ls_arg = ' '.join([gitdef.url, gitdef.ref])
-            remote_hash:str = ''
-            if ls_arg in checked:
-                remote_hash = checked[ls_arg]
-            else:
-                try:
-                    fmt.h( f"git ls-remote {ls_arg}" )
-                    response = g.ls_remote( *ls_args )
-                    if response: remote_hash = response.split()[0]
-                except GitCommandError as e:
-                    if opts.debug: raise e
-                    fmt.hu(f"[yellow]Unable to determine remote reference.")
+        # Apply the command-line override
+        gitdef = getattr(opts, 'gitdef', {}) # type: ignore[attr-defined]
+        if gitdef.get('url'):
+            override_src.url = gitdef['url']
+        if gitdef.get('ref'):
+            override_src.ref = gitdef['ref']
+        if gitdef.get('remote'):
+            override_src.remote = gitdef.get('remote', 'origin')
 
-            if not remote_hash:
-                fmt.hu( f"disabling build: '{build.name}'" )
-                build.disabled = True
-                continue
+        # Resolve to real commit hash (once)
+        try:
+            fmt.h(f"git ls-remote {override_src.url} {override_src.ref}")
+            response = g.ls_remote(override_src.url, override_src.ref)
+            commit_hash = response.split()[0] if response else None
+        except GitCommandError as e:
+            if opts.debug:
+                raise
+            fmt.hu("[yellow]Unable to resolve reference")
+            commit_hash = None
 
-            fmt.hu(remote_hash)
-            checked[ ls_arg ] = remote_hash
-            build.gitdef['override'] = remote_hash
-            build.source_dir += f".{remote_hash[:7]}"
-            build.source_path = project.path / build.source_dir
+        if not commit_hash:
+            fmt.hu("Override ref not found → skipping transient source")
+            continue
+
+        fmt.hu(commit_hash)
+        override_src.resolved_commit = commit_hash          # optional, for later use
+
+        # Add ONE new source → this is the multiplier
+        # You can call it 'override', 'transient', 'pr', whatever you like
+        project.sources['override'] = override_src
+
+        # (Optional but nice) Also add short hash to the key so folder names are obvious
+        short = commit_hash[:7]
+        project.sources[f'override-{short}'] = override_src
 
 
 class PretendIO(StringIO):
@@ -114,82 +118,94 @@ rich._console = console
 # │ /_/ \_\_| \__, |_| \__,_|_| /__/\___|                                      │
 # │           |___/                                                            │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def parse_args( opts:SimpleNamespace ):
-    """Parse command-line arguments for the build system.
-
-    Args:
-        opts (SimpleNamespace): Namespace to store parsed arguments and derived options.
-
-    Returns:
-        None: Modifies the `opts` namespace in place with parsed arguments.
-
-    Adds options for debug mode, dry run, jobs, verbosity, listing, toolchain/project/build filters, and Git overrides.
-    """
+def parse_args(opts: SimpleNamespace):
     import argparse
 
     parser = argparse.ArgumentParser(
         prog="build", description="Build All the Things", epilog="Go on, build.. do it.", )
 
-    parser.add_argument( "--debug", action="store_true" ) # dont continue on some failures.
-    parser.add_argument( "--dry",action='store_true' )
+    parser.add_argument("--debug", action="store_true", help="Don't continue on some failures")
+    parser.add_argument("--dry", action='store_true', help="Dry run mode")
     parser.add_argument("-j", "--jobs", type=int,
-        default=(multiprocessing.cpu_count() - 1) or 1)
+                        default=(multiprocessing.cpu_count() - 1) or 1)
 
-    parser_io = parser.add_argument_group( "IO" )
-    parser_io.add_argument( "-q", "--quiet", action="store_true" )  # Supress output
-    parser_io.add_argument( "-v", "--verbose", action="store_true" )  # extra output
-    parser_io.add_argument( "--list", action="store_true" ) # List the configs and quit
-    parser_io.add_argument( "--show", action="store_true" ) # Show the configuration and quit
+    parser_io = parser.add_argument_group("IO")
+    parser_io.add_argument("-q", "--quiet", action="store_true", help="Suppress output")
+    parser_io.add_argument("-v", "--verbose", action="store_true", help="Extra output")
+    parser_io.add_argument("--list", action="store_true", help="List the configs and quit")
+    parser_io.add_argument("--show", action="store_true", help="Show the configuration and quit")
 
     # Toolchain Options
-    toolchain_opts = parser.add_argument_group( "Toolchain" )
-    toolchain_opts.add_argument( '-t', "--toolchain-regex", type=str, default='.*' )
+    toolchain_opts = parser.add_argument_group("Toolchain")
+    toolchain_opts.add_argument('-t', "--toolchain-regex", type=str, default='.*')
     toolchain_opts.add_argument('--toolchain-actions', nargs='+', default=[])
 
     # Project Options
-    project_opts = parser.add_argument_group( "Project Options" )
-    project_opts.add_argument('-p', "--project-regex", type=str, default=".*" )
+    project_opts = parser.add_argument_group("Project Options")
+    project_opts.add_argument('-p', "--project-regex", type=str, default=".*")
     project_opts.add_argument('--project-actions', nargs='+', default=[])
 
     # Build Options
-    build_opts = parser.add_argument_group( "Build Options" )
-    build_opts.add_argument('-b', "--build-regex", type=str, default=".*" )
-    build_opts.add_argument( '--build-actions', nargs='+', default=[])
+    build_opts = parser.add_argument_group("Build Options")
+    build_opts.add_argument('-b', "--build-regex", type=str, default=".*")
+    build_opts.add_argument('--build-actions', nargs='+', default=[])
 
     # Git Overrides
-    parser_git = parser.add_argument_group( "Git Overrides" )
-    parser_git.add_argument( "--giturl" )  # The Url to clone from
-    parser_git.add_argument( "--gitref" )  # the Commit to checkout
+    parser_git = parser.add_argument_group("Git Overrides")
+    parser_git.add_argument("--giturl", help="The URL to clone from")
+    parser_git.add_argument("--gitref", help="The commit/ref to checkout")
 
     parser.add_argument('actions', nargs=argparse.REMAINDER)
 
-    parser.parse_args( namespace=opts )
+    parser.parse_args(namespace=opts)
 
     if opts.actions:
         opts.toolchain_actions += opts.actions
         opts.project_actions += opts.actions
         opts.build_actions += opts.actions
 
-    setattr(opts, 'toolchain_verbs', [] )
-    setattr(opts, 'project_verbs', ['fetch'] )
-    setattr(opts, 'build_verbs', [] )
+    setattr(opts, 'toolchain_verbs', [] )       # type: ignore[attr-defined]
+    setattr(opts, 'project_verbs', ['fetch'] )  # type: ignore[attr-defined]
+    setattr(opts, 'build_verbs', [] )           # type: ignore[attr-defined]
 
     # Create gitdef structure
     if opts.giturl or opts.gitref: # Overrides specified.
-        setattr( opts, 'gitoverride', True)
-        setattr(opts, 'gitdef', {
-            'override': 'yes',
-            'url': opts.giturl or '',
-            'ref': opts.gitref or ''
-        })
-        if 'github' in opts.gitdef['url']:
-            opts.gitdef['remote'] = opts.gitdef['url'].split('/')[3]
-    else:
-        setattr( opts, 'gitoverride', False)
-        setattr(opts, 'gitdef', {})
 
-    delattr(opts, 'giturl')
-    delattr(opts, 'gitref')
+        srcdef = SimpleNamespace({**vars(git_base), **{
+            'remote'        :'override',
+            'url'           :opts.giturl or '',
+            'ref'           :opts.gitref or 'HEAD',
+        }})
+        # Fetch the correct remote name from a github URL
+        if 'github' in opts.giturl:
+            srcdef.remote =  opts.giturl.split('/')[3]
+
+        opts.sources['override'] = srcdef
+
+    delattr(opts, 'giturl') # type: ignore[attr-defined]
+    delattr(opts, 'gitref') # type: ignore[attr-defined]
+
+def import_module(opts: SimpleNamespace, file: Path):
+    """Import a python module from a file and set initial attributes."""
+    spec = importlib.util.spec_from_file_location(
+        name=os.path.basename(file.parent),
+        location=file)
+    module = importlib.util.module_from_spec(spec)
+
+    # Inject source overrides before execution
+    for attr, value in opts.sources.items():
+        setattr(module, attr, value)
+
+    try:
+        spec.loader.exec_module(module)
+    except Exception as e:
+        if opts.debug:
+            raise e
+        else:
+            fmt.hu(f"Error in {spec.name}: [red]{e}")
+            return None
+    return module
+
 
 # MARK: Import Toolchains
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -198,42 +214,31 @@ def parse_args( opts:SimpleNamespace ):
 # │  | || '  \| '_ \/ _ \ '_|  _|   | |/ _ \/ _ \ / _| ' \/ _` | | ' \(_-<     │
 # │ |___|_|_|_| .__/\___/_|  \__|   |_|\___/\___/_\__|_||_\__,_|_|_||_/__/     │
 # ╰───────────┤_├──────────────────────────────────────────────────────────────╯
-def import_toolchains( opts:SimpleNamespace ):
+def import_toolchains(opts: SimpleNamespace):
     toolchain_glob = f"*/toolchains.py"
-    fmt.h( f"file glob: {toolchain_glob}" )
+    fmt.h(f"file glob: {toolchain_glob}")
 
     # Import toolchain modules.
     fmt.hu()
-    for file in opts.path.glob( toolchain_glob ):
-
+    for file in opts.path.glob(toolchain_glob):
         if opts.verbose: fmt.h(file)
 
-        # Create Module Spec
-        spec = importlib.util.spec_from_file_location(
-            name=os.path.basename( file.parent ),
-            location=file )
-
-        # import module
-        toolchain_module = importlib.util.module_from_spec( spec )
-
-        # Execute the module
-        try:
-            spec.loader.exec_module( toolchain_module )
-        except Exception as e:
-            if opts.debug: raise e
-            else:
-                fmt.hu(str(e))
-                continue
+        toolchain_module = import_module(opts, file)
+        if not toolchain_module:
+            continue
 
         # generate the project configurations
-        try: opts.toolchains |= toolchain_module.generate( opts )
+        try:
+            opts.toolchains |= toolchain_module.generate(opts)
         except Exception as e:
-            if opts.debug: raise e
-            else: fmt.hu( f'[red]{e}')
+            if opts.debug:
+                raise e
+            else:
+                fmt.hu(f'[red]{e}')
     fmt.hd()
 
     # Filter the results with the toolchain-regex
-    opts.toolchains = {k: v for k, v in opts.toolchains.items() if fmt.re.search( opts.toolchain_regex, k )}
+    opts.toolchains = {k: v for k, v in opts.toolchains.items() if fmt.re.search(opts.toolchain_regex, k)}
 
     # Fetch all the verbs from the toolchain for displaying help
     for toolchain in opts.toolchains.values():
@@ -247,57 +252,53 @@ def import_toolchains( opts:SimpleNamespace ):
 # │  | || '  \| '_ \/ _ \ '_|  _| | (__/ _ \ ' \|  _| / _` (_-<                │
 # │ |___|_|_|_| .__/\___/_|  \__|  \___\___/_||_|_| |_\__, /__/                │
 # ╰───────────┤_├─────────────────────────────────────┤___/────────────────────╯
-def import_projects( opts:SimpleNamespace ) -> dict:
+def import_projects(opts: SimpleNamespace) -> dict:
     dbghelp = '[default]( add --debug for more )'
-    project_glob = f"*/config.py"
-    fmt.h( f"file glob: {project_glob}" )
+    project_glob = "*/config.py"
+    fmt.h(f"file glob: {project_glob}")
 
     # Import project_config files.
     projects = opts.projects
-    for config_file in opts.path.glob( project_glob ):
-        # FIXME, I should seprate the usage of the tool from the tool directory.
-        if os.path.basename(config_file.parent) == 'share': continue
-        fmt.hu(config_file)
+    for config_file in opts.path.glob(project_glob):
+        parent_name = os.path.basename(config_file.parent)
+        # Skip 'share' directory as it contains shared tools, not project configs.
+        if parent_name == 'share':
+            continue
+        if opts.verbose:
+            fmt.hu(config_file)
 
-        # Create Module Spec
-        spec = importlib.util.spec_from_file_location(
-            name=os.path.basename( config_file.parent ),
-            location=config_file )
+        project_module = import_module(opts, config_file)
+        if not project_module:
+            continue
 
-        # import module
-        project_module = importlib.util.module_from_spec( spec )
-        opts.modules[spec.name] = project_module
-
-        # Execute the module
-        try:
-            spec.loader.exec_module( project_module )
-        except Exception as e:
-            if opts.debug: raise e
-            else:
-                fmt.h( f'In {spec.name} [red]{e} {dbghelp}')
-                continue
+        opts.modules[parent_name] = project_module
 
     # Filter the results with the project-regex
     opts.modules = {k: v for k, v in opts.modules.items()
-                if fmt.re.search( opts.project_regex, k )}
+                    if fmt.re.search(opts.project_regex, k)}
 
-    fmt.h("generating")
+    fmt.h("Generating Build Configurations")
     for k,v in opts.modules.items():
-        fmt.hu(f"{k}")
+        if opts.verbose:
+            fmt.hu(f"{k}")
+
+        # update module sources with overrides
+        v.sources = {**getattr(v, 'sources', {}), **opts.sources}
+
         # generate the project configurations
         try: project : SimpleNamespace = v.generate( opts )
         except Exception as e:
             if opts.debug: raise e
             else: fmt.hu( f'In {k} [red]{e} {dbghelp}')
             continue
-        setattr(project, 'name', k)
+        setattr(project, 'name', k) # type: ignore[attr-defined]
         projects[k] = project
 
     # Verify required project attributes
     # filter the build configurations
     for project in projects.values():
         # All project configs must have a valid gitdef with a URL
-        sources : dict = getattr(project, 'sources')
+        sources : dict = getattr(project, 'sources') # type: ignore[attr-defined]
         if len(sources) == 0:
             msg = f"{project.name} is missing a source definition"
             if gopts.debug: raise Exception(msg)
@@ -308,37 +309,32 @@ def import_projects( opts:SimpleNamespace ) -> dict:
         project.build_configs = {k: v for k, v in builds.items()
             if fmt.re.search( opts.build_regex, v.name )}
 
-    # filter projects with zero valid build configurations
-    projects = {v.name: v for v in projects.values() if len( v.build_configs )}
+    # Filter projects with zero valid build configurations
+    projects = {v.name: v for v in projects.values() if len(v.build_configs)}
 
     # Update project and build fields with information from opts
-    for name, project in projects.items():
+    for project in projects.values():
         project.path = opts.path / project.name
-
-        # project.sourcedir = project.path / 'git'
+        project.sourcedir = project.path / 'git'
 
         # collect project verbs for list display
-        setattrdefault(project, 'verbs', ['fetch'] )
+        setattrdefault(project, 'verbs', ['fetch'])
         opts.project_verbs += [verb for verb in project.verbs
-            if verb not in opts.project_verbs]
+                               if verb not in opts.project_verbs]
 
         # Update all the build configurations
         for build in project.build_configs.values():
-            setattr( build, 'project', project )
-            setattr( build, 'script_path', project.path / f"{build.name}.py" )
-
-            # setattrdefault(build, 'gitdef', {})
+            setattr(build, 'project', project)
+            setattr(build, 'script_path', project.path / f"{build.name}.py")
 
             # collect build verbs for list display
-            opts.build_verbs += [verb for verb in getattr(build, 'verbs', [] )
-                if verb not in opts.build_verbs]
+            opts.build_verbs += [verb for verb in getattr(build, 'verbs', [])
+                                 if verb not in opts.build_verbs]
 
-            # build.source_path
-            # is the expected full path to the source of the code
+            # build.source_path is the expected full path to the source of the code
             # if no existing source_dir is set we will use the build name.
-            source_path = project.path / getattr( build, 'source_dir', build.name )
-            setattr( build, 'source_path', source_path )
-            # FIXME, if opts.gitdef['override'] == 'yes', then we need to add the shorthash
+            source_path = project.path / getattr(build, 'source_dir', build.name)
+            setattr(build, 'source_path', source_path)
 
     return projects
 
@@ -355,19 +351,15 @@ def fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
         fmt.h("Dry-Run: Skipping Fetch")
         return
 
-    for k,v in project.sources.items():
-        match v.type:
-            case 'git':
-                git_fetch_project( opts, project, k )
+    git_fetch_project( opts, project )
 
 
-def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace, key : str ):
+def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
     import git
     from git import GitCommandError
 
     g = git.cmd.Git()
 
-    srcdef = project.sources[key]
 
     # git ls-remote --symref https://github.com/enetheru/godot-cpp.git HEAD
     # ref: refs/heads/master  HEAD
@@ -377,37 +369,47 @@ def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace, key : str 
     # assume being inside a git dir.
     os.chdir( project.path )
 
-    gitdir = project.path / srcdef.gitdir
+    srcdef_for_clone = project.sources.get('origin') or next(iter(project.sources.values()))
+    gitdir = project.path / getattr(srcdef_for_clone, 'gitdir', Path('git'))
 
     # Lets clone if we dont exist
     if not gitdir.exists():
         fmt.h( 'Cloning Repository' )
-        repo = git.Repo.clone_from( srcdef['url'], gitdir, progress=print,  bare=True, tags=True )
+        repo = git.Repo.clone_from( srcdef_for_clone.url, gitdir, progress=print, bare=True, tags=True )
     else:
         repo = git.Repo( gitdir )
 
         fmt.h("Prune Expired Worktrees")
         repo.git.worktree('prune')
-
         if opts.verbose:
             fmt.h("Worktrees")
-            for line in str(repo.git.worktree('list')).splitlines():
-                fmt.hu(line)
+            table = Table("Worktrees", show_header=True, header_style="bold magenta")
+            table.add_column("Path", style="cyan")
+            table.add_column("Status", style="green")
+            for line in repo.git.worktree('list').splitlines():
+                parts = line.rsplit(maxsplit=1)
+                table.add_row(parts[0] if len(parts)>1 else line, parts[-1] if len(parts)>1 else "")
+            console.print(table)
 
-    fmt.h("Existing Remotes:")
-    for remote in repo.remotes:
-        fmt.hu(f"{remote.name}: {remote.url}")
+    if opts.verbose:
+        fmt.h("Existing Remotes:")
+        table = Table("Remotes", show_header=True, header_style="bold magenta")
+        table.add_column("Name", style="cyan")
+        table.add_column("URL", style="green")
+        for remote in repo.remotes:
+            table.add_row(remote.name, str(remote.url))
+        console.print(table)
 
     # Keep a dictionary of remote:{refs,} to skip already processed remotes.
     fmt.h( "Looking for Updates" )
-    fmt.hu()
+    if opts.verbose: fmt.hu()
     checked_list = []
     fetch_list = {}
 
     for build in project.build_configs.values():
         # collate the dictionaries, skipping empty keys
         # Make this a SimpleNamespace so we can use dot referencing
-        gitdef:SimpleNamespace = SimpleNamespace({**vars(srcdef), **vars(build.source_def), **vars(opts.srcdef) })
+        gitdef:SimpleNamespace = SimpleNamespace({**vars(build.source_def), **vars(getattr(opts, 'srcdef', SimpleNamespace())) })
 
         # We need to check each remote/reference pair to see if we need to update.
         # But since we update all references for any remote, then if the remote is
@@ -418,16 +420,30 @@ def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace, key : str 
         # add the remote to the repo if it doesnt already exist.
         if gitdef.remote not in [remote.name for remote in repo.remotes]:
             fmt.h('adding remote:')
-            fmt.hu(gitdef.remote)
-            fmt.hu(gitdef.url)
+            if opts.verbose:
+                fmt.hu(gitdef.remote)
+                fmt.hu(gitdef.url)
             repo.create_remote(gitdef.remote, gitdef.url)
             fetch_list[gitdef.remote] = gitdef.ref
+            continue
+
+        import re
+        sha1_re = re.compile(r'^[0-9a-f]{40}$', re.I)
+        if sha1_re.match(gitdef.ref):
+            try:
+                repo.git.rev_parse(gitdef.ref)
+                if opts.verbose:
+                    fmt.hu(f"  - Fixed commit [green]{gitdef.ref[:8]}[/green]... available locally ✓")
+            except GitCommandError:
+                if opts.verbose:
+                    fmt.hu(f"  - Fixed commit [yellow]{gitdef.ref[:8]}[/yellow]... not found locally")
             continue
 
         # Check the remote for updates.
         try:
             ls_args = ['--exit-code', gitdef.url, gitdef.ref]
-            fmt.h( f"git ls-remote {' '.join(ls_args)}" )
+            if opts.verbose:
+                fmt.h( f"git ls-remote {' '.join(ls_args)}" )
             response = g.ls_remote( ls_args )
             if not response:
                 fmt.hu( f"git ls-remote returned '{response}'" )
@@ -437,7 +453,8 @@ def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace, key : str 
                 continue
 
             remote_hash:str = response.split()[0]
-            fmt.hu(remote_hash)
+            if opts.verbose:
+                fmt.hu(remote_hash)
         except GitCommandError as e:
             if opts.debug: raise e
             fmt.hu(f"[yellow]Unable to determine remote reference.")
@@ -446,9 +463,11 @@ def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace, key : str 
 
         try:
             cmd_arg = gitdef.ref if gitdef.remote == 'origin' else f"{gitdef.remote}/{gitdef.ref}"
-            fmt.h( f"git rev-parse {cmd_arg}" )
+            if opts.verbose:
+                fmt.h( f"git rev-parse {cmd_arg}" )
             local_hash = repo.git.rev_parse(cmd_arg)
-            fmt.hu(local_hash)
+            if opts.verbose:
+                fmt.hu(local_hash)
         except GitCommandError as e:
             if opts.debug: raise e
             # if the ref doesnt exist it will raise this exception.
@@ -485,7 +504,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         write_namespace( pretendio, build.toolchain, 'toolchain')
         write_namespace( pretendio, build.buildtool, 'buildtool')
 
-    setattr( build, 'stats', {
+    setattr( build, 'stats', { # type: ignore[attr-defined]
         'status': "dnf",
         'duration':"dnr",
         'subs':{}
@@ -796,7 +815,9 @@ def main():
     parse_args(gopts)
 
     if gopts.quiet: console.quiet = True
-    fmt.t1( "AutoBuild" )
+    from rich.panel import Panel
+    panel = Panel("🚀 AutoBuild", style="bold cyan", expand=False)
+    console.print(panel)
 
     if gopts.verbose:
         fmt.t3( "Options" )
@@ -805,14 +826,18 @@ def main():
     with fmt.Section("Import Toolchains"):
         import_toolchains(gopts)
         toolchains = gopts.toolchains
+        if gopts.verbose:
+            with fmt.Section("Toolchains"):
+                for toolchain in toolchains:
+                    fmt.h(toolchain)
 
     with fmt.Section("Import Projects"):
         import_projects(gopts)
         projects = gopts.projects
-
-    if gopts.gitoverride:
-        fmt.t3( "Processing Override" )
-        git_override(gopts)
+        if gopts.verbose:
+            with fmt.Section("Projects"):
+                for project in projects:
+                    fmt.h(project)
 
     # TODO if help in any of the system verbs then display a list of verb help items.
 
@@ -841,6 +866,12 @@ def main():
                     for build_name in project.build_configs:
                         fmt.h(f'{project_name} | {build_name}')
 
+        with fmt.Section("Show Statistics"):
+            show_statistics( gopts )
+        console.pop( "build_log" )
+        import sys
+        sys.exit(0)
+
     # perform any actions triggered by verbs for toolchains.
     with fmt.Section("Process Toolchain Actions"):
         if len(gopts.toolchain_actions) == 0:
@@ -859,15 +890,15 @@ def main():
                         fetch_project( gopts, project )
 
     # Generate the build scripts
-    with fmt.Section("Generate Build Scripts"):
-        generate_build_scripts( gopts )
-
     # This one is the processing script for the build itself, should be renamed.something like
     # for build_config in project.configs process_build( build ) since the build has a handle to its parent
     with fmt.Section("Process Builds"):
         if len(gopts.build_actions) == 0:
             fmt.h("No build actions specified")
         else:
+            with fmt.Section("Generate Build Scripts"):
+                generate_build_scripts( gopts )
+
             for project in projects.values():
                 try: process_project( gopts, project )
                 except KeyboardInterrupt:
