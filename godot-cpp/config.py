@@ -129,7 +129,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
             build.source_dir = '.'.join(filter(None, source_dir_parts))
             build.buildtool.build_dir = '.'.join(filter(None,builddir_parts))
 
-        build.verbs += ['test']
+        # build.verbs += ['test']
         # build.script_parts += [test_script, show_stats]
         build.script_parts += [show_stats]
 
@@ -284,10 +284,6 @@ def test_script():
 
         godot_sets = {k:v for k,v in godot_sets.items() if v['variant'] == build['variant']}
 
-        #FIXME this is broken because python arches dont match godot arches, so we need to translate them.
-        # godot_sets = {k:v for k,v in godot_sets.items() if v['platform'] == build['platform'] and v['arch'] == build['arch']}
-
-        #FIXME, detect current platform and arch and use them to filter
         return {k: v for k, v in godot_sets.items() if v['platform'] == godot_platforms.get(opts.platform, opts.platform) and v['arch'] in godot_arch.values()}
 
     def gen_dot_folder( godot_set ):
@@ -479,6 +475,9 @@ def check_scons():
 
 
 def clean_scons():
+    """
+
+    """
     console = rich.console.Console()
     config:dict = {}
     opts:dict = {}

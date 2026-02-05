@@ -115,6 +115,7 @@ def write_preamble(buffer:IO):
     with open(f'{Path( __file__ ).parent}/script_preamble.py') as script_imports:
         for line in script_imports.readlines()[1:]: lines.append( line.rstrip() )
     lines += [
+        "from rich.panel import Panel",
         '',
         "sys.stdout.reconfigure(encoding='utf-8')",
         "rich._console = console = Console(soft_wrap=False, width=9000)",
@@ -140,10 +141,9 @@ def write_section( buffer:IO, section:SimpleNamespace, section_name:str ):
     Returns:
         None: Writes the section with a formatted code box header to the buffer.
     """
-    codebox = '\n'.join(fmt.code_box( section_name, width=120 ).splitlines())
-    buffer.writelines(['\n',codebox,'\n'])
+    buffer.write( f"\n\nconsole.print( Panel( '[bold cyan]{section_name}[/bold cyan]', title='[bold blue]Section[/bold blue]' ) )\n" )
     write_namespace( buffer, section, section_name )
-    buffer.writelines(['\n', f"config['{section_name}'] = {section_name}", '\n'])
+    buffer.write( f"\nconfig['{section_name}'] = {section_name}\n\n" )
 
 # MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮

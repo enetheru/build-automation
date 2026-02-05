@@ -8,6 +8,15 @@ from share import android
 from share.config import toolchain_base, gopts
 from share.script_preamble import *
 
+"""Expand config for toolchain arch/platform cartesian product.
+
+Args:
+    self (SimpleNamespace): Toolchain with arch_list/platform_list.
+    cfg (SimpleNamespace): Base config to copy/expand.
+
+Returns:
+    list: Expanded configs for each arch/platform combo.
+"""
 def generic_toolchain_expand( self:SimpleNamespace, cfg:SimpleNamespace ) -> list:
     configs_out:list = []
 
@@ -40,6 +49,11 @@ windows_toolchains:list = []
 # │ |_|  |_|___/ \_/ \___| │
 # ╰────────────────────────╯
 
+"""Create MSVC toolchain config using vswhere for VS instance.
+
+Returns:
+    SimpleNamespace: MSVC toolchain with shell pwsh devshell command.
+"""
 def msvc_toolchain() -> SimpleNamespace:
     # get the visual studio instance ID
     instance_cmd  = "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe"
@@ -68,6 +82,15 @@ windows_toolchains.append( msvc_toolchain() )
 # ╰────────────────────────╯
 # Currently only clang-cl is supported.
 
+"""Configure LLVM toolchain for buildtool (sets cmake toolchain file).
+
+Args:
+    self: LLVM toolchain.
+    config (SimpleNamespace): Build config.
+
+Returns:
+    bool: True.
+"""
 def configure_llvm( self:SimpleNamespace, config:SimpleNamespace ) -> bool:
     match config.buildtool.name:
         case 'cmake':
@@ -77,6 +100,11 @@ def configure_llvm( self:SimpleNamespace, config:SimpleNamespace ) -> bool:
     return True
 
 
+"""Create LLVM/Clang-CL toolchain config.
+
+Returns:
+    SimpleNamespace: LLVM toolchain with PATH env prepend.
+"""
 def llvm_toolchain() -> SimpleNamespace:
     env = {k:v for k,v in os.environ.items()}
     env['PATH'] = f'C:/Program Files/LLVM/bin;{os.environ['PATH']}'
@@ -102,6 +130,15 @@ windows_toolchains.append( llvm_toolchain() )
 # ╰───────────────────────────────────────────────────────╯
 # C:\opt\llvm-mingw-20250305-ucrt-x86_64\bin\
 
+"""Configure LLVM-MinGW for cmake (toolchain file + processor).
+
+Args:
+    self: LLVM-MinGW toolchain.
+    config (SimpleNamespace): Build config.
+
+Returns:
+    bool: True.
+"""
 def configure_llvm_mingw( self:SimpleNamespace, config:SimpleNamespace ) -> bool:
     match config.buildtool.name:
         case 'cmake':
@@ -140,11 +177,12 @@ windows_toolchains.append( llvm_mingw_toolchain())
 # │ |_|  |_|_|_||_\___| \_/\_/\___/ |_|  │
 # ╰──────────────────────────────────────╯
 
-def configure_mingw( self:SimpleNamespace, config:SimpleNamespace ):
+def configure_mingw( self:SimpleNamespace, config:SimpleNamespace ) -> bool:
     match config.buildtool.name:
         case 'cmake':
             cmake = config.buildtool
             cmake.toolchain = 'share\\toolchain-mingw64.cmake'
+    return True
 
 def mingw64_toolchain() -> SimpleNamespace:
     toolchain_env = {k:v for k,v in os.environ.items()}

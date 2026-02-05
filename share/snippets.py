@@ -56,8 +56,8 @@ def source_git():
             bare_hash = repo.git.log('--format=%h', '-1',  pattern)
             fmt.hu( f'{repo.git.log('--oneline', '-1',  pattern)}' )
         except GitCommandError as e:
-            print(e)
-            exit(1)
+            from share.error import handle_error
+            handle_error(f"git log bare pattern={pattern}", e, opts, critical=True)
 
         worktree_path = build['source_path']
 

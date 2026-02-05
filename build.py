@@ -23,21 +23,63 @@ from share.ConsoleMultiplex import ConsoleMultiplex, TeeOutput
 from share.config import gopts, git_base
 from share.generate import generate_build_scripts, write_namespace
 from share.run import stream_command
+from share.error import handle_error
 
 
+"""Safely set a default attribute on a namespace if it doesn't exist.
+
+Args:
+    namespace (SimpleNamespace): The target namespace.
+    field (str): The attribute name.
+    default (T): The default value to set.
+
+Returns:
+    T: The existing value if present, or the default value.
+"""
 def setattrdefault[T]( namespace:SimpleNamespace, field:str, default:T ) -> T:
+    """
+
+    :param namespace:
+    :param field:
+    :param default:
+    :return:
+    """
     existing = getattr( namespace, field, None ) # type: ignore[attr-defined]
     if existing: return existing
     setattr(namespace, field, default) # type: ignore[attr-defined]
     return default
 
 
+"""Extract the inner dictionary from a SimpleNamespace or similar object's __dict__.
+
+Args:
+    subject: Object with __dict__.
+
+Returns:
+    dict: {key: value} pairs.
+"""
 def get_interior_dict( subject ) -> dict:
+    """
+
+    :param subject:
+    :return:
+    """
     return {k: v for k, v in subject.__dict__.items()}
 
 
 # noinspection PyUnusedLocal
+"""Process raw log file, stripping ANSI escape codes to clean_file.
+
+Args:
+    raw_file (IO): Input raw log.
+    clean_file (IO): Output clean log.
+"""
 def process_log_null( raw_file: IO, clean_file: IO ):
+    """
+
+    :param raw_file:
+    :param clean_file:
+    """
     regex = fmt.re.compile(r'(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]')
 
     for line in raw_file:
@@ -78,10 +120,8 @@ def git_override(opts: SimpleNamespace):
             response = g.ls_remote(override_src.url, override_src.ref)
             commit_hash = response.split()[0] if response else None
         except GitCommandError as e:
-            if opts.debug:
-                raise
-            fmt.hu("[yellow]Unable to resolve reference")
-            commit_hash = None
+            if not handle_error(f"git ls-remote {override_src.url} {override_src.ref}", e, opts):
+                commit_hash = None
 
         if not commit_hash:
             fmt.hu("Override ref not found → skipping transient source")
@@ -101,6 +141,10 @@ def git_override(opts: SimpleNamespace):
 
 class PretendIO(StringIO):
     def write( self, value ):
+        """
+
+        :param value:
+        """
         print( value )
 
 pretendio = PretendIO()
@@ -118,16 +162,38 @@ rich._console = console
 # │ /_/ \_\_| \__, |_| \__,_|_| /__/\___|                                      │
 # │           |___/                                                            │
 # ╰────────────────────────────────────────────────────────────────────────────╯
+"""Parse command-line arguments using argparse and populate the opts namespace.
+
+Args:
+    opts (SimpleNamespace): The namespace object to store parsed arguments.
+
+Side effects:
+    Modifies opts in-place with parsed args, actions lists, sources overrides.
+"""
 def parse_args(opts: SimpleNamespace):
+    """
+
+    :param opts:
+    """
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog="build", description="Build All the Things", epilog="Go on, build.. do it.", )
+        prog="build",
+        description="Automated build system for Godot engine, godot-cpp, and dependencies.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+      ./build.ps1 --list                          List available toolchains/projects/builds
+      ./build.ps1 fetch                           Fetch all projects
+      ./build.ps1 fetch -p "godot-cpp$"           Fetch specific project
+      ./build.ps1 build -p godot-cpp -b msvc      Build specific configs
+      ./build.ps1 build --giturl https://... --gitref branch""",
+    )
 
     parser.add_argument("--debug", action="store_true", help="Don't continue on some failures")
     parser.add_argument("--dry", action='store_true', help="Dry run mode")
     parser.add_argument("-j", "--jobs", type=int,
-                        default=(multiprocessing.cpu_count() - 1) or 1)
+                        default=(multiprocessing.cpu_count() - 1) or 1,
+                        help=f"Number of parallel jobs (default: {multiprocessing.cpu_count() - 1 or 1})")
 
     parser_io = parser.add_argument_group("IO")
     parser_io.add_argument("-q", "--quiet", action="store_true", help="Suppress output")
@@ -137,25 +203,32 @@ def parse_args(opts: SimpleNamespace):
 
     # Toolchain Options
     toolchain_opts = parser.add_argument_group("Toolchain")
-    toolchain_opts.add_argument('-t', "--toolchain-regex", type=str, default='.*')
-    toolchain_opts.add_argument('--toolchain-actions', nargs='+', default=[])
+    toolchain_opts.add_argument('-t', "--toolchain-regex", type=str, default='.*',
+                                help="Regex to filter toolchains (default: match all)")
+    toolchain_opts.add_argument('--toolchain-actions', nargs='+', default=[],
+                                help="Actions to perform on matching toolchains (e.g. 'update')")
 
     # Project Options
     project_opts = parser.add_argument_group("Project Options")
-    project_opts.add_argument('-p', "--project-regex", type=str, default=".*")
-    project_opts.add_argument('--project-actions', nargs='+', default=[])
+    project_opts.add_argument('-p', "--project-regex", type=str, default=".*",
+                              help="Regex to filter projects (default: match all)")
+    project_opts.add_argument('--project-actions', nargs='+', default=[],
+                              help="Actions to perform on matching projects (e.g. 'fetch')")
 
     # Build Options
     build_opts = parser.add_argument_group("Build Options")
-    build_opts.add_argument('-b', "--build-regex", type=str, default=".*")
-    build_opts.add_argument('--build-actions', nargs='+', default=[])
+    build_opts.add_argument('-b', "--build-regex", type=str, default=".*",
+                            help="Regex to filter build configurations (default: match all)")
+    build_opts.add_argument('--build-actions', nargs='+', default=[],
+                            help="Actions to perform on matching builds (e.g. 'source', 'configure', 'build', 'clean')")
 
     # Git Overrides
     parser_git = parser.add_argument_group("Git Overrides")
-    parser_git.add_argument("--giturl", help="The URL to clone from")
-    parser_git.add_argument("--gitref", help="The commit/ref to checkout")
+    parser_git.add_argument("--giturl", help="Override source URL for projects (e.g. https://github.com/user/repo.git)")
+    parser_git.add_argument("--gitref", help="Override source ref/branch/commit for projects (e.g. 'main', 'v4.2', SHA)")
 
-    parser.add_argument('actions', nargs=argparse.REMAINDER)
+    parser.add_argument('actions', nargs=argparse.REMAINDER,
+                                help="Fallback actions applied to all (toolchains/projects/builds) if not specified in groups")
 
     parser.parse_args(namespace=opts)
 
@@ -199,11 +272,8 @@ def import_module(opts: SimpleNamespace, file: Path):
     try:
         spec.loader.exec_module(module)
     except Exception as e:
-        if opts.debug:
-            raise e
-        else:
-            fmt.hu(f"Error in {spec.name}: [red]{e}")
-            return None
+        handle_error(f"exec_module {spec.name}", e, opts)
+        return None
     return module
 
 
@@ -214,7 +284,19 @@ def import_module(opts: SimpleNamespace, file: Path):
 # │  | || '  \| '_ \/ _ \ '_|  _|   | |/ _ \/ _ \ / _| ' \/ _` | | ' \(_-<     │
 # │ |___|_|_|_| .__/\___/_|  \__|   |_|\___/\___/_\__|_||_\__,_|_|_||_/__/     │
 # ╰───────────┤_├──────────────────────────────────────────────────────────────╯
+"""Import toolchain modules from */toolchains.py globs and populate opts.toolchains.
+
+Args:
+    opts (SimpleNamespace): Global options.
+
+Side effects:
+    Populates opts.toolchains dict with generated toolchain configs.
+"""
 def import_toolchains(opts: SimpleNamespace):
+    """
+
+    :param opts:
+    """
     toolchain_glob = f"*/toolchains.py"
     fmt.h(f"file glob: {toolchain_glob}")
 
@@ -231,10 +313,8 @@ def import_toolchains(opts: SimpleNamespace):
         try:
             opts.toolchains |= toolchain_module.generate(opts)
         except Exception as e:
-            if opts.debug:
-                raise e
-            else:
-                fmt.hu(f'[red]{e}')
+            handle_error(f"toolchain_module.generate({file.name})", e, opts)
+            continue
     fmt.hd()
 
     # Filter the results with the toolchain-regex
@@ -252,7 +332,20 @@ def import_toolchains(opts: SimpleNamespace):
 # │  | || '  \| '_ \/ _ \ '_|  _| | (__/ _ \ ' \|  _| / _` (_-<                │
 # │ |___|_|_|_| .__/\___/_|  \__|  \___\___/_||_|_| |_\__, /__/                │
 # ╰───────────┤_├─────────────────────────────────────┤___/────────────────────╯
+"""Import project config modules from */config.py, generate build_configs, filter, populate opts.projects.
+
+Args:
+    opts (SimpleNamespace): Global options.
+
+Returns:
+    dict: Filtered projects with build_configs.
+"""
 def import_projects(opts: SimpleNamespace) -> dict:
+    """
+
+    :param opts:
+    :return:
+    """
     dbghelp = '[default]( add --debug for more )'
     project_glob = "*/config.py"
     fmt.h(f"file glob: {project_glob}")
@@ -288,8 +381,7 @@ def import_projects(opts: SimpleNamespace) -> dict:
         # generate the project configurations
         try: project : SimpleNamespace = v.generate( opts )
         except Exception as e:
-            if opts.debug: raise e
-            else: fmt.hu( f'In {k} [red]{e} {dbghelp}')
+            handle_error(f"project_module.generate({k})", e, opts)
             continue
         setattr(project, 'name', k) # type: ignore[attr-defined]
         projects[k] = project
@@ -346,7 +438,22 @@ def import_projects(opts: SimpleNamespace) -> dict:
 # │  \___|_|\__| |_|\___|\__\__|_||_| |_| |_| \___// \___\__|\__/__/           │
 # ╰──────────────────────────────────────────────\___/─────────────────────────╯
 
+"""Fetch/update project sources if 'fetch' in project_actions (dry-run skips).
+
+Args:
+    opts (SimpleNamespace): Options.
+    project (SimpleNamespace): Project config.
+
+Side effects:
+    Calls git_fetch_project if not dry-run.
+"""
 def fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
+    """
+
+    :param opts:
+    :param project:
+    :return:
+    """
     if opts.dry:
         fmt.h("Dry-Run: Skipping Fetch")
         return
@@ -354,7 +461,21 @@ def fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
     git_fetch_project( opts, project )
 
 
+"""Handle git fetch/prune/add-remote/ls-remote/rev-parse for project builds/sources.
+
+Args:
+    opts (SimpleNamespace): Options (dry-run, verbose).
+    project (SimpleNamespace): Project with sources/build_configs.
+
+Side effects:
+    Updates bare repo remotes/worktrees; clones if missing.
+"""
 def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
+    """
+
+    :param opts:
+    :param project:
+    """
     import git
     from git import GitCommandError
 
@@ -434,9 +555,8 @@ def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
                 repo.git.rev_parse(gitdef.ref)
                 if opts.verbose:
                     fmt.hu(f"  - Fixed commit [green]{gitdef.ref[:8]}[/green]... available locally ✓")
-            except GitCommandError:
-                if opts.verbose:
-                    fmt.hu(f"  - Fixed commit [yellow]{gitdef.ref[:8]}[/yellow]... not found locally")
+            except GitCommandError as e:
+                handle_error(f"git rev-parse fixed ref {gitdef.ref[:8]}", e, opts)
             continue
 
         # Check the remote for updates.
@@ -456,9 +576,9 @@ def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
             if opts.verbose:
                 fmt.hu(remote_hash)
         except GitCommandError as e:
-            if opts.debug: raise e
-            fmt.hu(f"[yellow]Unable to determine remote reference.")
+            handle_error(f"git ls-remote --exit-code {gitdef.url} {gitdef.ref}", e, opts)
             # FIXME, I need to disable this configuration if this happens.
+            build.disabled = True
             continue
 
         try:
@@ -469,8 +589,7 @@ def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
             if opts.verbose:
                 fmt.hu(local_hash)
         except GitCommandError as e:
-            if opts.debug: raise e
-            # if the ref doesnt exist it will raise this exception.
+            handle_error(f"git rev-parse local {cmd_arg}", e, opts)
             local_hash = None
 
         # Add to the list of repo's to fetch updates from
@@ -494,7 +613,22 @@ def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
 # │ |  _/ '_/ _ \/ _/ -_|_-<_-< | _ \ || | | / _` |                            │
 # │ |_| |_| \___/\__\___/__/__/ |___/\_,_|_|_\__,_|                            │
 # ╰────────────────────────────────────────────────────────────────────────────╯
+"""Process a single build configuration: generate script, execute actions (source/build/etc.), monitor.
+
+Args:
+    opts (SimpleNamespace): Global opts.
+    build (SimpleNamespace): Build object.
+
+Side effects:
+    Runs pwsh/python script, captures logs/stats.
+"""
 def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
+    """
+
+    :param opts:
+    :param build:
+    :return:
+    """
     project = build.project
 
     if opts.verbose:
@@ -562,6 +696,10 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         # Out little output handler which captures the lines and looks for data to
         # use in the statistics
         def monitor_output( line ):
+            """
+
+            :param line:
+            """
             if line.startswith('json:'): stats['subs'].update(json.loads( line[6:] ))
             else: print( line )
 
@@ -608,13 +746,9 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
                 "end_time": end_time,
                 "duration": end_time - stats["start_time"]
             }
-            panels = [Panel( str(e), title='Exception', title_align='left' )]
-            if errors: panels.append( Panel( '\n'.join( errors ), title='stderr',
-                                             title_align='left',
-                                             style="red"))
-
-            console.print( Panel( Group(*panels), expand=False, title='Errors', title_align='left', width=120 ) )
-            if opts.debug: raise e
+            handle_error(f"process_build cmd={run_cmd}", e, opts)
+            if errors:
+                console.print( Panel( '\n'.join( errors ), title='stderr', style="red"))
 
         # TODO create a timeout for the processing, something reasonable.
         #   this should be defined in the build config as the largest possible build time that is expected.
@@ -647,6 +781,15 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
 # │ |_| |_| \___/\__\___/__/__/ |_| |_| \___// \___\__|\__|                    │
 # ╰────────────────────────────────────────\___/───────────────────────────────╯
 # TODO Setup a keyboard interrupt to cancel a job and exit the loop, rather than quit the whole script.
+"""Process project actions (fetch) and matching builds for actions (source/build/clean).
+
+Args:
+    opts (SimpleNamespace): Options.
+    project (SimpleNamespace): Project.
+
+Side effects:
+    Fetches if 'fetch', processes filtered builds.
+"""
 def process_project( opts:SimpleNamespace, project:SimpleNamespace ):
     """Process a project by executing its build configurations.
 
@@ -710,6 +853,14 @@ def process_project( opts:SimpleNamespace, project:SimpleNamespace ):
 # │ |___/\__\__,_|\__|_/__/\__|_\__/__/                                        │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
+"""Display statistics table for builds/projects from stats.txt or memory.
+
+Args:
+    opts (SimpleNamespace): Options (not used directly).
+
+Side effects:
+    Prints rich table of commit/project/status/time.
+"""
 def show_statistics( opts:SimpleNamespace ):
     """Display a table summarizing build status and durations.
 
@@ -719,6 +870,10 @@ def show_statistics( opts:SimpleNamespace ):
     Returns:
         None: Prints a rich table with build status, duration, and sub-action durations.
     """
+    has_stats = any(getattr(build, 'stats', None) is not None for project in opts.projects.values() for build in project.build_configs.values())
+    if not has_stats:
+        return
+
     table = Table( title="Stats", highlight=True, min_width=80 )
 
     # unique set of available data names
@@ -782,6 +937,11 @@ def show_statistics( opts:SimpleNamespace ):
 # │   |_|\___/\___/_\__|_||_\__,_|_|_||_| /_/ \_\__|\__|_\___/_||_/__/         │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
+"""Execute toolchain-specific actions (e.g. 'update') for matching toolchains.
+
+Args:
+    opts (SimpleNamespace): Options with toolchain_actions.
+"""
 def process_toolchains( opts:SimpleNamespace ):
     """Process toolchain-specific actions based on provided options.
 
@@ -804,8 +964,11 @@ def process_toolchains( opts:SimpleNamespace ):
 # │ |_|  |_\__,_|_|_||_|                                                       │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
+"""Main entry point: Setup console, parse args, import/generate, process actions, stats."""
 def main():
+    """
 
+    """
     console.set_window_title( "AutoBuild" )
 
     # Log everything to a file
@@ -839,8 +1002,17 @@ def main():
                 for project in projects:
                     fmt.h(project)
 
-    # TODO if help in any of the system verbs then display a list of verb help items.
+    total_builds = sum(len(p.build_configs) for p in gopts.projects.values())
+    with fmt.Section("Summary"):
+        t_verbs = ', '.join(gopts.toolchain_verbs) if gopts.toolchain_verbs else 'none'
+        fmt.h(f"Toolchains ({len(gopts.toolchains)}) - available: {t_verbs}")
+        p_verbs = ', '.join(gopts.project_verbs) if gopts.project_verbs else 'none'
+        b_verbs = ', '.join(gopts.build_verbs) if gopts.build_verbs else 'none'
+        fmt.h(f"Projects ({len(gopts.projects)}) ({total_builds} builds)")
+        fmt.h(f"  project actions: {p_verbs}")
+        fmt.h(f"  build actions: [{b_verbs}]")
 
+    # TODO if help in any of the system verbs then display a list of verb help items.
     # List only.
     if gopts.list:
         with fmt.Section('List Items'):
@@ -875,14 +1047,16 @@ def main():
     # perform any actions triggered by verbs for toolchains.
     with fmt.Section("Process Toolchain Actions"):
         if len(gopts.toolchain_actions) == 0:
-            fmt.h("No toolchain actions specified")
+            verbs = ', '.join(gopts.toolchain_verbs) if gopts.toolchain_verbs else 'none'
+            fmt.h(f"No toolchain actions specified. Available: [{verbs}]")
         else:
             process_toolchains( gopts )
 
     # Basically the same thing again for the fetch command in prject, should be re-arranged
     with fmt.Section("Process Project Actions"):
         if len(gopts.project_actions) == 0:
-            fmt.h("No project actions specified")
+            verbs = ', '.join(gopts.project_verbs) if gopts.project_verbs else 'none'
+            fmt.h(f"No project actions specified. Available: [{verbs}]")
         else:
             if 'fetch' in gopts.project_actions:
                 with fmt.Section( 'Fetching Projects' ):
@@ -894,7 +1068,8 @@ def main():
     # for build_config in project.configs process_build( build ) since the build has a handle to its parent
     with fmt.Section("Process Builds"):
         if len(gopts.build_actions) == 0:
-            fmt.h("No build actions specified")
+            verbs = ', '.join(gopts.build_verbs) if gopts.build_verbs else 'none'
+            fmt.h(f"No build actions specified. Available: [{verbs}]")
         else:
             with fmt.Section("Generate Build Scripts"):
                 generate_build_scripts( gopts )
