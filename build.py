@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from typing import IO
 
 import rich
+import rich.box
 from rich import print
 from rich.console import Console, Group
 from rich.pretty import pprint
@@ -582,16 +583,16 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
             except KeyboardInterrupt as e: raise e
             print("continuing...")
         except Exception as e:
-            print( "Exception raised")
             end_time = datetime.now()
             stats |= {
                 "status": "Failed",
                 "end_time": end_time,
                 "duration": end_time - stats["start_time"]
             }
-            print( "Status Updated after exception")
             panels = [Panel( str(e), title='Exception', title_align='left' )]
-            if errors: panels.append( Panel( '\n'.join( errors ), title='stderr', title_align='left'))
+            if errors: panels.append( Panel( '\n'.join( errors ), title='stderr',
+                                             title_align='left',
+                                             style="red"))
 
             console.print( Panel( Group(*panels), expand=False, title='Errors', title_align='left', width=120 ) )
             if opts.debug: raise e
