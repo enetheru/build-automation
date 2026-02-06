@@ -26,23 +26,16 @@ from share.run import stream_command
 from share.error import handle_error
 
 
-"""Safely set a default attribute on a namespace if it doesn't exist.
-
-Args:
-    namespace (SimpleNamespace): The target namespace.
-    field (str): The attribute name.
-    default (T): The default value to set.
-
-Returns:
-    T: The existing value if present, or the default value.
-"""
 def setattrdefault[T]( namespace:SimpleNamespace, field:str, default:T ) -> T:
-    """
+    """Safely set a default attribute on a namespace if it doesn't exist.
 
-    :param namespace:
-    :param field:
-    :param default:
-    :return:
+    Args:
+        namespace: The target namespace.
+        field: The attribute name to set/check.
+        default: Value to assign if missing.
+
+    Returns:
+        The existing value if present, otherwise the default (after setting it).
     """
     existing = getattr( namespace, field, None ) # type: ignore[attr-defined]
     if existing: return existing
@@ -50,40 +43,23 @@ def setattrdefault[T]( namespace:SimpleNamespace, field:str, default:T ) -> T:
     return default
 
 
-"""Extract the inner dictionary from a SimpleNamespace or similar object's __dict__.
-
-Args:
-    subject: Object with __dict__.
-
-Returns:
-    dict: {key: value} pairs.
-"""
 def get_interior_dict( subject ) -> dict:
-    """
-
-    :param subject:
-    :return:
-    """
+    """Return a plain dict of all attributes from an object (usually a SimpleNamespace)."""
     return {k: v for k, v in subject.__dict__.items()}
 
 
-# noinspection PyUnusedLocal
-"""Process raw log file, stripping ANSI escape codes to clean_file.
-
-Args:
-    raw_file (IO): Input raw log.
-    clean_file (IO): Output clean log.
-"""
 def process_log_null( raw_file: IO, clean_file: IO ):
-    """
+    """Strip ANSI escape sequences from raw log lines and write cleaned output.
 
-    :param raw_file:
-    :param clean_file:
+    Args:
+        raw_file: Readable text stream containing raw (colored) logs.
+        clean_file: Writable text stream for cleaned output.
     """
     regex = fmt.re.compile(r'(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]')
 
     for line in raw_file:
         clean_file.write( regex.sub('', line ) )
+
 
 def git_override(opts: SimpleNamespace):
     """Add ONE transient source definition (copied from 'origin') when --giturl/--gitref is used.
@@ -141,10 +117,7 @@ def git_override(opts: SimpleNamespace):
 
 class PretendIO(StringIO):
     def write( self, value ):
-        """
-
-        :param value:
-        """
+        """Write value by printing it to stdout (pretend file-like behavior)."""
         print( value )
 
 pretendio = PretendIO()
@@ -162,18 +135,13 @@ rich._console = console
 # │ /_/ \_\_| \__, |_| \__,_|_| /__/\___|                                      │
 # │           |___/                                                            │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-"""Parse command-line arguments using argparse and populate the opts namespace.
-
-Args:
-    opts (SimpleNamespace): The namespace object to store parsed arguments.
-
-Side effects:
-    Modifies opts in-place with parsed args, actions lists, sources overrides.
-"""
 def parse_args(opts: SimpleNamespace):
-    """
+    """Parse command-line arguments and populate/modify the opts namespace in-place.
 
-    :param opts:
+    Handles action collection, git overrides, default verbs, and argument groups.
+
+    Args:
+        opts: Namespace that will be filled with parsed values.
     """
     import argparse
 

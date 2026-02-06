@@ -88,3 +88,5 @@ last_config_dump.json
 __pycache__/
 
 
+/build_log.log
+/stats.txt
