@@ -425,7 +425,7 @@ function CodeBox {
     "$comment$pad$($above ? ($top | Center "$above") : $top)"
 
     # Additional inside top
-    $compact ? $null : "$comment$pad$mid"
+    if (-not $compact) { "$comment$pad$mid" }
 
     # if we are aligning to the left, then what column is the first inside the box?
     [int]$indent = 0
@@ -439,7 +439,7 @@ function CodeBox {
     }
 
     # Additional inside bottom
-    $compact ? $null : "$comment$pad$mid"
+    if (-not $compact) { "$comment$pad$mid" }
     # Bottom Row
     "$comment$pad$($below ? ($bottom | Center "$below") : $bottom)"
 }
@@ -482,10 +482,120 @@ function gdh {
     }
     
     # Output func __heading__ for script panel outliner
-    $func_name = Fill -width $outline_cols -filler '_' | Align ($msg.ToUpper() -replace '\W','_')
+    $func_name = Fill -width $outline_cols -filler '_' | Align ("$msg".ToUpper() -replace '\W','_')
 
     $test = fill -width $cols -filler ' ' | Left 'func ' | Right '()->void:pass'
     Align $func_name $test
+}
 
-    # Write-Output "func $func_name()->void:pass"
+
+#MARK: GodotSubHeading
+$gds_example = "
+func                        __GDSExample_____________              ()->void:pass
+#region GDSExample - Prints a SubHeading that can copy and pasted into a godot script for fancy headings.
+##                                                  [br]
+## │  ___ ___  ___ ___                     _        [br]
+## │ / __|   \/ __| __|_ ____ _ _ __  _ __| |___    [br]
+## │| (_ | |) \__ \ _|\ \ / _` | '  \| '_ \ / -_)   [br]
+## │ \___|___/|___/___/_\_\__,_|_|_|_| .__/_\___|   [br]
+## ╰─────────────────────────────────|_|─────────── [br]
+## Prints a SubHeading that can copy and pasted into a godot script for fancy headings.[br]
+## [br]
+##
+
+
+#endregion GDSExample
+"
+
+function gds {
+ [CmdletBinding( PositionalBinding = $false )]
+    param(
+        [Alias( "h" )][switch]$help,
+        [int]$columns = 80,
+        [string]$font = 'small',
+        [string]$align = 'left',
+        [string]$comment = '##', # My main use is as a documentation heading.
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]$title = "Beany",
+        [Parameter(ValueFromRemainingArguments)]
+        [string[]]$desc
+    )
+    if( $help ){
+        Write-Output $gds_example
+        return
+    }
+    # This was an option, but realistically I am never going to change it.
+    $func_name_width = 25
+    $endline = "[br]"
+
+    # Output figlet heading
+    $mid = Fill -width $columns -filler ' ' | Left '#' | Right '#'
+    $figlet_heading = figlet -l -f "$font" "${title}" | ForEach-Object {
+        if( $align -eq "left"){
+            $mid | Align -mode $align $_ -indent 2
+        } else {
+            $mid | Align -mode $align $_
+        }
+    }
+
+    # Outliner Function
+    $outliner_func = & {
+        # creates the stub function name (___MSG___) to simulate an outliner heading in the godot code editor.
+        $func_name = Fill -width $func_name_width -filler '_' | Align -mode left -indent 2 ($title -replace '\W','_')
+
+        # Creates "func  ...  ()->void:pass" to column width
+        $blank_func_line = fill -width $columns -filler ' ' | Left 'func ' | Right '()->void:pass'
+
+        # This prints, the func_name aligned to centre(default) inside the blank_func_line
+        Align $func_name $blank_func_line
+    }
+
+    # Region Begin and End Tags
+    $region_begin = "#region ${title}$(if (${desc}) { " - $desc" })"
+    $region_end = "#endregion ${title}"
+
+    # MARK tag
+    $mark_tag = "${comment}MARK: ${title}"
+
+    # CodeBox style figlet heading
+    $main_heading = & {
+        $raw_codebox = @(
+            codebox -border "   │  ╰─ " -comment "$comment" -align $align -compact -font "$font" "$title"
+        ) -ne $null
+        # I want the figlet border, but I want the baseline to have the underline, so this achieves that.
+#        $raw_codebox = codebox -border "   │  ╰─ " -comment "$comment" -align $align -compact -font "$font" "$title"
+
+        if ( $raw_codebox.Count -ge 7 ){
+            $refined_codebox = $raw_codebox[0..($raw_codebox.Count-3)]
+
+            $a = $raw_codebox[-2]
+            $b = $raw_codebox[-1]
+            $merged = -join $(0..($a.Length-1) | % { if ($a[$_] -eq ' ') {$b[$_]} else {$a[$_]} })
+            $start = $comment.length + 2
+            $refined_codebox += -join $b[0..($start-1)] + -join $merged[$start..($merged.length-1)]
+        } else {
+            # This just removes the extra superfluous empty lines
+            $refined_codebox = $raw_codebox[1..($raw_codebox.Count-1)]
+        }
+
+        $maxLen = ($refined_codebox | ForEach-Object { $_.length } | Measure-Object -Maximum).Maximum
+        
+
+        $refined_codebox | ForEach-Object {
+            $_ + (' ' * ($maxLen - $_.length)) + $endline
+        }
+    }
+
+    $outliner_func
+    $region_begin
+    $main_heading
+    if ($desc) { # Add the extra comment lines only if they exist.
+        "${comment} ${desc}${endline}"
+        "${comment} ${endline}"
+        "${comment}"
+    }
+    "" # real empty line
+    ""
+    $region_end
+
 }
