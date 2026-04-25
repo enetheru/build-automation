@@ -1,6 +1,8 @@
 import itertools
+import os
 import shlex
 import subprocess
+import sys
 from copy import deepcopy
 from types import SimpleNamespace, MethodType
 
@@ -71,7 +73,8 @@ def msvc_toolchain() -> SimpleNamespace:
     setattr( toolchain, 'expand', MethodType(generic_toolchain_expand, toolchain ) )
     return toolchain
 
-windows_toolchains.append( msvc_toolchain() )
+if sys.platform == "win32":
+    windows_toolchains.append( msvc_toolchain() )
 
 # MARK: LLVM
 # ╭────────────────────────╮
@@ -275,8 +278,9 @@ windows_toolchains.append( msys2_clang64_toolchain() )
 # │ /_/ \_\_||_\__,_|_| \___/_\__,_| │
 # ╰──────────────────────────────────╯
 # The variations of toolchains for mingw are listed here: https://www.mingw-w64.org/downloads/
-
-windows_toolchains.append( android.android_toolchain() )
+android_toolchain:SimpleNamespace | None = android.android_toolchain()
+if android_toolchain is SimpleNamespace:
+    windows_toolchains.append( android_toolchain )
 
 # MARK: Emscripten
 # ╭────────────────────────────────────────────╮

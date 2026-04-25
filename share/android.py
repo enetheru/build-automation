@@ -143,7 +143,11 @@ def configure_cmake( build:SimpleNamespace ):
     ]
     cmake.toolchain = os.path.normpath(f'{toolchain.ndk_path}/build/cmake/android.toolchain.cmake')
 
-def android_toolchain() -> SimpleNamespace:
+def android_toolchain() -> SimpleNamespace | None:
+    if 'ANDROID_HOME' not in os.environ:
+        return None
+    if 'ANDROID_NDK' not in os.environ:
+        return None
     toolchain = SimpleNamespace(**cast( Mapping[str,Any],{
         'name':'android',
         'desc':'[Android](https://developer.android.com/tools/sdkmanager)',
