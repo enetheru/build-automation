@@ -1,19 +1,23 @@
 #!/usr/bin/env python
+"""Automated build system for Godot engine, godot-cpp, and dependencies.
+
+This script provides a command-line interface for managing toolchains, fetching project
+sources, and running build configurations for Godot-related projects.
+"""
 import importlib.util
 import json
 import multiprocessing
 import os
-import sys
 from datetime import datetime
 from io import StringIO
-from time import sleep
 from pathlib import Path
+from time import sleep
 from types import SimpleNamespace
-from typing import IO
+from typing import IO, cast
 
 import rich.box
 from rich import print
-from rich.console import Console, Group
+from rich.console import Console
 from rich.pretty import pprint
 from rich.table import Table
 
@@ -21,9 +25,9 @@ from rich.table import Table
 from share import format as fmt
 from share.ConsoleMultiplex import ConsoleMultiplex, TeeOutput
 from share.config import gopts, git_base
+from share.error import handle_error
 from share.generate import generate_build_scripts, write_namespace
 from share.run import stream_command
-from share.error import handle_error
 
 
 def setattrdefault[T]( namespace:SimpleNamespace, field:str, default:T ) -> T:
@@ -52,7 +56,7 @@ def process_log_null( raw_file: IO, clean_file: IO ):
     """Strip ANSI escape sequences from raw log lines and write cleaned output.
 
     Args:
-        raw_file: Readable text stream containing raw (colored) logs.
+        raw_file: Readable text stream containing raw (coloured) logs.
         clean_file: Writable text stream for cleaned output.
     """
     regex = fmt.re.compile(r'(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]')
@@ -66,6 +70,7 @@ def git_override(opts: SimpleNamespace):
     The normal expand_attr_list pipeline will automatically multiply it across all builds.
     This keeps the bare repo untouched and creates isolated worktrees via short hash."""
 
+    commit_hash = ""
     from git import GitCommandError
     import git
     from copy import deepcopy
@@ -82,7 +87,7 @@ def git_override(opts: SimpleNamespace):
         override_src = deepcopy(origin_src)
 
         # Apply the command-line override
-        gitdef = getattr(opts, 'gitdef', {}) # type: ignore[attr-defined]
+        gitdef = getattr(opts, 'gitdef', {})  # type: ignore[attr-defined]
         if gitdef.get('url'):
             override_src.url = gitdef['url']
         if gitdef.get('ref'):
@@ -99,31 +104,34 @@ def git_override(opts: SimpleNamespace):
             if not handle_error(f"git ls-remote {override_src.url} {override_src.ref}", e, opts):
                 commit_hash = None
 
-        if not commit_hash:
-            fmt.hu("Override ref not found → skipping transient source")
+        if commit_hash:
+            fmt.hu(commit_hash)
+            override_src.resolved_commit = commit_hash          # optional, for later use
+
+            # Add ONE new source → this is the multiplier
+            # You can call it 'override', 'transient', 'pr', whatever you like
+            project.sources['override'] = override_src
+
+            # (Optional but nice) Also add short hash to the key so folder names are obvious
+            short = commit_hash[:7]
+            project.sources[f'override-{short}'] = override_src
             continue
 
-        fmt.hu(commit_hash)
-        override_src.resolved_commit = commit_hash          # optional, for later use
-
-        # Add ONE new source → this is the multiplier
-        # You can call it 'override', 'transient', 'pr', whatever you like
-        project.sources['override'] = override_src
-
-        # (Optional but nice) Also add short hash to the key so folder names are obvious
-        short = commit_hash[:7]
-        project.sources[f'override-{short}'] = override_src
+        fmt.hu("Override ref not found → skipping transient source")
 
 
 class PretendIO(StringIO):
+    """A file-like object that redirects writes to the console."""
+
     def write( self, value ):
-        """Write value by printing it to stdout (pretend file-like behavior)."""
+        """Write value by printing it to stdout (pretend file-like behaviour)."""
         print( value )
 
 pretendio = PretendIO()
 
 # ================[ Setup Multiplexed Console ]================-
-sys.stdout.reconfigure(encoding='utf-8')
+# Member 'TextIO' of 'TextIO | Any' does not have attribute 'reconfigure'
+# sys.stdout.reconfigure(encoding='utf-8')
 console = ConsoleMultiplex()
 rich._console = console
 
@@ -136,7 +144,7 @@ rich._console = console
 # │           |___/                                                            │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def parse_args(opts: SimpleNamespace):
-    """Parse command-line arguments and populate/modify the opts namespace in-place.
+    """Parse command-line arguments and populate/modify the param:opts namespace in-place.
 
     Handles action collection, git overrides, default verbs, and argument groups.
 
@@ -217,7 +225,7 @@ def parse_args(opts: SimpleNamespace):
             'url'           :opts.giturl or '',
             'ref'           :opts.gitref or 'HEAD',
         }})
-        # Fetch the correct remote name from a github URL
+        # Fetch the correct remote name from a GitHub URL
         if 'github' in opts.giturl:
             srcdef.remote =  opts.giturl.split('/')[3]
 
@@ -231,14 +239,17 @@ def import_module(opts: SimpleNamespace, file: Path):
     spec = importlib.util.spec_from_file_location(
         name=os.path.basename(file.parent),
         location=file)
+    if spec is None: return None
     module = importlib.util.module_from_spec(spec)
+    if module is None: return None
 
     # Inject source overrides before execution
     for attr, value in opts.sources.items():
         setattr(module, attr, value)
 
     try:
-        spec.loader.exec_module(module)
+        if spec.loader is not None:
+            spec.loader.exec_module(module)
     except Exception as e:
         handle_error(f"exec_module {spec.name}", e, opts)
         return None
@@ -261,9 +272,10 @@ Side effects:
     Populates opts.toolchains dict with generated toolchain configs.
 """
 def import_toolchains(opts: SimpleNamespace):
-    """
+    """Import toolchain modules from */toolchains.py and populate the toolchains dict.
 
-    :param opts:
+    Args:
+        opts: Global options namespace to populate with toolchain configurations.
     """
     toolchain_glob = f"*/toolchains.py"
     fmt.h(f"file glob: {toolchain_glob}")
@@ -309,12 +321,15 @@ Returns:
     dict: Filtered projects with build_configs.
 """
 def import_projects(opts: SimpleNamespace) -> dict:
-    """
+    """Import project configurations from */config.py and return the filtered project dictionary.
 
-    :param opts:
-    :return:
+    Args:
+        opts: Global options namespace used to filter and store project configurations.
+
+    Returns:
+        The filtered projects dictionary from the param:opts namespace.
     """
-    dbghelp = '[default]( add --debug for more )'
+    # dbghelp = '[default]( add --debug for more )'
     project_glob = "*/config.py"
     fmt.h(f"file glob: {project_glob}")
 
@@ -372,9 +387,10 @@ def import_projects(opts: SimpleNamespace) -> dict:
     # Filter projects with zero valid build configurations
     projects = {v.name: v for v in projects.values() if len(v.build_configs)}
 
-    # Update project and build fields with information from opts
+    # Update project and build fields with information from param:opts
     for project in projects.values():
-        project.path = opts.path / project.name
+        project_path:Path = opts.path / project.name
+        setattr(project, "path", project_path)
         project.sourcedir = project.path / 'git'
 
         # collect project verbs for list display
@@ -392,8 +408,8 @@ def import_projects(opts: SimpleNamespace) -> dict:
                                  if verb not in opts.build_verbs]
 
             # build.source_path is the expected full path to the source of the code
-            # if no existing source_dir is set we will use the build name.
-            source_path = project.path / getattr(build, 'source_dir', build.name)
+            # if no existing source_dir is set, we will use the build name.
+            source_path = project_path / cast(Path, getattr(build, 'source_dir', build.name))
             setattr(build, 'source_path', source_path)
 
     return projects
@@ -472,7 +488,7 @@ def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
         repo.git.worktree('prune')
         if opts.verbose:
             fmt.h("Worktrees")
-            table = Table("Worktrees", show_header=True, header_style="bold magenta")
+            table = Table("Worktrees", header_style="bold magenta")
             table.add_column("Path", style="cyan")
             table.add_column("Status", style="green")
             for line in repo.git.worktree('list').splitlines():
@@ -482,7 +498,7 @@ def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
 
     if opts.verbose:
         fmt.h("Existing Remotes:")
-        table = Table("Remotes", show_header=True, header_style="bold magenta")
+        table = Table("Remotes", header_style="bold magenta")
         table.add_column("Name", style="cyan")
         table.add_column("URL", style="green")
         for remote in repo.remotes:
@@ -501,12 +517,12 @@ def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
         gitdef:SimpleNamespace = SimpleNamespace({**vars(build.source_def), **vars(getattr(opts, 'srcdef', SimpleNamespace())) })
 
         # We need to check each remote/reference pair to see if we need to update.
-        # But since we update all references for any remote, then if the remote is
-        # in our list to udpate we can skip it.
+        # But since we update all references for any remote, then, if the remote is
+        # in our list to update, we can skip it.
         if gitdef.remote in checked_list: continue
         checked_list.append( gitdef.remote )
 
-        # add the remote to the repo if it doesnt already exist.
+        # add the remote to the repo if it doesn't already exist.
         if gitdef.remote not in [remote.name for remote in repo.remotes]:
             fmt.h('adding remote:')
             if opts.verbose:
@@ -549,6 +565,7 @@ def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
             build.disabled = True
             continue
 
+        cmd_arg = ''
         try:
             cmd_arg = gitdef.ref if gitdef.remote == 'origin' else f"{gitdef.remote}/{gitdef.ref}"
             if opts.verbose:
@@ -620,8 +637,6 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
             skip = False
 
     if skip:
-        # h4( f'No matching build verbs for "{build.name}"')
-        # print(f"    available : {build.verbs}")
         build.stats |= {"status":'Skipped'}
         return
 
@@ -661,7 +676,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
                 width=120 ) )
 
         # ====================[ Run Build Script ]=====================-
-        # Out little output handler which captures the lines and looks for data to
+        # Our little output handler which captures the lines and looks for data to
         # use in the statistics
         def monitor_output( line ):
             """
@@ -736,7 +751,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         clean_log = build.clean_log
     else: clean_log = process_log_null
 
-    with (open( log_path, "r", encoding='utf-8' ) as log_raw,
+    with (open(log_path, encoding='utf-8') as log_raw,
           open( cleanlog_path, "w", encoding='utf-8' ) as log_clean):
         clean_log( log_raw, log_clean )
 
@@ -763,13 +778,15 @@ def process_project( opts:SimpleNamespace, project:SimpleNamespace ):
 
     Args:
         opts (SimpleNamespace): Configuration options for filtering and executing builds.
-        project (SimpleNamespace): Project configuration with build configurations.
+        Project (SimpleNamespace): Project configuration with build configurations.
 
     Returns:
         None: Executes build scripts for matching configurations and updates statistics.
 
     Raises:
-        KeyboardInterrupt: If the process is interrupted by the user.
+        KeyboardInterrupt: If the user interrupts the process.
+        :param opts: 
+        :param project: 
     """
     os.chdir( project.path )
 
@@ -830,7 +847,7 @@ Side effects:
     Prints rich table of commit/project/status/time.
 """
 def show_statistics( opts:SimpleNamespace ):
-    """Display a table summarizing build status and durations.
+    """Display a table summarising build status and durations.
 
     Args:
         opts (SimpleNamespace): Configuration options containing project and build statistics.
@@ -917,7 +934,7 @@ def process_toolchains( opts:SimpleNamespace ):
         opts (SimpleNamespace): Configuration options containing toolchain actions and definitions.
 
     Returns:
-        None: Executes toolchain-specific actions (e.g., update, script) for matching toolchains.
+        None: Executes toolchain-specific actions (e.g. update, script) for matching toolchains.
     """
     for verb in opts.toolchain_actions:
         for toolchain_name, toolchain in opts.toolchains.items():
@@ -934,8 +951,31 @@ def process_toolchains( opts:SimpleNamespace ):
 
 """Main entry point: Setup console, parse args, import/generate, process actions, stats."""
 def main():
-    """
+    """Main entry point for the AutoBuild system.
 
+    Orchestrates the complete build automation workflow:
+    1. Initialises console logging and window title
+    2. Parses command-line arguments into global options
+    3. Imports and filters toolchains from */toolchains.py files
+    4. Imports and generates project configurations from */config.py files
+    5. Displays a summary of available toolchains, projects, and build configurations
+    6. Executes toolchain-specific actions (e.g. update)
+    7. Fetches project sources via git if the 'fetch' action is specified
+    8. Generates and executes build scripts for matching configurations
+    9. Displays a statistics table with build status and durations
+
+    Side effects:
+        - Creates/updates log files in project directories
+        - Clones/fetches git repositories
+        - Executes build scripts via shell commands
+        - Modifies console window title
+        - Writes build_log.log to the script directory
+
+    Returns:
+        None: Exits with status 0 if --list flag used, otherwise completes workflow.
+
+    Raises:
+        KeyboardInterrupt: User cancellation propagated from subprocess handlers.
     """
     console.set_window_title( "AutoBuild" )
 

@@ -38,6 +38,10 @@ sources:dict = {
         'name':'4.5',
         'ref': '4.5'
     }}),
+    '4.6': SimpleNamespace({**vars(origin), **{
+        'name':'4.6',
+        'ref': '4.6'
+    }}),
 }
 
 project = SimpleNamespace({**vars(project_base), **{
@@ -116,7 +120,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
 
         name_parts = [
             short_host(),
-            buildtool.name,
+            # buildtool.name, this is always "scons" for godot.
             toolchain.name,
             build.arch if build.platform not in ['emscripten'] else None,
             godot_platforms[build.platform] if build.platform not in ['android', 'emscripten'] else None,
@@ -130,7 +134,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
 
         build.script_parts += [show_stats]
 
-    project.build_configs = {v.name: v for v in builds }
+    project.build_configs = { v.name:v for v in builds }
     return project
 
 
@@ -251,6 +255,7 @@ def build_scons():
 
             # FIXME  I found that if i dont clean the repository then files are unfortunately wrong.
             #  However if I am working on something then this is an unnecessary step most of the time.
+            #  [REASON] This is because the clean command depends on the other options
             stream_command(build_command, dry=opts['dry'])
 
         stats['build'] = timer.get_dict()
@@ -352,14 +357,18 @@ def configure_scons( config:SimpleNamespace ) -> bool:
     scons.build_dir = ''
     scons.build_vars += [
         "compiledb=yes",
+        "debug_symbols=yes",
+        "separate_debug_symbols=yes",
         f"platform={platform}",
         f"arch={arch}",
         # "build_profile=build_profile.json",
     ]
 
     match config.toolchain.name:
-        case 'msvc' | 'android' | 'emscripten' | 'appleclang':
+        case 'android' | 'emscripten' | 'appleclang':
             pass
+        case 'msvc':
+            scons.build_vars.append("d3d12=no")
         case "llvm":
             if config.arch != 'x86_64': return False
             scons.build_vars.append("use_llvm=yes")
@@ -431,11 +440,17 @@ def config_tracy( cfg:SimpleNamespace ) -> bool:
     if not cfg.source_def.ref in valid_branches: return False
     scons = cfg.buildtool
 
+    # Enable the tracy profiler.
+    scons.build_vars.append("profiler=tracy")
+
     # profiler_path: Path to the Profiler framework. Only tracy and perfetto are supported at the moment.
     scons.build_vars.append("profiler_path=C:/git/wolfpld/tracy")
 
     # profiler_sample_callstack: Profile random samples application-wide using a callstack based sampler. (yes|no)
     scons.build_vars.append("profiler_sample_callstack=yes")
+
+    # profiler_track_memory: Profile memory allocations, if the profiler supports it. (yes|no)
+    scons.build_vars.append("profiler_track_memory=yes")
 
     cfg.buildtool.build_vars.append('extra_suffix=tracy')
 

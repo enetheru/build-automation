@@ -493,6 +493,7 @@ function gdh {
 $gds_example = "
 func                        __GDSExample_____________              ()->void:pass
 #region GDSExample - Prints a SubHeading that can copy and pasted into a godot script for fancy headings.
+#MARK: GDSExample
 ##                                                  [br]
 ## │  ___ ___  ___ ___                     _        [br]
 ## │ / __|   \/ __| __|_ ____ _ _ __  _ __| |___    [br]
@@ -555,7 +556,7 @@ function gds {
     $region_end = "#endregion ${title}"
 
     # MARK tag
-    $mark_tag = "${comment}MARK: ${title}"
+    $mark_tag = "#MARK: ${title}"
 
     # CodeBox style figlet heading
     $main_heading = & {
@@ -588,13 +589,18 @@ function gds {
 
     $outliner_func
     $region_begin
+    $mark_tag
     $main_heading
     if ($desc) { # Add the extra comment lines only if they exist.
         "${comment} ${desc}${endline}"
         "${comment} ${endline}"
         "${comment}"
+    } else {
+        "${comment} ${title} By-Line"
+        "${comment}"
+        "${comment} ${title} Description"
     }
-    "" # real empty line
+    "" # real empty lines
     ""
     $region_end
 
