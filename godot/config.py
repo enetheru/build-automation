@@ -42,6 +42,10 @@ sources:dict = {
         'name':'4.6',
         'ref': '4.6'
     }}),
+    '4.7': SimpleNamespace({**vars(origin), **{
+        'name':'4.7',
+        'ref': '4.7'
+    }}),
 }
 
 project = SimpleNamespace({**vars(project_base), **{
@@ -436,7 +440,7 @@ variations['minimum'] = config_minim
 
 def config_tracy( cfg:SimpleNamespace ) -> bool:
     # tracy was introduced in master within the 4.6 dev cycle.
-    valid_branches = ['master', '4.6']
+    valid_branches = ['master', '4.6', '4.7']
     if not cfg.source_def.ref in valid_branches: return False
     scons = cfg.buildtool
 

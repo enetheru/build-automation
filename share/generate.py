@@ -118,7 +118,7 @@ def write_preamble(buffer:IO):
         "from rich.panel import Panel",
         '',
         "sys.stdout.reconfigure(encoding='utf-8')",
-        "rich._console = console = Console(soft_wrap=False, width=9000)",
+        "rich._console = console = Console()",
         '',
         "print( f'\\nPATH={os.environ['path'][:100]} ...' )",
         '',
@@ -141,7 +141,6 @@ def write_section( buffer:IO, section:SimpleNamespace, section_name:str ):
     Returns:
         None: Writes the section with a formatted code box header to the buffer.
     """
-    buffer.write( f"\n\nconsole.print( Panel( '[bold cyan]{section_name}[/bold cyan]', title='[bold blue]Section[/bold blue]' ) )\n" )
     write_namespace( buffer, section, section_name )
     buffer.write( f"\nconfig['{section_name}'] = {section_name}\n\n" )
 

@@ -649,11 +649,11 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     with (
         open( file=log_path, mode='w', buffering=1, encoding="utf-8" ) as build_log,
         TeeOutput(console, Console( file=build_log, force_terminal=True ), build.name ),
-        fmt.Section(build.name)
+        fmt.Section("Build: " + build.name)
     ):
 
         # =================[ Build Heading / Config ]==================-
-        fmt.h( build.script_path.as_posix() )
+        fmt.h( "Script: " + build.script_path.as_posix() )
 
         # ==================[ Print Configuration ]====================-
         from rich.panel import Panel
@@ -692,6 +692,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
 
         cmd = f'python {build.script_path.as_posix()}'
         run_cmd = ' '.join( shell + [f'"{cmd}"']) if shell else cmd
+        fmt.h("RunCmd: " + run_cmd)
         try:
             stats |= { 'start_time':datetime.now() }
             proc = stream_command( run_cmd, env=env,
@@ -799,7 +800,7 @@ def process_project( opts:SimpleNamespace, project:SimpleNamespace ):
     with (
         open( file=log_path, mode='w', buffering=1, encoding="utf-8" ) as log_file,
         TeeOutput(console, Console( file=log_file, force_terminal=True ), project.name ),
-        fmt.Section(project.name)
+        fmt.Section("Project: " + project.name)
     ):
         # ================[ project Heading / Config ]==================-
         if opts.verbose:
@@ -809,8 +810,6 @@ def process_project( opts:SimpleNamespace, project:SimpleNamespace ):
             fmt.t3("Build Configurations")
             for build in project.build_configs.values():
                 fmt.h(build.name)
-        else:
-            print(f"Processing {project.name}")
 
         project_total = len(project.build_configs)
         build_num = 0
