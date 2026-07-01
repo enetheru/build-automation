@@ -1,3 +1,7 @@
+"""
+Configuration settings and build definitions for the Godot project.
+"""
+
 import copy
 
 from share.config import gopts, project_base, git_base, scons_base, godot_platforms, godot_arch
@@ -64,6 +68,11 @@ project = SimpleNamespace({**vars(project_base), **{
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def generate( opts:SimpleNamespace ) -> SimpleNamespace:
+    """
+    Generate the project build configuration.
+    :param opts:
+    :return:
+    """
     from share.config import build_base
 
     from share.snippets import show_stats
@@ -102,23 +111,13 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     # Configure the builds.
     builds = [
         b for b in builds
-        if all(
-            (lambda f: (
-                    (result := f(b)) or
-                    (print(f"configure_func {f.__name__} returned falsy ({result})") or False)
-            ))(f)
-            for f in getattr(b, 'configure_funcs', [])
-        )
+        if all( f(b) for f in getattr(b, 'configure_funcs', []) )
     ]
-    # builds = [
-    #     b for b in builds
-    #     if all( func(b) for func in getattr(b, 'configure_funcs', []) )
-    # ]
 
     # Naming up to now.
     for build in builds:
 
-        buildtool = build.buildtool
+        # buildtool = build.buildtool
         toolchain = build.toolchain
         src_name = build.source_def.name
 
@@ -170,6 +169,9 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
 # The default language is english.
 
 def delete_translations():
+    """
+    Delete translation files to avoid memory issues.
+    """
     build:dict = {}
     # start_script
 
@@ -180,6 +182,7 @@ def delete_translations():
     for file in Path(build['source_path'] / 'doc/translations/').glob('*.po'):
         os.remove( file )
 
+
 # MARK: SCons Script
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │  ___  ___               ___         _      _                               │
@@ -189,6 +192,9 @@ def delete_translations():
 # │                                      |_|                                   │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def check_scons():
+    """
+    Check if SCons can be run.
+    """
     build:dict = {}
     buildtool:dict = {}
     # start_script
@@ -219,6 +225,9 @@ def check_scons():
         raise fnf
 
 def build_scons():
+    """
+    Execute the SCons build process.
+    """
     console = rich.console.Console()
     config:dict = {}
     stats:dict = {}
@@ -266,6 +275,9 @@ def build_scons():
         config['ok'] = timer.ok()
 
 def clean_scons():
+    """
+    Clean the SCons build artifacts.
+    """
     console = rich.console.Console()
     config:dict = {}
     opts:dict = {}
@@ -302,20 +314,24 @@ def clean_scons():
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def configure_toolchain(config:SimpleNamespace) -> list[SimpleNamespace]:
-    if config.toolchain.name != 'android':
-        return [config]
-    tc = config.toolchain
-    ndk_version = '28.1.13356709'
-    setattr(tc, 'packages', {
-        'platform-tools':'',
-        "build-tools":"35.0.0",
-        "platforms":"android-35",
-        "cmdline-tools":"latest",
-        "cmake":"3.10.2.4988404",
-        'ndk':ndk_version,
-    })
-    setattr(tc, 'ndk_path', f'{tc.sdk_path}\\ndk\\{ndk_version}')
-    setattr(tc, 'api_level', '35')
+    """
+    Configure the toolchain settings.
+    :param config:
+    :return:
+    """
+    if config.toolchain.name == 'android':
+        tc = config.toolchain
+        ndk_version = '28.1.13356709'
+        setattr(tc, 'packages', {
+            'platform-tools':'',
+            "build-tools":"35.0.0",
+            "platforms":"android-35",
+            "cmdline-tools":"latest",
+            "cmake":"3.10.2.4988404",
+            'ndk':ndk_version,
+        })
+        setattr(tc, 'ndk_path', f'{tc.sdk_path}\\ndk\\{ndk_version}')
+        setattr(tc, 'api_level', '35')
 
     return [config]
 
@@ -335,6 +351,11 @@ def configure_toolchain(config:SimpleNamespace) -> list[SimpleNamespace]:
 # │ |___/\__\___/_||_/__/                                                      │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def expand_scons( config:SimpleNamespace ) -> list[SimpleNamespace]:
+    """
+    Expand SCons configuration into multiple targets.
+    :param config:
+    :return:
+    """
     # Split the compile up into individual targets
     configs_out = []
     for target in ["template_release", "template_debug", "editor"]:
@@ -350,11 +371,17 @@ def expand_scons( config:SimpleNamespace ) -> list[SimpleNamespace]:
     return configs_out
 
 def configure_scons( config:SimpleNamespace ) -> bool:
+    """
+    Configure SCons build variables.
+    :param config:
+    :return:
+    """
     config.verbs += ['build', 'clean']
     config.script_parts +=  [check_scons, clean_scons, build_scons]
 
     platform = godot_platforms[config.platform]
     arch = godot_arch[config.arch]
+    tc = config.toolchain
 
     # config.buildtool = copy.deepcopy(config.buildtool)
     scons = config.buildtool
@@ -368,11 +395,33 @@ def configure_scons( config:SimpleNamespace ) -> bool:
         # "build_profile=build_profile.json",
     ]
 
-    match config.toolchain.name:
-        case 'android' | 'emscripten' | 'appleclang':
+    if platform == 'windows':
+        scons.build_vars.append('winrt=no')
+        scons.build_vars.append('accesskit=no')
+        scons.build_vars.append('d3d12=no')
+        scons.build_vars.append('angle=no')
+
+# toolchain = {
+#     'name':'msys2-mingw32',
+
+    match tc.name:
+        case 'msvc' | 'appleclang':
             pass
-        case 'msvc':
-            scons.build_vars.append("d3d12=no")
+        case 'emscripten':
+            # emscripten builds appear to be broken
+            return False
+        case 'android':
+            ndk_version = '28.1.13356709'
+            setattr(tc, 'packages', {
+                'platform-tools':'',
+                "build-tools":"35.0.0",
+                "platforms":"android-35",
+                "cmdline-tools":"latest",
+                "cmake":"3.10.2.4988404",
+                'ndk':ndk_version,
+            })
+            setattr(tc, 'ndk_path', f'{tc.sdk_path}\\ndk\\{ndk_version}')
+            setattr(tc, 'api_level', '35')
         case "llvm":
             if config.arch != 'x86_64': return False
             scons.build_vars.append("use_llvm=yes")
@@ -380,18 +429,68 @@ def configure_scons( config:SimpleNamespace ) -> bool:
         case "llvm-mingw":
             scons.build_vars.append("use_mingw=yes")
             scons.build_vars.append("use_llvm=yes")
-            scons.build_vars.append(f"mingw_prefix={config.toolchain.sysroot.as_posix()}")
+            scons.build_vars.append(f"mingw_prefix={tc.sysroot.as_posix()}")
+            if config.arch == 'armv7':
+                # ERROR: In file included from thirdparty\misc\r128.c:2:
+                # thirdparty\misc/r128.h:674:11: error: call to undeclared function '_arm_umull';
+                # ISO C99 and later do not support implicit function declarations
+                # [-Wimplicit-function-declaration]
+                #   674 |    return _arm_umull(a, b);
+                #       |           ^
+                # 1 error generated.
+                return False
 
         case "mingw64":
             scons.build_vars.append("use_mingw=yes")
-            scons.build_vars.append(f"mingw_prefix={config.toolchain.sysroot.as_posix()}")
+            scons.build_vars.append(f"mingw_prefix={tc.sysroot.as_posix()}")
 
         case "msys2-clang64":
             scons.build_vars.append("use_mingw=yes")
             scons.build_vars.append("use_llvm=yes")
+            return False
+        # It appeasr that all of my msys2 builds are broken.
 
-        case "msys2-ucrt64" | "msys2-mingw64" | "msys2-mingw32":
+        case "msys2-ucrt64" | "msys2-mingw32" | "msys2-mingw64":
             scons.build_vars.append("use_mingw=yes")
+            return False
+            # ModuleNotFoundError: No module named 'rich'
+            #
+            # pip install rich
+            # error: externally-managed-environment
+            #
+            # × This environment is externally managed
+            # ╰─> To install Python packages system-wide, try 'pacman -S
+            # $MINGW_PACKAGE_PREFIX-python-xyz', where xyz is the package you
+            # are trying to install.
+            #
+            # If you wish to install a non-MSYS2-packaged Python package,
+            # create a virtual environment using 'python -m venv path/to/venv'.
+            # Then use path/to/venv/bin/python and path/to/venv/bin/pip.
+            #
+            # If you wish to install a non-MSYS2 packaged Python application,
+            # it may be easiest to use 'pipx install xyz', which will manage a
+            # virtual environment for you. Make sure you have $MINGW_PACKAGE_PREFIX-python-pipx
+            # installed via pacman.
+            #
+            # note: If you believe this is a mistake, please contact your Python installation or OS distribution provider. You can override this, at the risk of breaking your Python installation or OS, by passing --break-system-packages.
+            # hint: See PEP 668 for the detailed specification.
+            #
+            # $pacman -S $MINGW_PACKAGE_PREFIX-python-rich
+            # error: target not found: mingw-w64-i686-python-rich
+            #
+            # https://www.msys2.org/news/#2026-01-31-more-strict-pip-install-for-local-installations
+            #
+            # C:/msys64/msys2_shell.cmd -mingw32 -defterm -no-start -c "python C:/build/godot/w64.msys2-mingw32.x86_32.windows.editor.default.4.7.py"
+            #
+            # PATH=C:\msys64\mingw32\bin;C:\msys64\usr\local\bin;C:\msys64\usr\bin;C:\msys64\usr\bin;C:\Windows\System3 ...
+            # 1 - Git Checkout
+            # Traceback (most recent call last):
+            # File "C:/build/godot/w64.msys2-mingw32.x86_32.windows.editor.default.4.7.py", line 139, in <module>
+            # raise fnf
+            # FileNotFoundError
+            # Missing bare git repo path: git, project needs to be fetched
+            #
+            # so something about being in an msys2 env is not letting it see the git path.. weird.
 
         case _:
             return False
@@ -413,32 +512,47 @@ def configure_scons( config:SimpleNamespace ) -> bool:
 # │   \_/\__,_|_| |_\__,_|_||_\__|  \___\___/_||_|_| |_\__, |                  │
 # │                                                    |___/                   │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-variations = { 'default' :lambda cfg:True }
 
-# MARK: double
 def config_double( cfg:SimpleNamespace ) -> bool:
+    """
+    Configure build for double precision.
+    :param cfg:
+    :return:
+    """
     if cfg.arch not in ['x86_64', 'arm64']: return False
     cfg.buildtool.build_vars.append("precision=double")
     return True
-variations['double'] = config_double
 
-# MARK: dev_build
+
 def config_dev( cfg:SimpleNamespace ) -> bool:
+    """
+    Configure build for development.
+    :param cfg:
+    :return:
+    """
     if cfg.arch not in ['x86_64', 'arm64']: return False
     cfg.buildtool.build_vars.append('dev_build=yes')
     cfg.buildtool.build_vars.append('separate_debug_symbols=yes')
     return True
 
-variations['dev_build'] = config_dev
 
 def config_minim( cfg:SimpleNamespace ) -> bool:
+    """
+    Configure a minimum build profile.
+    :param cfg:
+    :return:
+    """
     cfg.buildtool.build_profile = 'minimum'
     cfg.buildtool.build_vars.append('extra_suffix=min')
     return True
 
-variations['minimum'] = config_minim
 
 def config_tracy( cfg:SimpleNamespace ) -> bool:
+    """
+    Configure build with Tracy profiler.
+    :param cfg:
+    :return:
+    """
     # tracy was introduced in master within the 4.6 dev cycle.
     valid_branches = ['master', '4.6', '4.7']
     if not cfg.source_def.ref in valid_branches: return False
@@ -451,16 +565,37 @@ def config_tracy( cfg:SimpleNamespace ) -> bool:
     scons.build_vars.append("profiler_path=C:/git/wolfpld/tracy")
 
     # profiler_sample_callstack: Profile random samples application-wide using a callstack based sampler. (yes|no)
-    scons.build_vars.append("profiler_sample_callstack=yes")
+    if cfg.target != 'template_release':
+        scons.build_vars.append("profiler_sample_callstack=yes")
 
     # profiler_track_memory: Profile memory allocations, if the profiler supports it. (yes|no)
     scons.build_vars.append("profiler_track_memory=yes")
 
     cfg.buildtool.build_vars.append('extra_suffix=tracy')
 
+    # if cfg.target == 'template_release':
+    #     cfg.script_parts += [tracy_script]
     return True
 
-variations['tracy'] = config_tracy
+
+def tracy_script():
+    """
+    Environment setup for Tracy profiler.
+    """
+    # start_script
+    # MARK: Tracy
+    #[=================================[ Tracy ]=================================]
+    os.environ["TRACY_NO_DBGHELP_INIT_LOAD"] = "1"
+
+
+variations = {
+    'default': lambda cfg: True,
+    'double': config_double,
+    'dev_build': config_dev,
+    'minimum': config_minim,
+    'tracy': config_tracy
+}
+
 
 # MARK: Configs
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -472,6 +607,11 @@ variations['tracy'] = config_tracy
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def config_toolchains( cfg:SimpleNamespace ) -> SimpleNamespace:
+    """
+    Apply toolchain-specific configurations.
+    :param cfg:
+    :return:
+    """
     match cfg.toolchain.name:
         case "llvm":
             cfg.scons["build_vars"].append("use_llvm=yes")
@@ -493,6 +633,11 @@ def config_toolchains( cfg:SimpleNamespace ) -> SimpleNamespace:
     return cfg
 
 def expand_variations( config:SimpleNamespace ) -> list:
+    """
+    Expand build configuration into variants.
+    :param config:
+    :return:
+    """
     configs_out:list = []
     for label, config_func in variations.items():
         cfg = copy.deepcopy(config)
