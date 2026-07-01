@@ -24,45 +24,15 @@ from rich.table import Table
 # Local Imports
 from share import format as fmt
 from share.ConsoleMultiplex import ConsoleMultiplex, TeeOutput
-from share.config import gopts, git_base
+from share.config import gopts, git_base, console
 from share.error import handle_error
 from share.generate import generate_build_scripts, write_namespace
 from share.run import stream_command
 
 
-def setattrdefault[T]( namespace:SimpleNamespace, field:str, default:T ) -> T:
-    """Safely set a default attribute on a namespace if it doesn't exist.
-
-    Args:
-        namespace: The target namespace.
-        field: The attribute name to set/check.
-        default: Value to assign if missing.
-
-    Returns:
-        The existing value if present, otherwise the default (after setting it).
-    """
-    existing = getattr( namespace, field, None ) # type: ignore[attr-defined]
-    if existing: return existing
-    setattr(namespace, field, default) # type: ignore[attr-defined]
-    return default
-
-
-def get_interior_dict( subject ) -> dict:
-    """Return a plain dict of all attributes from an object (usually a SimpleNamespace)."""
-    return {k: v for k, v in subject.__dict__.items()}
-
-
-def process_log_null( raw_file: IO, clean_file: IO ):
-    """Strip ANSI escape sequences from raw log lines and write cleaned output.
-
-    Args:
-        raw_file: Readable text stream containing raw (coloured) logs.
-        clean_file: Writable text stream for cleaned output.
-    """
-    regex = fmt.re.compile(r'(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]')
-
-    for line in raw_file:
-        clean_file.write( regex.sub('', line ) )
+from src.cli import parse_args
+from src.utils import setattrdefault, get_interior_dict, process_log_null
+from src.config_loader import import_toolchains, import_projects
 
 
 def git_override(opts: SimpleNamespace):
@@ -132,8 +102,8 @@ pretendio = PretendIO()
 # ================[ Setup Multiplexed Console ]================-
 # Member 'TextIO' of 'TextIO | Any' does not have attribute 'reconfigure'
 # sys.stdout.reconfigure(encoding='utf-8')
-console = ConsoleMultiplex()
-rich._console = console
+# console = ConsoleMultiplex()
+# rich._console = console
 
 # MARK: ArgParse
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -143,96 +113,6 @@ rich._console = console
 # │ /_/ \_\_| \__, |_| \__,_|_| /__/\___|                                      │
 # │           |___/                                                            │
 # ╰────────────────────────────────────────────────────────────────────────────╯
-def parse_args(opts: SimpleNamespace):
-    """Parse command-line arguments and populate/modify the param:opts namespace in-place.
-
-    Handles action collection, git overrides, default verbs, and argument groups.
-
-    Args:
-        opts: Namespace that will be filled with parsed values.
-    """
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        prog="build",
-        description="Automated build system for Godot engine, godot-cpp, and dependencies.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""Examples:
-      ./build.ps1 --list                          List available toolchains/projects/builds
-      ./build.ps1 fetch                           Fetch all projects
-      ./build.ps1 fetch -p "godot-cpp$"           Fetch specific project
-      ./build.ps1 build -p godot-cpp -b msvc      Build specific configs
-      ./build.ps1 build --giturl https://... --gitref branch""",
-    )
-
-    parser.add_argument("--debug", action="store_true", help="Don't continue on some failures")
-    parser.add_argument("--dry", action='store_true', help="Dry run mode")
-    parser.add_argument("-j", "--jobs", type=int,
-                        default=(multiprocessing.cpu_count() - 1) or 1,
-                        help=f"Number of parallel jobs (default: {multiprocessing.cpu_count() - 1 or 1})")
-
-    parser_io = parser.add_argument_group("IO")
-    parser_io.add_argument("-q", "--quiet", action="store_true", help="Suppress output")
-    parser_io.add_argument("-v", "--verbose", action="store_true", help="Extra output")
-    parser_io.add_argument("--list", action="store_true", help="List the configs and quit")
-    parser_io.add_argument("--show", action="store_true", help="Show the configuration and quit")
-
-    # Toolchain Options
-    toolchain_opts = parser.add_argument_group("Toolchain")
-    toolchain_opts.add_argument('-t', "--toolchain-regex", type=str, default='.*',
-                                help="Regex to filter toolchains (default: match all)")
-    toolchain_opts.add_argument('--toolchain-actions', nargs='+', default=[],
-                                help="Actions to perform on matching toolchains (e.g. 'update')")
-
-    # Project Options
-    project_opts = parser.add_argument_group("Project Options")
-    project_opts.add_argument('-p', "--project-regex", type=str, default=".*",
-                              help="Regex to filter projects (default: match all)")
-    project_opts.add_argument('--project-actions', nargs='+', default=[],
-                              help="Actions to perform on matching projects (e.g. 'fetch')")
-
-    # Build Options
-    build_opts = parser.add_argument_group("Build Options")
-    build_opts.add_argument('-b', "--build-regex", type=str, default=".*",
-                            help="Regex to filter build configurations (default: match all)")
-    build_opts.add_argument('--build-actions', nargs='+', default=[],
-                            help="Actions to perform on matching builds (e.g. 'source', 'configure', 'build', 'clean')")
-
-    # Git Overrides
-    parser_git = parser.add_argument_group("Git Overrides")
-    parser_git.add_argument("--giturl", help="Override source URL for projects (e.g. https://github.com/user/repo.git)")
-    parser_git.add_argument("--gitref", help="Override source ref/branch/commit for projects (e.g. 'main', 'v4.2', SHA)")
-
-    parser.add_argument('actions', nargs=argparse.REMAINDER,
-                                help="Fallback actions applied to all (toolchains/projects/builds) if not specified in groups")
-
-    parser.parse_args(namespace=opts)
-
-    if opts.actions:
-        opts.toolchain_actions += opts.actions
-        opts.project_actions += opts.actions
-        opts.build_actions += opts.actions
-
-    setattr(opts, 'toolchain_verbs', [] )       # type: ignore[attr-defined]
-    setattr(opts, 'project_verbs', ['fetch'] )  # type: ignore[attr-defined]
-    setattr(opts, 'build_verbs', [] )           # type: ignore[attr-defined]
-
-    # Create gitdef structure
-    if opts.giturl or opts.gitref: # Overrides specified.
-
-        srcdef = SimpleNamespace({**vars(git_base), **{
-            'remote'        :'override',
-            'url'           :opts.giturl or '',
-            'ref'           :opts.gitref or 'HEAD',
-        }})
-        # Fetch the correct remote name from a GitHub URL
-        if 'github' in opts.giturl:
-            srcdef.remote =  opts.giturl.split('/')[3]
-
-        opts.sources['override'] = srcdef
-
-    delattr(opts, 'giturl') # type: ignore[attr-defined]
-    delattr(opts, 'gitref') # type: ignore[attr-defined]
 
 def import_module(opts: SimpleNamespace, file: Path):
     """Import a python module from a file and set initial attributes."""
@@ -454,142 +334,7 @@ Args:
 Side effects:
     Updates bare repo remotes/worktrees; clones if missing.
 """
-def git_fetch_project( opts:SimpleNamespace, project:SimpleNamespace ):
-    """
-
-    :param opts:
-    :param project:
-    """
-    import git
-    from git import GitCommandError
-
-    g = git.cmd.Git()
-
-
-    # git ls-remote --symref https://github.com/enetheru/godot-cpp.git HEAD
-    # ref: refs/heads/master  HEAD
-    # f398ebb8ce61a6ba14cabea77b65136b87f2c24f        HEAD
-
-    # Change to the git directory and instantiate a repo, some commands still
-    # assume being inside a git dir.
-    os.chdir( project.path )
-
-    srcdef_for_clone = project.sources.get('origin') or next(iter(project.sources.values()))
-    gitdir = project.path / getattr(srcdef_for_clone, 'gitdir', Path('git'))
-
-    # Lets clone if we dont exist
-    if not gitdir.exists():
-        fmt.h( 'Cloning Repository' )
-        repo = git.Repo.clone_from( srcdef_for_clone.url, gitdir, progress=print, bare=True, tags=True )
-    else:
-        repo = git.Repo( gitdir )
-
-        fmt.h("Prune Expired Worktrees")
-        repo.git.worktree('prune')
-        if opts.verbose:
-            fmt.h("Worktrees")
-            table = Table("Worktrees", header_style="bold magenta")
-            table.add_column("Path", style="cyan")
-            table.add_column("Status", style="green")
-            for line in repo.git.worktree('list').splitlines():
-                parts = line.rsplit(maxsplit=1)
-                table.add_row(parts[0] if len(parts)>1 else line, parts[-1] if len(parts)>1 else "")
-            console.print(table)
-
-    if opts.verbose:
-        fmt.h("Existing Remotes:")
-        table = Table("Remotes", header_style="bold magenta")
-        table.add_column("Name", style="cyan")
-        table.add_column("URL", style="green")
-        for remote in repo.remotes:
-            table.add_row(remote.name, str(remote.url))
-        console.print(table)
-
-    # Keep a dictionary of remote:{refs,} to skip already processed remotes.
-    fmt.h( "Looking for Updates" )
-    if opts.verbose: fmt.hu()
-    checked_list = []
-    fetch_list = {}
-
-    for build in project.build_configs.values():
-        # collate the dictionaries, skipping empty keys
-        # Make this a SimpleNamespace so we can use dot referencing
-        gitdef:SimpleNamespace = SimpleNamespace({**vars(build.source_def), **vars(getattr(opts, 'srcdef', SimpleNamespace())) })
-
-        # We need to check each remote/reference pair to see if we need to update.
-        # But since we update all references for any remote, then, if the remote is
-        # in our list to update, we can skip it.
-        if gitdef.remote in checked_list: continue
-        checked_list.append( gitdef.remote )
-
-        # add the remote to the repo if it doesn't already exist.
-        if gitdef.remote not in [remote.name for remote in repo.remotes]:
-            fmt.h('adding remote:')
-            if opts.verbose:
-                fmt.hu(gitdef.remote)
-                fmt.hu(gitdef.url)
-            repo.create_remote(gitdef.remote, gitdef.url)
-            fetch_list[gitdef.remote] = gitdef.ref
-            continue
-
-        import re
-        sha1_re = re.compile(r'^[0-9a-f]{40}$', re.I)
-        if sha1_re.match(gitdef.ref):
-            try:
-                repo.git.rev_parse(gitdef.ref)
-                if opts.verbose:
-                    fmt.hu(f"  - Fixed commit [green]{gitdef.ref[:8]}[/green]... available locally ✓")
-            except GitCommandError as e:
-                handle_error(f"git rev-parse fixed ref {gitdef.ref[:8]}", e, opts)
-            continue
-
-        # Check the remote for updates.
-        try:
-            ls_args = ['--exit-code', gitdef.url, gitdef.ref]
-            if opts.verbose:
-                fmt.h( f"git ls-remote {' '.join(ls_args)}" )
-            response = g.ls_remote( ls_args )
-            if not response:
-                fmt.hu( f"git ls-remote returned '{response}'" )
-                if opts.gitoverride: exit(1)
-                fmt.hu( f"disabling build: '{build.name}'" )
-                build.disabled = True
-                continue
-
-            remote_hash:str = response.split()[0]
-            if opts.verbose:
-                fmt.hu(remote_hash)
-        except GitCommandError as e:
-            handle_error(f"git ls-remote --exit-code {gitdef.url} {gitdef.ref}", e, opts)
-            # FIXME, I need to disable this configuration if this happens.
-            build.disabled = True
-            continue
-
-        cmd_arg = ''
-        try:
-            cmd_arg = gitdef.ref if gitdef.remote == 'origin' else f"{gitdef.remote}/{gitdef.ref}"
-            if opts.verbose:
-                fmt.h( f"git rev-parse {cmd_arg}" )
-            local_hash = repo.git.rev_parse(cmd_arg)
-            if opts.verbose:
-                fmt.hu(local_hash)
-        except GitCommandError as e:
-            handle_error(f"git rev-parse local {cmd_arg}", e, opts)
-            local_hash = None
-
-        # Add to the list of repo's to fetch updates from
-        if local_hash != remote_hash:
-            fmt.hu('Update Needed')
-            fetch_list[gitdef.remote] = gitdef.ref
-    fmt.hd()
-
-    if len(fetch_list):
-        fmt.h( "Fetching updates:" )
-        for remote, ref in fetch_list.items():
-            fetch_args = ['--verbose', '--progress','--tags', '--force', remote, '*:*']
-            fmt.hu(f'git fetch {' '.join(fetch_args)}')
-            repo.git.fetch( *fetch_args )
-    fmt.h( "[green]Up-To-Date" )
+from src.git_utils import git_fetch_project
 
 # MARK: Build
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -986,7 +731,7 @@ def main():
 
     if gopts.quiet: console.quiet = True
     from rich.panel import Panel
-    panel = Panel("🚀 AutoBuild", style="bold cyan", expand=False)
+    panel = Panel("AutoBuild", style="bold cyan", expand=False)
     console.print(panel)
 
     if gopts.verbose:
