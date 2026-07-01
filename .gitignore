@@ -77,7 +77,6 @@ mono_crash.*.json
 #re-include shared scripts and toolchains
 !/share/*
 !/toolchains/*
-!/src/*
 
 #Build Logs
 /*/*.txt

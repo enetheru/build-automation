@@ -29,12 +29,6 @@ gopts = SimpleNamespace(
     project_verbs     = list[str](),
     build_verbs       = list[str]()
 )
-from share.ConsoleMultiplex import ConsoleMultiplex
-import rich
-
-console = ConsoleMultiplex()
-rich._console = console
-
 # MARK: Toolchain
 toolchain_base = SimpleNamespace(
     name          =str(),             # The name of the toolchain.
