@@ -23,7 +23,10 @@ import rich.box
 from rich import print
 from textual.app import App, ComposeResult
 from textual.containers import Grid, VerticalScroll
-from textual.widgets import Header, Footer, Button, Input, Label
+from textual.widgets import Header, Footer, Button, Input, Label, TabbedContent, TabPane
+
+# Local TUI widgets
+from src.tui_about import AboutWidget
 
 # Local Imports
 from src.ConsoleMultiplex import ConsoleMultiplex
@@ -51,7 +54,7 @@ rich._console = console
 class BuildApp(App):
     CSS = """
     Grid {
-        grid-size: 2;
+        grid-size: 3;
         grid-gutter: 0;
         padding: 0;
     }
@@ -65,18 +68,26 @@ class BuildApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Grid(
-            VerticalScroll(
-                Input(placeholder="Filter Toolchains...", id="filter-tc"),
-                id="toolchains-frame", classes="frame"),
-            VerticalScroll(
-                Input(placeholder="Filter Projects...", id="filter-proj"),
-                id="projects-frame", classes="frame"),
-            VerticalScroll(
-                Input(placeholder="Filter Builds...", id="filter-build"),
-                id="builds-frame", classes="frame"),
-        )
-        yield Button("Start Build", id="start")
+        with TabbedContent():
+            with TabPane("Main", id="main-tab"):
+                yield Grid(
+                    VerticalScroll(
+                        Input(placeholder="Filter Toolchains...", id="filter-tc"),
+                        id="toolchains-frame", classes="frame"),
+                    VerticalScroll(
+                        Input(placeholder="Filter Projects...", id="filter-proj"),
+                        id="projects-frame", classes="frame"),
+                    VerticalScroll(
+                        Input(placeholder="Filter Builds...", id="filter-build"),
+                        id="builds-frame", classes="frame"),
+                )
+                yield Button("Start Build", id="start")
+            with TabPane("Output Log", id="log-tab"):
+                yield Label("Output log will appear here.")
+            with TabPane("Statistics", id="stats-tab"):
+                yield Label("Statistics will appear here.")
+            with TabPane("About", id="about-tab"):
+                yield AboutWidget()
         yield Footer()
 
 
@@ -138,9 +149,6 @@ class BuildApp(App):
             self._filter_timer.stop()
         self._filter_timer = self.set_timer(0.3, lambda: self._apply_filter(event.input.id))
 
-    # TODO Log everything to a file
-    # console.tee( Console( file=open( gopts.path / "build_log.log", "w", encoding='utf-8' ), force_terminal=True ),
-    #              name="build_log" )
 
     # TODO if help in any of the system verbs then display a list of verb help items.
     # # List only.
@@ -197,6 +205,10 @@ class BuildApp(App):
     # TODO Statistics TabContent
     # total_builds = sum(len(p.build_configs) for p in gopts.projects.values())
     # show_statistics( gopts )
+
+    # TODO Log processing files
+    # console.tee( Console( file=open( gopts.path / "build_log.log", "w", encoding='utf-8' ), force_terminal=True ),
+    #              name="build_log" )
 
 
 if __name__ == "__main__":
