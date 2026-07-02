@@ -21,9 +21,6 @@ from src.build_utils import fetch_project, process_project, show_statistics, pro
 from src.args import parse_args
 from src.config_loader import import_toolchains, import_projects
 
-
-# (git_override moved to src/git_utils.py)
-
 class PretendIO(StringIO):
     """A file-like object that redirects writes to the console."""
 
@@ -38,8 +35,6 @@ pretendio = PretendIO()
 # sys.stdout.reconfigure(encoding='utf-8')
 console = ConsoleMultiplex()
 rich._console = console
-
-
 
 
 # MARK: Main
