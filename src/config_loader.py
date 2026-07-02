@@ -4,11 +4,24 @@ import importlib.util
 import os
 from pathlib import Path
 from types import SimpleNamespace
-from share.error import handle_error
 
 
+# MARK: Import Configs
+# ╭────────────────────────────────────────────────────────────────────────────╮
+# │  ___                     _      ___           __ _                         │
+# │ |_ _|_ __  _ __  ___ _ _| |_   / __|___ _ _  / _(_)__ _ ___                │
+# │  | || '  \| '_ \/ _ \ '_|  _| | (__/ _ \ ' \|  _| / _` (_-<                │
+# │ |___|_|_|_| .__/\___/_|  \__|  \___\___/_||_|_| |_\__, /__/                │
+# ╰───────────┤_├─────────────────────────────────────┤___/────────────────────╯
 def import_module(opts: SimpleNamespace, file: Path):
-    """Import a python module from a file and set initial attributes."""
+    """Import project config modules from */config.py, generate build_configs, filter, populate opts.projects.
+
+    Args:
+        opts (SimpleNamespace): Global options.
+
+    Returns:
+        dict: Filtered projects with build_configs.
+    """
     spec = importlib.util.spec_from_file_location(
         name=os.path.basename(file.parent),
         location=file)
@@ -33,7 +46,7 @@ def import_module(opts: SimpleNamespace, file: Path):
 from share import format as fmt
 from share.config import gopts
 from share.error import handle_error
-from src.utils import get_interior_dict, setattrdefault
+from src.utils import setattrdefault
 from pathlib import Path
 from typing import cast
 

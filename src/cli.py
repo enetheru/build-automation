@@ -4,7 +4,8 @@ import argparse
 import multiprocessing
 from types import SimpleNamespace
 
-from share.config import gopts, git_base
+from share.config import git_base
+
 
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │    _            ___                                                        │
