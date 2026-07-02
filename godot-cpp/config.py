@@ -2,8 +2,9 @@ import copy
 from copy import deepcopy
 from types import SimpleNamespace
 
-import share.expand_config
-from share.expand_config import expand_toolchains, expand_buildtools, short_host, expand_func, expand_attr_list
+import src.expand_config
+from src.config import godot_platforms, godot_arch
+from src.expand_config import expand_toolchains, expand_buildtools, short_host, expand_func, expand_attr_list
 from share.script_preamble import *
 
 
@@ -25,8 +26,8 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         dict: A dictionary mapping project names to their SimpleNamespace configurations with build configs.
     """
     from share.snippets import source_git, show_stats
-    from share.config import project_base, scons_base, cmake_base, git_base, build_base, godot_platforms, godot_arch, gopts
-    from share.expand_config import expand_func
+    from src.config import project_base, scons_base, cmake_base, git_base, build_base, godot_platforms, godot_arch, gopts
+    from src.expand_config import expand_func
 
     name = 'godot-cpp'
 
@@ -172,7 +173,7 @@ def test_script():
     #[==================================[ Test ]==================================]
     from rich.panel import Panel
     from subprocess import SubprocessError, CompletedProcess
-    from share.format import p
+    from src.format import p
     from json import dumps
 
     import re
@@ -286,7 +287,7 @@ def test_script():
 
         return {k: v for k, v in godot_sets.items() if v['platform'] == godot_platforms.get(opts.platform, opts.platform) and v['arch'] in godot_arch.values()}
 
-    def gen_dot_folder( godot_set ):
+    def gen_dot_folder(godot_set, test_project_dir=None):
         cmd_parts = [
             f'"{godot_set['editor']}"',
             '-e',
@@ -296,7 +297,7 @@ def test_script():
         ]
         stream_command(' '.join(cmd_parts), dry=opts['dry'])
 
-    def run_test( godot_set:dict ) -> dict:
+    def run_test(godot_set:dict, test_project_dir=None) -> dict:
         result = {
             'fileset': godot_set['name'],
             'status': 'Failed'
@@ -338,7 +339,7 @@ def test_script():
 
         return result
 
-    def run_tests( data : SimpleNamespace ):
+    def run_tests(data : SimpleNamespace, testing_results=None, godot_sets=None):
         config['ok'] = False
         console.set_window_title(f'Test - {build['name']}')
 
@@ -375,6 +376,7 @@ def test_script():
             if result['status'] == 'Success': talley += 1
             testing_results.append( result )
 
+        test_data = {}
         test_data['results'] = testing_results
 
     def testing_setup() -> SimpleNamespace:
@@ -707,7 +709,7 @@ def expand_cmake( config:SimpleNamespace ) -> list[SimpleNamespace]:
     config.script_parts += [pre_cmake]
 
     # use the builtin expander for config types and generators.
-    configs_out = expand_func( [config], share.expand_config.expand_cmake  )
+    configs_out = expand_func( [config], src.expand_config.expand_cmake  )
 
     # Expand the targets
     configs_out = expand_func( configs_out, expand_cmake_target  )

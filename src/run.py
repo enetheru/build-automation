@@ -1,3 +1,16 @@
+"""
+This module provides functionality to execute system commands while streaming their output in
+real time, mimicking the behavior of `subprocess.run`.
+
+The `stream_command` function allows for handling of command output (both stdout and stderr)
+with real-time processing, optional simulation (dry runs), and simplified integration with
+custom environment variables or output handlers.
+
+References:
+- https://www.devgem.io/posts/capturing-realtime-output-from-a-subprocess-in-python
+- https://stackoverflow.com/questions/54091396/live-output-stream-from-python-subprocess
+- https://docs.python.org/3.12/library/shlex.html#shlex.split
+"""
 import os
 import shlex
 from collections import deque

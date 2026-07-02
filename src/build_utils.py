@@ -12,11 +12,11 @@ from rich import print
 from rich.console import Console
 from rich.table import Table
 
-from share import format as fmt
-from share.ConsoleMultiplex import ConsoleMultiplex, TeeOutput
-from share.error import handle_error
-from share.generate import write_namespace
-from share.run import stream_command
+from src import format as fmt
+from src.ConsoleMultiplex import ConsoleMultiplex, TeeOutput
+from src.error import handle_error
+from src.generate import write_namespace
+from src.run import stream_command
 from src.utils import get_interior_dict, process_log_null
 
 console = ConsoleMultiplex()

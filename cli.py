@@ -12,13 +12,13 @@ from rich.console import Console
 from rich.pretty import pprint
 
 # Local Imports
-from share import format as fmt
-from share.ConsoleMultiplex import ConsoleMultiplex
-from share.config import gopts
-from share.generate import generate_build_scripts
+from src import format as fmt
+from src.ConsoleMultiplex import ConsoleMultiplex
+from src.config import gopts
+from src.generate import generate_build_scripts
 from src.build_utils import fetch_project, process_project, show_statistics, process_toolchains
 # Src modules (refactored)
-from src.cli import parse_args
+from src.args import parse_args
 from src.config_loader import import_toolchains, import_projects
 
 

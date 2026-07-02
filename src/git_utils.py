@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Git utilities for source fetching and overrides."""
 from types import SimpleNamespace
-from share import format as fmt
-from share.error import handle_error
+from src import format as fmt
+from src.error import handle_error
 
 
 def git_override(opts: SimpleNamespace):

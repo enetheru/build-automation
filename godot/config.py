@@ -4,8 +4,8 @@ Configuration settings and build definitions for the Godot project.
 
 import copy
 
-from share.config import gopts, project_base, git_base, scons_base, godot_platforms, godot_arch
-from share.expand_config import expand_func, short_host, expand_attr_list
+from src.config import gopts, project_base, git_base, scons_base, godot_platforms, godot_arch
+from src.expand_config import expand_func, short_host, expand_attr_list
 from share.script_preamble import *
 
 # MARK: Notes
@@ -73,7 +73,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     :param opts:
     :return:
     """
-    from share.config import build_base
+    from src.config import build_base
 
     from share.snippets import show_stats
 

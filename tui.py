@@ -1,9 +1,28 @@
+"""
+A Textual TUI application for managing toolchains, projects, and builds.
+
+This module defines the `BuildApp` class, an application built with the
+textual framework. The application provides an interactive interface to
+navigate, filter, and manipulate toolchains, projects, and build options.
+
+It includes three scrollable frames for toolchain, project, and build lists
+with filtering capabilities, as well as buttons to initiate builds.
+
+Functions:
+    discover_data: Scans the filesystem to gather available toolchains and
+                   projects with their supported build configurations.
+
+Classes:
+    BuildApp: Represents the main application interface and manages user
+              interactions, layout, and dynamic content updates.
+"""
+import re
+from pathlib import Path
+
 from textual.app import App, ComposeResult
 from textual.containers import Grid, VerticalScroll
-from textual.widgets import Checkbox, Header, Footer, Button, Static, Input
-from pathlib import Path
-from types import SimpleNamespace
-import re
+from textual.widgets import Checkbox, Header, Footer, Button, Input
+
 
 def discover_data():
     toolchains = {}
@@ -11,7 +30,7 @@ def discover_data():
     for file in Path(".").glob("*/toolchains.py"):
         toolchains[file.parent.name] = ["default"] 
     for file in Path(".").glob("*/config.py"):
-        if file.parent.name != "share":
+        if file.parent.name in ['src', "share", 'toolchains', 'test']:
             projects[file.parent.name] = ["msvc", "gcc", "clang"]
     return toolchains, projects
 

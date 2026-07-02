@@ -1,3 +1,13 @@
+"""
+Module for managing Android SDK and related tools using sdkmanager.
+
+This module defines several functions and utilities for handling Android SDK
+operations, such as installing packages, listing installed components, parsing
+SDK manager outputs, and setting up a toolchain for Android development. The
+module enables effective integration of SDK tools with automation scripts or
+build systems.
+
+"""
 import re
 import subprocess
 from copy import deepcopy
@@ -108,8 +118,22 @@ def list_installed(self:SimpleNamespace) -> list[dict] | None:
 
 
 def update(self, toolchain:SimpleNamespace, console:Console):
+    """
+    Updates the Android SDK by ensuring all required packages are installed and up-to-date. It uses the
+    provided toolchain object to check the installed packages and compares them against the required
+    packages. If any required package is missing or outdated, it triggers an installation process.
+
+    :param self: Reference to the current instance of the class.
+    :param toolchain: A `SimpleNamespace` object containing the Android SDK toolchain utilities.
+        Specifically, it includes the `list_installed` method to retrieve installed packages
+        and a `packages` dictionary of required package names as keys and their associated
+        versions as values.
+    :param console: A `Console` instance used to perform console operations, such as setting
+        the window title for the update process.
+    :return: None
+    """
     console.set_window_title('Updating Android SDK')
-    print(fmt.t2("Android Update"))
+    fmt.t2("Android Update")
 
     packages = toolchain.list_installed()
     print( f"installed_packages: {packages}")
@@ -121,6 +145,20 @@ def update(self, toolchain:SimpleNamespace, console:Console):
 
 
 def expand(self, config:SimpleNamespace) -> list:
+    """
+    Expands the configuration object for multiple Android ABIs and creates a list of
+    newly adapted configuration objects.
+
+    This method iterates over the available Android ABIs, clones the provided
+    configuration object, and sets specific attributes for each ABI variant.
+    The list of newly modified configuration objects is then returned.
+
+    :param self: Reference to the current instance of the class.
+    :param config: A SimpleNamespace configuration object to be adapted for
+        different Android ABIs.
+    :return: A list of SimpleNamespace objects, each configured for a specific
+        Android ABI.
+    """
     configs_out:list = []
     for abi in self.abi:
         cfg = deepcopy(config)
@@ -132,6 +170,18 @@ def expand(self, config:SimpleNamespace) -> list:
     return configs_out
 
 def configure_cmake( build:SimpleNamespace ):
+    """
+    Configures the CMake build process for an Android project using the provided build context.
+
+    This function assigns the appropriate toolchain file and configuration variables
+    to the build tool based on the provided build context. The function customizes
+    the environment to ensure compatibility with the specified Android platform
+    and architecture.
+
+    :param build: Namespace-like object containing build configuration details,
+                  including `toolchain` and `buildtool` attributes.
+    :type build: SimpleNamespace
+    """
     toolchain = build.toolchain
     cmake = build.buildtool
 
@@ -144,6 +194,21 @@ def configure_cmake( build:SimpleNamespace ):
     cmake.toolchain = os.path.normpath(f'{toolchain.ndk_path}/build/cmake/android.toolchain.cmake')
 
 def android_toolchain() -> SimpleNamespace | None:
+    """
+    Determines and configures the Android toolchain for development by inspecting environment
+    variables `ANDROID_HOME` and `ANDROID_NDK`. If both variables are present, it initializes
+    and returns a `SimpleNamespace` object with attributes and methods for managing the Android
+    toolchain. If either variable is missing, the function returns `None`.
+
+    The returned `SimpleNamespace` object contains pre-configured attributes for describing
+    the toolchain, such as supported ABI(s), paths to SDK and NDK, as well as specific
+    methods for performing updates, installations, and expanding configurations
+    (e.g., for CMake integration).
+
+    :return: A configured SimpleNamespace representing the Android toolchain, or None
+             if the required environment variables are not defined.
+    :rtype: SimpleNamespace | None
+    """
     if 'ANDROID_HOME' not in os.environ:
         return None
     if 'ANDROID_NDK' not in os.environ:

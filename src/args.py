@@ -4,7 +4,7 @@ import argparse
 import multiprocessing
 from types import SimpleNamespace
 
-from share.config import git_base
+from src.config import git_base
 
 
 # ╭────────────────────────────────────────────────────────────────────────────╮

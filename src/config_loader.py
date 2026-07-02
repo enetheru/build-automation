@@ -4,6 +4,12 @@ import importlib.util
 import os
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
+
+from src import format as fmt
+from src.config import gopts
+from src.error import handle_error
+from src.utils import setattrdefault
 
 
 # MARK: Import Configs
@@ -14,13 +20,25 @@ from types import SimpleNamespace
 # │ |___|_|_|_| .__/\___/_|  \__|  \___\___/_||_|_| |_\__, /__/                │
 # ╰───────────┤_├─────────────────────────────────────┤___/────────────────────╯
 def import_module(opts: SimpleNamespace, file: Path):
-    """Import project config modules from */config.py, generate build_configs, filter, populate opts.projects.
+    """
+    Imports a Python module from a specified file, sets additional attributes
+    provided in `opts.sources`, and executes the module in the current namespace.
 
-    Args:
-        opts (SimpleNamespace): Global options.
+    This function dynamically loads a module given its file path, uses the
+    importlib utilities for loading and execution, and integrates optional
+    attributes into the module namespace. If any errors occur during module
+    execution, they are handled through a custom error handler.
 
-    Returns:
-        dict: Filtered projects with build_configs.
+    :param opts: Namespace object containing additional options and attributes
+        to inject into the module after loading. The `opts.sources` attribute
+        should be a dictionary where keys represent attribute names, and values
+        represent the values to set in the module.
+    :type opts: SimpleNamespace
+    :param file: Path to the file representing the module to be imported. The
+        file must exist and follow standard Python module structure.
+    :type file: Path
+    :return: Imported and executed module if successful, otherwise None.
+    :rtype: ModuleType or None
     """
     spec = importlib.util.spec_from_file_location(
         name=os.path.basename(file.parent),
@@ -42,13 +60,6 @@ def import_module(opts: SimpleNamespace, file: Path):
         return None
     return module
 
-
-from share import format as fmt
-from share.config import gopts
-from share.error import handle_error
-from src.utils import setattrdefault
-from pathlib import Path
-from typing import cast
 
 # MARK: Import Toolchains
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -107,8 +118,8 @@ def import_projects(opts: SimpleNamespace) -> dict:
     projects = opts.projects
     for config_file in opts.path.glob(project_glob):
         parent_name = os.path.basename(config_file.parent)
-        # Skip 'share' directory as it contains shared tools, not project configs.
-        if parent_name == 'share':
+        # Skip directories that are in use
+        if parent_name in ['src', 'share', 'toolchains', 'test']:
             continue
         if opts.verbose:
             fmt.hu(config_file)

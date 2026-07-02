@@ -453,7 +453,7 @@ def style_s2(self) -> str:
 def main():
     t1("Format Test")
     print()
-    print( os.linesep.join(["Testing share.format module",
+    print( os.linesep.join(["Testing format module",
         "This module uses the Python Rich library for additional things."]) )
 
     from rich.text import Text

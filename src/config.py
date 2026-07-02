@@ -1,3 +1,97 @@
+"""
+Configuration and management of toolchains, projects, builds, and sources for
+a build automation system.
+
+This module defines base configurations for toolchains, projects, builds,
+build tools, sources, and associated components using SimpleNamespace for
+flexible attribute manipulation. It provides predefined structures for build
+automation scenarios with configurable commands, paths, platforms, verbs, and
+other attributes.
+
+The module leverages fundamental mappings for architecture and platforms to
+serve as a foundation for specific build configurations, toolchains, and
+source management.
+
+Dependencies:
+- os
+- platform
+- sys
+- pathlib
+- types
+
+Additionally, custom utilities and snippets from the `share.snippets` module
+are imported.
+
+Attributes
+----------
+gopts : SimpleNamespace
+    Global options and configurations, including command-line invocation, host
+    platform, current path, toolchains, modules, build actions, and more.
+
+toolchain_base : SimpleNamespace
+    Base template for defining toolchains, including their characteristics
+    and applicable actions (verbs).
+
+project_base : SimpleNamespace
+    Base template for defining projects, including their location, associated
+    sources, build configurations, and toolchains.
+
+build_base : SimpleNamespace
+    Defines the base attributes for managing build actions, including source
+    paths, toolchains, build tools, and other configurable parameters.
+
+buildtool_base : SimpleNamespace
+    Base template for defining build tools with associated verbs/actions.
+
+cmake_base : SimpleNamespace
+    Configuration template for CMake build tool, defining build options,
+    configurations, and generators for different platforms.
+
+scons_base : SimpleNamespace
+    Configuration template for SCons build tool, defining associated build
+    variables and actions.
+
+source_base : SimpleNamespace
+    Template configuration for source definitions, including source types
+    and applicable actions.
+
+git_base : SimpleNamespace
+    Extended configuration template for Git-based sources, defining git
+    repository-specific attributes and actions.
+
+godot_platforms : dict
+    Mapping of platform identifiers to their corresponding names in the
+    Godot engine.
+
+godot_arch : dict
+    Mapping of architecture identifiers to their Godot engine equivalents.
+
+Functions
+---------
+configure_git(self, config: SimpleNamespace) -> bool
+    Applies Git-specific configuration to a provided source configuration.
+
+    Parameters
+    ----------
+    self : object
+        The instance of the class or namespace to which the method is bound.
+    config : SimpleNamespace
+        The source configuration object to be modified.
+
+    Returns
+    -------
+    bool
+        Returns True upon successful configuration modification.
+
+Notes
+-----
+The module includes predefined mappings, tools, and actions for ensuring
+flexibility in specifying sources, builds, and project configurations while
+handling platform- and architecture-specific requirements dynamically.
+
+The `configure_git` function is bound to the `git_base` namespace to provide
+runtime configuration capabilities for Git-based sources.
+"""
 import os.path
 import platform
 import sys
@@ -183,6 +277,14 @@ godot_arch = {
 
 
 def configure_git(self, config: SimpleNamespace) -> bool:
+    """
+    Configures Git by appending necessary scripts and verbs to the configuration object.
+
+    :param self: Reference to the current instance of the class.
+    :param config: A SimpleNamespace object that contains configuration details.
+                   It must have `verbs` and `script_parts` attributes as mutable lists.
+    :return: A boolean value indicating the success of the configuration process.
+    """
     config.verbs.append('source')
     config.script_parts.append(source_git)
     return True

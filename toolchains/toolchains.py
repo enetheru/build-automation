@@ -1,14 +1,23 @@
+"""
+Toolchain-related configurations and expansions for various architectures and platforms.
+
+This module provides functionality to define, configure, and expand toolchain configurations
+for various operating systems like Windows. It includes implementations for generic toolchain
+expansions, as well as specific configurations for toolchains like MSVC, LLVM, LLVM-MinGW,
+and MinGW64.
+
+The module also includes utilities to integrate with build tools, such as cmake, to facilitate
+building and compiling code for different platforms and architectures.
+"""
 import itertools
-import os
 import shlex
 import subprocess
-import sys
 from copy import deepcopy
 from types import SimpleNamespace, MethodType
 
-from share import android
-from share.config import toolchain_base, gopts
+import toolchains.android as android
 from share.script_preamble import *
+from src.config import toolchain_base, gopts
 
 """Expand config for toolchain arch/platform cartesian product.
 
@@ -20,6 +29,12 @@ Returns:
     list: Expanded configs for each arch/platform combo.
 """
 def generic_toolchain_expand( self:SimpleNamespace, cfg:SimpleNamespace ) -> list:
+    """
+
+    :param self:
+    :param cfg:
+    :return:
+    """
     configs_out:list = []
 
     for arch, platform in itertools.product(self.arch_list, self.platform_list):
@@ -57,10 +72,14 @@ Returns:
     SimpleNamespace: MSVC toolchain with shell pwsh devshell command.
 """
 def msvc_toolchain() -> SimpleNamespace:
+    """
+
+    :return:
+    """
     # get the visual studio instance ID
     instance_cmd  = "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe"
-    instance_id = subprocess.check_output([instance_cmd, '-property', 'instanceId']).strip().decode('utf-8')
-    installation_path = subprocess.check_output([instance_cmd, '-property', 'installationPath']).strip().decode('utf-8')
+    instance_id = subprocess.check_output([instance_cmd, '-property', 'instanceId']).strip().decode()
+    installation_path = subprocess.check_output([instance_cmd, '-property', 'installationPath']).strip().decode()
 
     toolchain = SimpleNamespace({**vars(toolchain_base), **{
         'name':'msvc',
@@ -95,6 +114,12 @@ Returns:
     bool: True.
 """
 def configure_llvm( self:SimpleNamespace, config:SimpleNamespace ) -> bool:
+    """
+
+    :param self:
+    :param config:
+    :return:
+    """
     match config.buildtool.name:
         case 'cmake':
             cmake = config.buildtool
@@ -109,6 +134,10 @@ Returns:
     SimpleNamespace: LLVM toolchain with PATH env prepend.
 """
 def llvm_toolchain() -> SimpleNamespace:
+    """
+
+    :return:
+    """
     env = {k:v for k,v in os.environ.items()}
     env['PATH'] = f'C:/Program Files/LLVM/bin;{os.environ['PATH']}'
     toolchain = SimpleNamespace({**vars(toolchain_base), **{
@@ -143,6 +172,12 @@ Returns:
     bool: True.
 """
 def configure_llvm_mingw( self:SimpleNamespace, config:SimpleNamespace ) -> bool:
+    """
+
+    :param self:
+    :param config:
+    :return:
+    """
     match config.buildtool.name:
         case 'cmake':
             cmake = config.buildtool
@@ -153,6 +188,10 @@ def configure_llvm_mingw( self:SimpleNamespace, config:SimpleNamespace ) -> bool
 
 
 def llvm_mingw_toolchain() -> SimpleNamespace:
+    """
+
+    :return:
+    """
     sysroot = Path(f'C:/opt/llvm-mingw-20250305-ucrt-x86_64')
     toolchain_env = {k:v for k,v in os.environ.items()}
     toolchain_env['PATH'] = f'{sysroot / 'bin'};{os.environ['PATH']}'
@@ -181,6 +220,12 @@ windows_toolchains.append( llvm_mingw_toolchain())
 # ╰──────────────────────────────────────╯
 
 def configure_mingw( self:SimpleNamespace, config:SimpleNamespace ) -> bool:
+    """
+
+    :param self:
+    :param config:
+    :return:
+    """
     match config.buildtool.name:
         case 'cmake':
             cmake = config.buildtool
@@ -188,6 +233,10 @@ def configure_mingw( self:SimpleNamespace, config:SimpleNamespace ) -> bool:
     return True
 
 def mingw64_toolchain() -> SimpleNamespace:
+    """
+
+    :return:
+    """
     toolchain_env = {k:v for k,v in os.environ.items()}
     toolchain_env['PATH'] = f'C:/mingw64/bin;{os.environ['PATH']}'
 
@@ -221,6 +270,10 @@ windows_toolchains.append( mingw64_toolchain())
 # in C:\msys64/cang64/bin
 # ln -s ar.exe x86_64-w64-mingw32-llvm-ar.exe
 def msys2_mingw32_toolchain() -> SimpleNamespace:
+    """
+
+    :return:
+    """
     toolchain = SimpleNamespace({**vars(toolchain_base), **{
         'name':"msys2-mingw32",
         'desc':'i686      gcc linking against msvcrt',
@@ -235,6 +288,10 @@ windows_toolchains.append( msys2_mingw32_toolchain() )
 
 
 def msys2_mingw64_toolchain() -> SimpleNamespace:
+    """
+
+    :return:
+    """
     toolchain = SimpleNamespace({**vars(toolchain_base), **{
         'name':"msys2-mingw64",
         'desc':'x86_64    gcc linking against msvcrt',
@@ -247,6 +304,10 @@ def msys2_mingw64_toolchain() -> SimpleNamespace:
 windows_toolchains.append( msys2_mingw64_toolchain() )
 
 def msys2_ucrt64_toolchain() -> SimpleNamespace:
+    """
+
+    :return:
+    """
     toolchain = SimpleNamespace({**vars(toolchain_base), **{
         'name':"msys2-ucrt64",
         'desc':'x86_64    gcc linking against ucrt',
@@ -259,6 +320,10 @@ def msys2_ucrt64_toolchain() -> SimpleNamespace:
 windows_toolchains.append( msys2_ucrt64_toolchain() )
 
 def msys2_clang64_toolchain() -> SimpleNamespace:
+    """
+
+    :return:
+    """
     toolchain = SimpleNamespace({**vars(toolchain_base), **{
         'name':"msys2-clang64",
         'desc':'x86_64    clang linking against ucrt',
@@ -291,17 +356,34 @@ if android_toolchain is SimpleNamespace:
 # │                        |_|                 │
 # ╰────────────────────────────────────────────╯
 def emscripten_update( toolchain:SimpleNamespace, config:SimpleNamespace, console:Console ):
+    """
+
+    :param toolchain:
+    :param config:
+    :param console:
+    """
     import os
     from pathlib import Path
 
     console.set_window_title('Updating Emscripten SDK')
-    print(fmt.t2("Emscripten Update"))
+    fmt.t2("Emscripten Update")
 
     emscripten_path = Path( toolchain.path )
     os.chdir(emscripten_path)
     stream_command( 'git pull', dry=config.dry )
 
 def win32_emscripten_script():
+    """
+    Executes a script to configure and ensure the usage of the Emscripten toolchain for a
+    Win32 environment using PowerShell. This function validates the presence of the
+    Emscripten toolchain, activates or installs the appropriate version, and runs
+    commands necessary for setting up the build environment.
+
+    :raises KeyError: If required keys such as 'version' in `toolchain` or 'dry' in `opts`
+       do not exist and are accessed during script execution.
+    :raises SystemExit: If the script determines that Emscripten must be installed
+       or activated, the program exits after executing the necessary commands.
+    """
     build:dict = {}
     toolchain:dict = {}
     opts:dict = {}
@@ -315,6 +397,10 @@ def win32_emscripten_script():
     emscripten_tool = (Path(toolchain['path']) / 'emsdk.ps1').as_posix()
 
     def emscripten_check( line ):
+        """
+
+        :param line:
+        """
         if toolchain['version'] in line and 'INSTALLED' in line: emscripten_check.task = 'activate'
 
     emscripten_check.task = 'install'
@@ -326,18 +412,26 @@ def win32_emscripten_script():
     )
 
     if not ('EMSDK' in os.environ):
-        print(fmt.t2(f'Emscripten {emscripten_check.task.capitalize()}'))
+        fmt.t2(f'Emscripten {emscripten_check.task.capitalize()}')
         stream_command( f'{cmd_prefix} "{emscripten_tool} {emscripten_check.task} {toolchain['version']}; python {build['script_path']}"',
             dry=opts['dry'] )
         quit()
 
 def win32_emscripten_cmake( build:SimpleNamespace ):
+    """
+
+    :param build:
+    """
     toolchain = build.toolchain
     cmake = build.buildtool
     cmake.toolchain = 'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake',
     cmake.generators = ['Ninja','Ninja Multi-Config']
 
 def win32_emscripten_toolchain() -> SimpleNamespace:
+    """
+
+    :return:
+    """
     toolchain = SimpleNamespace({**vars(toolchain_base), **{
         'name':'emscripten',
         'desc':'[Emscripten](https://emscripten.org/)',
@@ -411,6 +505,10 @@ def darwin_emscripten_script():
     emscripten_tool = (Path(toolchain['path']) / 'emsdk').as_posix()
 
     def emscripten_check( line ):
+        """
+
+        :param line:
+        """
         if toolchain['version'] in line and 'INSTALLED' in line: emscripten_check.task = 'activate'
 
     emscripten_check.task = 'install'
@@ -422,7 +520,7 @@ def darwin_emscripten_script():
     )
 
     if not ('EMSDK' in os.environ):
-        print(fmt.t2(f'Emscripten {emscripten_check.task.capitalize()}'))
+        fmt.t2(f'Emscripten {emscripten_check.task.capitalize()}')
         stream_command( f'{cmd_prefix} "{emscripten_tool} {emscripten_check.task} {toolchain['version']}"',
             dry=opts['dry'] )
 
@@ -432,6 +530,10 @@ def darwin_emscripten_script():
         quit()
 
 def darwin_emscripten_cmake( build:SimpleNamespace ):
+    """
+
+    :param build:
+    """
     toolchain = build.toolchain
     cmake = build.buildtool
     cmake.toolchain = '/Users/enetheru/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'

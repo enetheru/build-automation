@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from share.expand_config import expand_func, expand_host_env, expand_cmake, expand_toolchains
-from share.format import h, Section
+from src.expand_config import expand_func, expand_host_env, expand_cmake, expand_toolchains
+from src.format import h, Section
 
 from share.script_preamble import *
 
@@ -14,9 +14,9 @@ from share.script_preamble import *
 # ╰────────────────────────────────────────────────────────────────────────────╯
 def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     from share.snippets import source_git, show_stats, cmake_check, cmake_configure, cmake_build
-    from share.config import project_base, build_base, cmake_base
+    from src.config import project_base, build_base, cmake_base
 
-    from share.config import git_base
+    from src.config import git_base
     project = SimpleNamespace({ **vars(project_base), **{
         'name': 'orchestrator',
         'sources':{

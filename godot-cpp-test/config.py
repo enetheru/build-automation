@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from share.config import git_base
+from src.config import git_base
 
 
 # MARK: Generate
@@ -15,8 +15,8 @@ from share.config import git_base
 def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     from godot.config import godot_platforms, godot_arch
 
-    from share.config import project_base, build_base, scons_base, cmake_base
-    from share.expand_config import expand_host_env, expand_cmake, expand_func
+    from src.config import project_base, build_base, scons_base, cmake_base
+    from src.expand_config import expand_host_env, expand_cmake, expand_func
     from share.snippets import source_git, show_stats
 
     project = SimpleNamespace({**vars(project_base), **{

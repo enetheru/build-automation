@@ -5,16 +5,44 @@
 # │ |___/\__|_| |_| .__/\__|  \___\___|_||_\___|_| \__,_|\__|_\___/_||_|       │
 # │               |_|                                                          │
 # ╰────────────────────────────────────────────────────────────────────────────╯
+"""
+Module for generating Python build scripts using configurable namespaces.
+
+This module provides utilities for serializing and writing structured namespaces
+to scripts, defining custom JSON encoding, and generating build scripts for
+projects based on their configurations.
+"""
 import inspect
 import json
 from json import JSONEncoder
 from types import SimpleNamespace
 from typing import IO
 
+from share import script_preamble
 from share.script_preamble import *
 
 class MyEncoder(JSONEncoder):
+    """
+    A custom JSON encoder class.
+
+    This class extends the JSONEncoder to handle serialization of specific
+    data types not natively supported by Python's standard JSON serialization.
+    It customizes the `default` method to provide tailored serialization logic
+    for certain objects such as `SimpleNamespace` and `Path`.
+
+    :ivar skip_message: The message returned when circular references are
+        detected or unsupported types need to be skipped.
+    :type skip_message: str
+    :ivar path_serialization_method: The method used to serialize Path objects
+        into a string representation.
+    :type path_serialization_method: Callable[[Path], str]
+    """
     def default(self, o):
+        """
+
+        :param o:
+        :return:
+        """
         if isinstance( o, SimpleNamespace ):
             return "Skipping in case of circular reference."
         if isinstance( o, Path ):
@@ -107,24 +135,14 @@ def write_preamble(buffer:IO):
     Returns:
         None: Writes the preamble to the buffer.
     """
-    from share.config import gopts
+    from src.config import gopts
     lines = [
         "#!/bin/env python",
         "import sys",
         f"sys.path.append({repr(str(gopts.path))})"]
-    with open(f'{Path( __file__ ).parent}/script_preamble.py') as script_imports:
-        for line in script_imports.readlines()[1:]: lines.append( line.rstrip() )
-    lines += [
-        "from rich.panel import Panel",
-        '',
-        "sys.stdout.reconfigure(encoding='utf-8')",
-        "rich._console = console = Console()",
-        '',
-        "print( f'\\nPATH={os.environ['path'][:100]} ...' )",
-        '',
-        "stats:dict = {}",
-        "config:dict = { 'ok': True }",
-    ]
+    with open(Path(script_preamble.__file__)) as preamble:
+        lines += preamble.read().splitlines()
+
     # TODO add checking for required modules and bail nicely.
     buffer.write( '\n'.join( lines ) )
     buffer.write('\n\n')

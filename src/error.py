@@ -1,10 +1,5 @@
-import sys
-import traceback
 from types import SimpleNamespace
-from rich import print as rprint
-from rich.panel import Panel
-from rich.console import Group
-from rich.traceback import Traceback
+
 
 def handle_error(ctx: str, e: Exception, opts: SimpleNamespace, critical: bool = False) -> bool:
     """

@@ -10,12 +10,12 @@ from types import SimpleNamespace
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
 def generate( opts:SimpleNamespace ) -> SimpleNamespace:
-    from share.expand_config import expand_host_env, expand_cmake, expand_func
+    from src.expand_config import expand_host_env, expand_cmake, expand_func
     from share.snippets import source_git, show_stats
 
     from godot.config import godot_platforms, godot_arch
 
-    from share.config import (git_base, project_base, build_base, cmake_base)
+    from src.config import (git_base, project_base, build_base, cmake_base)
 
     project = SimpleNamespace({**vars(project_base), **{
         'name':'gdflatbuffers',
