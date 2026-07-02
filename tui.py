@@ -86,36 +86,57 @@ class BuildApp(App):
         import_projects(gopts)
         self.toolchains = gopts.toolchains
         self.projects  = gopts.projects
+        self._tc_labels = []
+        self._proj_labels = []
+        self._build_labels = []
         self.populate_lists()
 
 
-    def populate_lists(self, tc_filter="", proj_filter=""):
+    def populate_lists(self, tc_filter="", proj_filter="", build_filter=""):
+        # Initial population: create and cache all Labels (shown)
         tc_container = self.query_one("#toolchains-frame")
+        self._tc_labels = []
         for tc in self.toolchains:
-            if re.search(tc_filter, tc):
-                tc_container.mount(Label(tc, name=f"tc:{tc}"))
+            lbl = Label(tc, name=f"tc:{tc}")
+            tc_container.mount(lbl)
+            self._tc_labels.append(lbl)
 
         proj_container = self.query_one("#projects-frame")
+        self._proj_labels = []
         for proj in self.projects:
-            if re.search(proj_filter, proj):
-                proj_container.mount(Label(proj, name=f"proj:{proj}"))
+            lbl = Label(proj, name=f"proj:{proj}")
+            proj_container.mount(lbl)
+            self._proj_labels.append(lbl)
 
         build_container = self.query_one("#builds-frame")
-
+        self._build_labels = []
         for p in gopts.projects.values():
             for build in p.build_configs:
-                if re.search(proj_filter, build):
-                    build_container.mount(Label(build, name=f"build:{build}"))
+                lbl = Label(build, name=f"build:{build}")
+                build_container.mount(lbl)
+                self._build_labels.append(lbl)
 
+
+    def _apply_filter(self, filter_id: str) -> None:
+        # Only filter the relevant list using cached Labels
+        if filter_id == "filter-tc":
+            val = self.query_one("#filter-tc").value
+            for lbl in self._tc_labels:
+                lbl.display = (not val or bool(re.search(val, str(lbl.content))))
+        elif filter_id == "filter-proj":
+            val = self.query_one("#filter-proj").value
+            for lbl in self._proj_labels:
+                lbl.display = (not val or bool(re.search(val, str(lbl.content))))
+        elif filter_id == "filter-build":
+            val = self.query_one("#filter-build").value
+            for lbl in self._build_labels:
+                lbl.display = (not val or bool(re.search(val, str(lbl.content))))
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        # TODO hide or repopulate sections.
-        if event.input.id == "filter-tc":
-            pass
-        elif event.input.id == "filter-proj":
-            pass
-        elif event.input.id == "filter-build":
-            pass
+        # Debounce: wait 300ms after last keypress
+        if hasattr(self, "_filter_timer"):
+            self._filter_timer.stop()
+        self._filter_timer = self.set_timer(0.3, lambda: self._apply_filter(event.input.id))
 
     # TODO Log everything to a file
     # console.tee( Console( file=open( gopts.path / "build_log.log", "w", encoding='utf-8' ), force_terminal=True ),
