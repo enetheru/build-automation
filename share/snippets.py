@@ -16,6 +16,7 @@ def source_git():
     opts:dict = {}
     project:dict = {}
     build:dict = {}
+    source:dict = {}
     # start_script
 
     # MARK: Git-Checkout
@@ -23,6 +24,7 @@ def source_git():
     from git.exc import GitCommandError
     from rich.panel import Panel
     from rich.padding import Padding as rPadding
+    from src.error import handle_error
 
     if config['ok'] and 'source' in opts['build_actions']:
         console.set_window_title(f'Source - {build['name']}')
@@ -52,12 +54,12 @@ def source_git():
 
         pattern = srcdef['ref'] if srcdef['remote'] == 'origin' else f'{srcdef['remote']}/{srcdef['ref']}'
         bare_hash : git.RefLog
+        # FIXME, what is the point if this section?
         try:
             bare_hash = repo.git.log('--format=%h', '-1',  pattern)
             fmt.hu( f'{repo.git.log('--oneline', '-1',  pattern)}' )
         except GitCommandError as e:
-            from src.error import handle_error
-            handle_error(f"git log bare pattern={pattern}", e, opts, critical=True)
+            handle_error(f"git log bare pattern={pattern}", e, opts)
 
         worktree_path = build['source_path']
 
@@ -71,11 +73,15 @@ def source_git():
             fmt.h("Create WorkTree")
             os.chdir( gitdir )
 
-            cmd_args = [ 'add', '--detach', worktree_path.as_posix(), pattern ]
+            cmd_args = [ 'add', worktree_path.as_posix(), pattern ]
             if opts['dry']:
                 print(f'dry-run: git worktree {' '.join(filter(None, cmd_args))}')
             else:
-                repo.git.worktree( *filter(None, cmd_args) )
+                try:
+                    repo.git.worktree( *filter(None, cmd_args) )
+                except GitCommandError as e:
+                    handle_error(f"git worktree {' '.join(cmd_args)}", e, opts, critical=True)
+
 
         if worktree_path.exists():
             worktree = git.Repo( worktree_path )

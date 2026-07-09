@@ -34,3 +34,21 @@ I am going to create wrappers around the git commands that throw.
 
 Also as an aside, my local LLM is unable to perform even the most basic response on a short function inside of clion because it probably does too much.
 it works fine in the web interface. so its probably differences in the tools. I wonder if i can expose clion mcp to the llama interface.
+
+I really worked hard on the fetching code. not sure all the changes were worth the trouble, 
+
+> [!BUG] git log
+> ```
+> ┌─────────────────────────────────── Error ───────────────────────────────────┐
+│ GitCommandError: Cmd('C:\Program Files\Git\bin\git.exe') failed due to:     │
+│ exit code(128)                                                              │
+│   cmdline: C:\Program Files\Git\bin\git.exe log --format=%h -1              │
+│ enetheru/tracy-shared                                                       │
+│   stderr: 'fatal: ambiguous argument 'enetheru/tracy-shared': unknown       │
+│ revision or path not in the working tree.                                   │
+│ Use '--' to separate paths from revisions, like this:                       │
+│ 'git <command> [<revision>...] -- [<file>...]''                             │
+│ git log bare pattern=enetheru/tracy-shared                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+> ```
+

@@ -39,19 +39,16 @@ origin = SimpleNamespace({**vars(git_base), **{
 sources:dict = {
     'origin': origin,
     '4.5': SimpleNamespace({**vars(origin), **{
-        'name':'4.5',
         'ref': '4.5'
     }}),
     '4.6': SimpleNamespace({**vars(origin), **{
-        'name':'4.6',
         'ref': '4.6'
     }}),
     '4.7': SimpleNamespace({**vars(origin), **{
-        'name':'4.7',
         'ref': '4.7'
     }}),
     'libtracy': SimpleNamespace({**vars(origin), **{
-        'name':'libtracy',
+        'remote':'enetheru',
         'url': "https://github.com/enetheru/godot.git/",
         'ref': 'tracy-shared'
     }}),
@@ -124,7 +121,6 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
 
         # buildtool = build.buildtool
         toolchain = build.toolchain
-        src_name = build.source_def.name
 
         name_parts = [
             short_host(),
@@ -134,7 +130,8 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
             godot_platforms[build.platform] if build.platform not in ['android', 'emscripten'] else None,
             build.target,
             build.variant,
-            src_name if src_name != 'origin' else None
+            build.source_def.remote if build.source_def.remote != 'origin' else None,
+            build.source_def.ref
         ]
 
         build.name = '.'.join(filter(None, name_parts))

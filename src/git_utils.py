@@ -282,7 +282,7 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
         #  build configurations
 
         # test the local bare repo to see if it contains the ref
-        ref = f"refs/heads{gitdef.ref}" if gitdef.remote == 'origin' else f"refs/remotes/{gitdef.remote}/{gitdef.ref}"
+        ref = f"refs/heads/{gitdef.ref}" if gitdef.remote == 'origin' else f"refs/remotes/{gitdef.remote}/{gitdef.ref}"
         local_hash = resolve_local_ref(repo, ref)
         if not local_hash:
             fmt.hu(f"local ref not yet available: {ref}")
