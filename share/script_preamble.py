@@ -20,7 +20,7 @@ from rich.panel import Panel
 sys.stdout.reconfigure(encoding='utf-8')
 rich._console = console = Console()
 
-print( f'\\nPATH={os.environ['path'][:100]} ...' )
+print( f'\\nPATH={os.environ['PATH'][:100]} ...' )
 
 stats:dict = {}
 config:dict = { 'ok': True }
