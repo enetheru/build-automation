@@ -50,6 +50,11 @@ sources:dict = {
         'name':'4.7',
         'ref': '4.7'
     }}),
+    'libtracy': SimpleNamespace({**vars(origin), **{
+        'name':'libtracy',
+        'url': "https://github.com/enetheru/godot.git/",
+        'ref': 'tracy-shared'
+    }}),
 }
 
 project = SimpleNamespace({**vars(project_base), **{

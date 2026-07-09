@@ -16,7 +16,8 @@ from src import format as fmt
 from src.ConsoleMultiplex import ConsoleMultiplex
 from src.config import gopts
 from src.generate import generate_build_scripts
-from src.build_utils import fetch_project, process_project, show_statistics, process_toolchains
+from src.build_utils import process_project, show_statistics, process_toolchains
+from src.git_utils import git_fetch_project
 # Src modules (refactored)
 from src.args import parse_args
 from src.config_loader import import_toolchains, import_projects
@@ -165,7 +166,7 @@ def main():
             if 'fetch' in gopts.project_actions:
                 with fmt.Section( 'Fetching Projects' ):
                     for project in projects.values():
-                        fetch_project( gopts, project )
+                        git_fetch_project( gopts, project )
 
     # Generate the build scripts
     # This one is the processing script for the build itself, should be renamed.something like
