@@ -13,7 +13,7 @@ from src.error import handle_error
 import re
 
 import git
-from git import GitCommandError
+from git import GitCommandError, Repo
 
 console = ConsoleMultiplex()
 
@@ -57,15 +57,13 @@ def git_override(opts: SimpleNamespace):
             project.sources['override'] = override_src
             break
 
-#MARK: Fetch
 
+#MARK: Fetch
 def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
     """Handle git fetch/prune/add-remote/ls-remote/rev-parse for project builds/sources."""
     if opts.dry:
         fmt.h("Dry-Run: Skipping Fetch")
         return
-
-    g = git.cmd.Git()
 
     os.chdir(project.path)
 
@@ -96,7 +94,10 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
     checked_list = []
     fetch_list = {}
 
-    # Foreach build?
+    # Accept full SHA1 or common short hashes (4+ hex chars)
+    sha_re = re.compile(r'^[0-9a-f]{4,40}$', re.I)
+
+    # Foreach build config
     for build in project.build_configs.values():
         # derive the final source definition by merging the generated config with the cmdline override.
         gitdef: SimpleNamespace = SimpleNamespace(
@@ -108,54 +109,37 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
 
         # Add the new remote to the bare repo if it doesnt exist, and add it to the list to fetch
         if gitdef.remote not in [remote.name for remote in repo.remotes]:
-            add_remote( opts, repo, gitdef)
+            add_remote( repo, gitdef, opts)
             fetch_list[gitdef.remote] = gitdef.ref
             continue
 
-        # If we are being passed a commit hash, full or short, test that it exists.
-        # FIXME I think this is premature since a repo may not be fetched yet, so it cant be tested.
-
-        # Accept full SHA1 or common short hashes (4+ hex chars)
-        sha_re = re.compile(r'^[0-9a-f]{4,40}$', re.I)
-        if sha_re.match(gitdef.ref):
-            ensure_commit_exists( repo, gitdef.ref, opts)
+        # If we are being passed a commit hash, full or short, continue if it exists.
+        if sha_re.match(gitdef.ref) and resolve_local_ref( repo, gitdef.ref, opts):
+            if opts.verbose:
+                fmt.hu(f"  - Fixed commit [green]{gitdef.ref[:8]}[/green]... available locally ✓")
             continue
 
-        # What are we doing. git ls-remote, search the remote for a ref?
-        try:
-            ls_args = ['--exit-code', gitdef.url, gitdef.ref]
-            if opts.verbose:
-                fmt.h(f"git ls-remote {' '.join(ls_args)}")
-            response = g.ls_remote(ls_args)
-            if not response:
-                fmt.hu(f"git ls-remote returned '{response}'")
-                if getattr(opts, 'gitoverride', False): exit(1)
-                fmt.hu(f"disabling build: '{build.name}'")
-                build.disabled = True
-                continue
-
-            remote_hash: str = response.split()[0]
-            if opts.verbose:
-                fmt.hu(remote_hash)
-        except GitCommandError as e:
-            handle_error(f"git ls-remote --exit-code {gitdef.url} {gitdef.ref}", e, opts)
+        # get the remote hash for the ref we want. or disable the build if it does not exist
+        remote_hash = resolve_remote_ref(gitdef.url, gitdef.ref, opts)
+        if not remote_hash:
+            fmt.hu(f"disabling build: '{build.name}'")
             build.disabled = True
             continue
 
-        cmd_arg = ''
-        try:
-            cmd_arg = gitdef.ref if gitdef.remote == 'origin' else f"{gitdef.remote}/{gitdef.ref}"
-            if opts.verbose:
-                fmt.h(f"git rev-parse {cmd_arg}")
-            local_hash = repo.git.rev_parse(cmd_arg)
-            if opts.verbose:
-                fmt.hu(local_hash)
-        except GitCommandError as e:
-            handle_error(f"git rev-parse local {cmd_arg}", e, opts)
-            local_hash = None
+        # FIXME, i should re-arrange the testing logic so that i can more appropriately disable
+        #  build configurations
 
+        # test the local bare repo to see if it contains the ref
+        ref = gitdef.ref if gitdef.remote == 'origin' else f"{gitdef.remote}/{gitdef.ref}"
+        local_hash = resolve_local_ref(repo, ref, opts)
+        if not local_hash:
+            fmt.hu(f"local ref not yet available: {ref}")
+            fetch_list[gitdef.remote] = gitdef.ref
+            continue
+
+        # if the remote ref, and the local ref are different, we need to fetch.
         if local_hash != remote_hash:
-            fmt.hu('Update Needed')
+            fmt.hu('Local and remote hash difference, update Needed')
             fetch_list[gitdef.remote] = gitdef.ref
 
     fmt.hd()
@@ -168,6 +152,8 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
             repo.git.fetch(*fetch_args)
     fmt.h("[green]Up-To-Date")
 
+
+#MARK: Prune
 def prune_worktrees(opts, repo):
     """
 
@@ -186,7 +172,9 @@ def prune_worktrees(opts, repo):
             table.add_row(parts[0] if len(parts) > 1 else line, parts[-1] if len(parts) > 1 else "")
         console.print(table)
 
-def add_remote(opts, repo, gitdef):
+
+#MARK: AddRemote
+def add_remote(repo:Repo, gitdef, opts):
     """
 
     :param opts:
@@ -200,16 +188,38 @@ def add_remote(opts, repo, gitdef):
     repo.create_remote(gitdef.remote, gitdef.url)
 
 
-def ensure_commit_exists(repo, ref: str, opts):
+#MARK: ResolveRemote
+def resolve_remote_ref(url, ref, opts):
     """
-    Check if a commit (full or abbreviated SHA) exists in the repo.
-    Calls handle_error internally on failure.
-    Returns True if the commit exists, False otherwise.
+    Resolve the remote commit hash for a named ref.
+    Returns the hash if the remote advertises the ref, otherwise None.
     """
+    g = git.cmd.Git()
+    try:
+        ls_args = ['--exit-code', url, ref]
+        if opts.verbose:
+            fmt.h(f"git ls-remote {' '.join(ls_args)}")
+        response = g.ls_remote(ls_args)
+        if not response:
+            fmt.hu(f"git ls-remote returned '{response}'")
+            if getattr(opts, 'gitoverride', False):
+                exit(1)
+            return None
+
+        remote_hash = response.split()[0]
+        if opts.verbose:
+            fmt.hu(remote_hash)
+        return remote_hash
+    except GitCommandError as e:
+        handle_error(f"git ls-remote --exit-code {url} {ref}", e, opts)
+        return None
+
+#MARK: ResolveLocal
+def resolve_local_ref(repo:Repo, ref: str, opts):
     try:
         # --verify is reliable for both full and abbreviated hashes
-        repo.git.rev_parse('--verify', '--quiet', ref)
-        if opts.verbose:
-            fmt.hu(f"  - Fixed commit [green]{ref[:8]}[/green]... available locally ✓")
+        local_hash = repo.git.rev_parse('--verify', '--quiet', ref)
+        return local_hash
     except GitCommandError as e:
-        handle_error(f"git rev-parse fixed ref {ref[:8]}", e, opts)
+        handle_error(f"git rev-parse --verify --quiet {ref[:8]}", e, opts)
+        return None
