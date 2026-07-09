@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """Git utilities for source fetching and overrides."""
 import os
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,6 +17,81 @@ import git
 from git import GitCommandError, Repo
 
 console = ConsoleMultiplex()
+
+# Substrings that indicate a *transient* network failure worth retrying.
+# Matched case-insensitively against the GitCommandError text (stderr + message).
+_TRANSIENT_GIT_ERRORS = (
+    'http 408',
+    'http 500',
+    'http 502',
+    'http 503',
+    'http 504',
+    'broken pipe',
+    'rpc failed',
+    'timed out',
+    'timeout',
+    'connection reset',
+    'connection refused',
+    'could not resolve host',
+    'early eof',
+    'unexpected disconnect',
+    'the remote end hung up',
+)
+
+
+def _is_transient_git_error(exc: GitCommandError) -> bool:
+    """Return True if the GitCommandError looks like a transient network problem."""
+    haystack = ' '.join(filter(None, [
+        str(exc),
+        getattr(exc, 'stderr', '') or '',
+        getattr(exc, 'stdout', '') or '',
+    ])).lower()
+    return any(marker in haystack for marker in _TRANSIENT_GIT_ERRORS)
+
+
+def _git_fetch_with_retry(repo: Repo, fetch_args: list, opts,
+                          max_attempts: int = 4,
+                          initial_delay: float = 3.0,
+                          backoff: float = 2.0):
+    """Run `git fetch` with exponential-backoff retries on transient network errors.
+
+    Args:
+        repo:           gitpython Repo instance.
+        fetch_args:     Positional arguments passed to `repo.git.fetch(*fetch_args)`.
+        opts:           Global opts (used for verbose logging / error routing).
+        max_attempts:   Total attempts before giving up (default 4).
+        initial_delay:  Seconds to wait before the first retry (default 3s).
+        backoff:        Multiplier applied to the delay after each failed attempt.
+
+    Returns:
+        The value returned by `repo.git.fetch` on success.
+
+    Raises:
+        GitCommandError: If all attempts fail, or if a non-transient error occurs.
+    """
+    delay = initial_delay
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return repo.git.fetch(*fetch_args)
+        except GitCommandError as e:
+            if not _is_transient_git_error(e):
+                # Not a network hiccup: fail fast so the real problem is visible.
+                raise
+            if attempt >= max_attempts:
+                fmt.hu(f"[red]git fetch failed after {attempt} attempts[/red]")
+                raise
+            fmt.hu(
+                f"[yellow]transient git error (attempt {attempt}/{max_attempts}): "
+                f"{str(e).splitlines()[0]}[/yellow]"
+            )
+            fmt.hu(f"retrying in {delay:.1f}s ...")
+            try:
+                time.sleep(delay)
+            except KeyboardInterrupt:
+                # Let the user abort a long retry wait cleanly.
+                raise
+            delay *= backoff
+
 
 #MARK: Override
 def git_override(opts: SimpleNamespace):
@@ -148,8 +224,7 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
         fmt.h("Fetching updates:")
         for remote, ref in fetch_list.items():
             fetch_args = ['--verbose', '--progress', '--tags', '--force', remote, '*:*']
-            fmt.hu(f'git fetch {" ".join(fetch_args)}')
-            repo.git.fetch(*fetch_args)
+            _git_fetch_with_retry(repo, fetch_args, opts)
     fmt.h("[green]Up-To-Date")
 
 
@@ -214,12 +289,13 @@ def resolve_remote_ref(url, ref, opts):
         handle_error(f"git ls-remote --exit-code {url} {ref}", e, opts)
         return None
 
+
 #MARK: ResolveLocal
 def resolve_local_ref(repo:Repo, ref: str, opts):
     try:
         # --verify is reliable for both full and abbreviated hashes
-        local_hash = repo.git.rev_parse('--verify', '--quiet', ref)
+        local_hash = repo.git.rev_parse(ref)
         return local_hash
     except GitCommandError as e:
-        handle_error(f"git rev-parse --verify --quiet {ref[:8]}", e, opts)
+        # handle_error(f"git rev-parse {ref[:8]}", e, opts)
         return None
