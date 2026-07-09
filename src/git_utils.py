@@ -6,6 +6,15 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from rich.table import Table
+from rich.progress import (
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    BarColumn,
+    MofNCompleteColumn,
+    TaskProgressColumn,
+    TimeElapsedColumn,
+)
 
 from src import format as fmt
 from src.ConsoleMultiplex import ConsoleMultiplex
@@ -14,28 +23,17 @@ from src.error import handle_error
 import re
 
 import git
-from git import GitCommandError, Repo
+from git import GitCommandError, Repo, RemoteProgress
 
 console = ConsoleMultiplex()
 
 # Substrings that indicate a *transient* network failure worth retrying.
 # Matched case-insensitively against the GitCommandError text (stderr + message).
 _TRANSIENT_GIT_ERRORS = (
-    'http 408',
-    'http 500',
-    'http 502',
-    'http 503',
-    'http 504',
-    'broken pipe',
-    'rpc failed',
-    'timed out',
-    'timeout',
-    'connection reset',
-    'connection refused',
-    'could not resolve host',
-    'early eof',
-    'unexpected disconnect',
-    'the remote end hung up',
+    'http 408', 'http 500', 'http 502', 'http 503', 'http 504',
+    'broken pipe', 'rpc failed', 'timed out', 'timeout',
+    'connection reset', 'connection refused', 'could not resolve host',
+    'early eof', 'unexpected disconnect', 'the remote end hung up',
 )
 
 
@@ -49,33 +47,111 @@ def _is_transient_git_error(exc: GitCommandError) -> bool:
     return any(marker in haystack for marker in _TRANSIENT_GIT_ERRORS)
 
 
-def _git_fetch_with_retry(repo: Repo, fetch_args: list, opts,
+class _RichFetchProgress(RemoteProgress):
+    """Bridge GitPython's RemoteProgress into a rich.progress.Progress display.
+
+    Each git phase (Counting / Compressing / Writing / Receiving / Resolving /
+    Finding sources / Checking out) becomes its own task in the shared
+    `Progress` instance, so users see a stack of live progress bars.
+
+    Non-progress stderr lines emitted by git (e.g. "From <url>",
+    "* [new branch] …", warnings) are forwarded via `progress.console.log(...)`.
+    """
+
+    _OP_NAMES = {
+        RemoteProgress.COUNTING:        'Counting objects',
+        RemoteProgress.COMPRESSING:     'Compressing objects',
+        RemoteProgress.WRITING:         'Writing objects',
+        RemoteProgress.RECEIVING:       'Receiving objects',
+        RemoteProgress.RESOLVING:       'Resolving deltas',
+        RemoteProgress.FINDING_SOURCES: 'Finding sources',
+        RemoteProgress.CHECKING_OUT:    'Checking out',
+    }
+
+    def __init__(self, progress: Progress, label: str = ''):
+        super().__init__()
+        self._progress = progress
+        self._label = label
+        # Maps a stage id -> Rich TaskID
+        self._tasks: dict[int, int] = {}
+
+    def _task_for(self, stage: int, max_count) -> int:
+        task_id = self._tasks.get(stage)
+        desc = self._OP_NAMES.get(stage, f'op[{stage}]')
+        if self._label:
+            desc = f'[cyan]{self._label}[/cyan] {desc}'
+        if task_id is None:
+            task_id = self._progress.add_task(
+                description=desc,
+                total=max_count if max_count else None,
+            )
+            self._tasks[stage] = task_id
+        elif max_count and self._progress.tasks[task_id].total != max_count:
+            self._progress.update(task_id, total=max_count)
+        return task_id
+
+    def update(self, op_code, cur_count, max_count=None, message=''):
+        stage = op_code & RemoteProgress.OP_MASK
+        task_id = self._task_for(stage, max_count)
+
+        self._progress.update(
+            task_id,
+            completed=cur_count,
+            total=max_count if max_count else None,
+        )
+
+        if op_code & RemoteProgress.END:
+            total = self._progress.tasks[task_id].total
+            if total is not None:
+                self._progress.update(task_id, completed=total)
+
+    def line_dropped(self, line: str) -> None:
+        text = line.rstrip()
+        if text:
+            self._progress.console.log(text)
+
+
+def _make_fetch_progress() -> Progress:
+    """Build a Progress display tuned for git fetch phases, bound to our multiplex console."""
+    return Progress(
+        SpinnerColumn(),
+        TextColumn('[progress.description]{task.description}'),
+        BarColumn(bar_width=None),
+        MofNCompleteColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+        expand=True,
+    )
+
+
+def _git_fetch_with_retry(repo: Repo, remote_name: str, refspec, opts,
                           max_attempts: int = 4,
                           initial_delay: float = 3.0,
                           backoff: float = 2.0):
-    """Run `git fetch` with exponential-backoff retries on transient network errors.
+    """Run a fetch with a live Rich progress display and retry on transient errors.
 
-    Args:
-        repo:           gitpython Repo instance.
-        fetch_args:     Positional arguments passed to `repo.git.fetch(*fetch_args)`.
-        opts:           Global opts (used for verbose logging / error routing).
-        max_attempts:   Total attempts before giving up (default 4).
-        initial_delay:  Seconds to wait before the first retry (default 3s).
-        backoff:        Multiplier applied to the delay after each failed attempt.
-
-    Returns:
-        The value returned by `repo.git.fetch` on success.
-
-    Raises:
-        GitCommandError: If all attempts fail, or if a non-transient error occurs.
+    If `refspec` is None or empty, the remote's *configured* fetch refspec is
+    used — this is the desired default so that branches land under
+    refs/remotes/<name>/* rather than clobbering refs/*.
     """
+    remote = repo.remote(remote_name)
     delay = initial_delay
+
     for attempt in range(1, max_attempts + 1):
         try:
-            return repo.git.fetch(*fetch_args)
+            with _make_fetch_progress() as progress:
+                label = remote_name if attempt == 1 else f'{remote_name} (retry {attempt - 1})'
+                bridge = _RichFetchProgress(progress, label=label)
+                fetch_kwargs = dict(progress=bridge, tags=True, force=True, verbose=True)
+                # Only pass refspec if the caller supplied one; otherwise use
+                # the remote's configured refspec (much better default).
+                if refspec:
+                    fetch_kwargs['refspec'] = refspec
+                return remote.fetch(**fetch_kwargs)
         except GitCommandError as e:
             if not _is_transient_git_error(e):
-                # Not a network hiccup: fail fast so the real problem is visible.
                 raise
             if attempt >= max_attempts:
                 fmt.hu(f"[red]git fetch failed after {attempt} attempts[/red]")
@@ -88,9 +164,9 @@ def _git_fetch_with_retry(repo: Repo, fetch_args: list, opts,
             try:
                 time.sleep(delay)
             except KeyboardInterrupt:
-                # Let the user abort a long retry wait cleanly.
                 raise
             delay *= backoff
+    return None
 
 
 #MARK: Override
@@ -190,7 +266,7 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
             continue
 
         # If we are being passed a commit hash, full or short, continue if it exists.
-        if sha_re.match(gitdef.ref) and resolve_local_ref( repo, gitdef.ref, opts):
+        if sha_re.match(gitdef.ref) and resolve_local_ref(repo, gitdef.ref):
             if opts.verbose:
                 fmt.hu(f"  - Fixed commit [green]{gitdef.ref[:8]}[/green]... available locally ✓")
             continue
@@ -206,8 +282,8 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
         #  build configurations
 
         # test the local bare repo to see if it contains the ref
-        ref = gitdef.ref if gitdef.remote == 'origin' else f"{gitdef.remote}/{gitdef.ref}"
-        local_hash = resolve_local_ref(repo, ref, opts)
+        ref = f"refs/heads{gitdef.ref}" if gitdef.remote == 'origin' else f"refs/remotes/{gitdef.remote}/{gitdef.ref}"
+        local_hash = resolve_local_ref(repo, ref)
         if not local_hash:
             fmt.hu(f"local ref not yet available: {ref}")
             fetch_list[gitdef.remote] = gitdef.ref
@@ -223,8 +299,21 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
     if len(fetch_list):
         fmt.h("Fetching updates:")
         for remote, ref in fetch_list.items():
-            fetch_args = ['--verbose', '--progress', '--tags', '--force', remote, '*:*']
-            _git_fetch_with_retry(repo, fetch_args, opts)
+            # Passing refspec=None means "use the remote's configured
+            # fetch refspec" — which we ensured is
+            # +refs/heads/*:refs/remotes/<remote>/* for every remote.
+            fmt.hu(f'git fetch --progress --tags --force {remote}')
+            try:
+                if remote == "origin":
+                    refspec = f"+refs/heads/*:refs/heads/*"
+                else:
+                    refspec = None
+                _git_fetch_with_retry(repo, remote, refspec, opts)
+            except GitCommandError as e:
+                handle_error(f"git fetch {remote}", e, opts)
+
+            # fetch_args = ['--verbose', '--progress', '--tags', '--force', remote, '*:*']
+            # _git_fetch_with_retry(repo, remote, ref, opts)
     fmt.h("[green]Up-To-Date")
 
 
@@ -249,18 +338,29 @@ def prune_worktrees(opts, repo):
 
 
 #MARK: AddRemote
-def add_remote(repo:Repo, gitdef, opts):
-    """
+def add_remote(repo: Repo, gitdef, opts):
+    """Create a remote and configure it to fetch branches into refs/remotes/<name>/*.
 
-    :param opts:
-    :param repo:
-    :param gitdef:
+    Without an explicit fetch refspec, `git fetch <remote>` on a freshly-added
+    remote is a no-op (nothing is mapped locally). We add the standard branch
+    refspec so that:
+        - `git fetch <name>`         populates refs/remotes/<name>/<branch>
+        - `resolve_local_ref(repo, f"{name}/{branch}")` succeeds
     """
     fmt.h('adding remote:')
     if opts.verbose:
         fmt.hu(gitdef.remote)
         fmt.hu(gitdef.url)
-    repo.create_remote(gitdef.remote, gitdef.url)
+
+    remote = repo.create_remote(gitdef.remote, gitdef.url)
+
+    # Configure the standard branch-tracking refspec.
+    # For a bare repo, refs/remotes/<name>/* is still a perfectly valid
+    # storage location — it's just a ref namespace.
+    with remote.config_writer as cw:
+        cw.set('fetch', f'+refs/heads/*:refs/remotes/{gitdef.remote}/*')
+        # Also grab tags automatically (equivalent to `git remote add --tags`)
+        cw.set('tagopt', '--tags')
 
 
 #MARK: ResolveRemote
@@ -291,11 +391,11 @@ def resolve_remote_ref(url, ref, opts):
 
 
 #MARK: ResolveLocal
-def resolve_local_ref(repo:Repo, ref: str, opts):
+def resolve_local_ref(repo:Repo, ref: str):
     try:
         # --verify is reliable for both full and abbreviated hashes
         local_hash = repo.git.rev_parse(ref)
         return local_hash
-    except GitCommandError as e:
+    except GitCommandError:
         # handle_error(f"git rev-parse {ref[:8]}", e, opts)
         return None
