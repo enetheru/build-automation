@@ -188,6 +188,7 @@ def generate_build_scripts( opts:SimpleNamespace ):
                 write_preamble(script)
                 write_section( script, opts, 'opts' )
                 write_section( script, project, 'project' )
+                script.write("os.chdir(str(project['path']))\n\n")
                 write_section( script, build, 'build' )
                 write_section( script, build.source_def, 'source' )
                 write_section( script, build.toolchain, 'toolchain' )

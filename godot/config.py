@@ -50,7 +50,7 @@ sources:dict = {
     'libtracy': SimpleNamespace({**vars(origin), **{
         'remote':'enetheru',
         'url': "https://github.com/enetheru/godot.git/",
-        'ref': 'tracy-shared'
+        'ref': 'tracy-shared',
     }}),
 }
 
@@ -130,8 +130,8 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
             godot_platforms[build.platform] if build.platform not in ['android', 'emscripten'] else None,
             build.target,
             build.variant,
-            build.source_def.remote if build.source_def.remote != 'origin' else None,
-            build.source_def.ref
+            # build.source_def.remote if build.source_def.remote != 'origin' else None,
+            # build.source_def.ref
         ]
 
         build.name = '.'.join(filter(None, name_parts))
@@ -252,9 +252,9 @@ def build_scons():
                 raise fnf
 
             # Use a project wide build cache
-            scons_cache = project['path'] / 'scons_cache'
+            scons_cache = Path("D:/godot/scons_cache")
             scons['build_vars'].append(f'cache_path={scons_cache.as_posix()}')
-            scons['build_vars'].append('cache_limit=48')
+            scons['build_vars'].append('cache_limit=100')
 
             jobs = opts["jobs"]
             cmd_chunks = [
@@ -454,7 +454,7 @@ def configure_scons( config:SimpleNamespace ) -> bool:
 
         case "msys2-ucrt64" | "msys2-mingw32" | "msys2-mingw64":
             scons.build_vars.append("use_mingw=yes")
-            return False
+            # return False
             # ModuleNotFoundError: No module named 'rich'
             #
             # pip install rich
@@ -589,13 +589,35 @@ def tracy_script():
     #[=================================[ Tracy ]=================================]
     os.environ["TRACY_NO_DBGHELP_INIT_LOAD"] = "1"
 
+def libtracy_config( cfg:SimpleNamespace ) -> bool:
+    """
+
+    :param cfg:
+    :return:
+    """
+    if cfg.source_def.ref != 'tracy-shared':
+        return False
+    cfg.buildtool.build_vars += [
+        # "--debug=explain", # This is entirely useless.
+        # "--tree=derived", # This doesnt have any effect that I can see.
+        "compiledb=yes",
+        "profiler=tracy",
+        "profiler_path=C:/git/wolfpld/tracy",
+        # "profiler_sample_callstack=yes",
+        # "profiler_track_memory=yes",
+        'extra_suffix=tracy',
+        'tracy_as_shared=yes',
+    ]
+    return True
+
 
 variations = {
     'default': lambda cfg: True,
     'double': config_double,
     'dev_build': config_dev,
     'minimum': config_minim,
-    'tracy': config_tracy
+    'tracy': config_tracy,
+    'libtracy': libtracy_config
 }
 
 

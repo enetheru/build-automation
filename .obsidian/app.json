@@ -1,3 +1,11 @@
 {
-  "readableLineLength": false
+  "readableLineLength": false,
+  "userIgnoreFilters": [
+    "godot/",
+    "gdflatbuffers/",
+    "godot-cpp/",
+    "godot-cpp-test/",
+    "orchestrator/",
+    "gdflatbuffers/"
+  ]
 }

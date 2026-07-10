@@ -25,6 +25,7 @@ def source_git():
     from rich.panel import Panel
     from rich.padding import Padding as rPadding
     from src.error import handle_error
+    import pathlib
 
     if config['ok'] and 'source' in opts['build_actions']:
         console.set_window_title(f'Source - {build['name']}')
@@ -34,12 +35,12 @@ def source_git():
         # merge definitions project < build < opts
         srcdef = project.get('srcdef', {}) | source | opts.get('srcdef', {})
 
-        # # After you have srcdef
-        # if hasattr(srcdef, 'resolved_commit'):
-        #     short = srcdef.resolved_commit[:7]
-        #     if not build.source_dir.endswith(short):
-        #         build.source_dir += f".{short}"
-        #     build.source_path = project.path / build.source_dir
+        # After you have srcdef
+        if hasattr(srcdef, 'resolved_commit'):
+            short = srcdef.resolved_commit[:7]
+            if not build.source_dir.endswith(short):
+                build.source_dir += f".{short}"
+            build.source_path = project.path / build.source_dir
 
         # Verify we have cloned the repo.
         gitdir = Path(srcdef.get('gitdir', 'git'))
