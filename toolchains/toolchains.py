@@ -467,13 +467,23 @@ darwin_toolchains:list = []
 # │ /_/ \_\ .__/ .__/_\___|\___|_\__,_|_||_\__, | │
 # │       |_|  |_|                         |___/  │
 # ╰───────────────────────────────────────────────╯
-darwin_toolchains.append( SimpleNamespace({**vars(toolchain_base), **{
-    'name':"appleclang",
-    'desc':"Default toolchain on MacOS",
-    'arch':['x86_64','arm64'],
-    'platform':['darwin','ios'],
-    # Use clang -print-target-triple to get the host triple
-}}))
+def appleclang_toolchain() -> SimpleNamespace:
+    """Create Apple Clang toolchain config for native macOS/iOS targets.
+
+    Returns:
+        SimpleNamespace: appleclang toolchain with arch/platform expand.
+    """
+    toolchain = SimpleNamespace({**vars(toolchain_base), **{
+        'name':"appleclang",
+        'desc':"Default toolchain on MacOS",
+        'arch_list':['x86_64','arm64'],
+        'platform_list':['darwin','ios'],
+        # Use clang -print-target-triple to get the host triple
+    }})
+    setattr( toolchain, 'expand', MethodType(generic_toolchain_expand, toolchain ) )
+    return toolchain
+
+darwin_toolchains.append( appleclang_toolchain() )
 
 # MARK: Emscripten
 # ╭────────────────────────────────────────────╮
@@ -538,18 +548,28 @@ def darwin_emscripten_cmake( build:SimpleNamespace ):
     cmake = build.buildtool
     cmake.toolchain = '/Users/enetheru/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
 
-darwin_toolchains.append( SimpleNamespace({**vars(toolchain_base), **{
-    'name':'emscripten',
-    'desc':'[Emscripten](https://emscripten.org/)',
-    'path':Path('/Users/enetheru/emsdk'),
-    'version':'3.1.64',
-    'verbs':['update', 'script'],
-    'update':emscripten_update,
-    'script_parts':[darwin_emscripten_script],
-    "arch":['wasm32'], #wasm64
-    'platform':['emscripten'],
-    'cmake':darwin_emscripten_cmake
-}}))
+def darwin_emscripten_toolchain() -> SimpleNamespace:
+    """Create Emscripten toolchain config for macOS hosts.
+
+    Returns:
+        SimpleNamespace: emscripten toolchain with arch/platform expand.
+    """
+    toolchain = SimpleNamespace({**vars(toolchain_base), **{
+        'name':'emscripten',
+        'desc':'[Emscripten](https://emscripten.org/)',
+        'path':Path('/Users/enetheru/emsdk'),
+        'version':'3.1.64',
+        'verbs':['update', 'script'],
+        'update':emscripten_update,
+        'script_parts':[darwin_emscripten_script],
+        'arch_list':['wasm32'], #wasm64
+        'platform_list':['emscripten'],
+        'cmake':darwin_emscripten_cmake
+    }})
+    setattr( toolchain, 'expand', MethodType(generic_toolchain_expand, toolchain ) )
+    return toolchain
+
+darwin_toolchains.append( darwin_emscripten_toolchain() )
 
 # MARK: Select
 # ╭────────────────────────────────────────────────────────────────────────────╮

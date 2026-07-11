@@ -94,19 +94,12 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         'source_def',
         sources.values() )
 
-    # Expand toolchains
+    # Expand toolchains (each toolchain expand sets arch × platform)
     builds:list[SimpleNamespace] = expand_func(
         builds,
         expand_attr_list,
         'toolchain',
         gopts.toolchains.values() )
-
-    # Expand platforms
-    builds:list[SimpleNamespace] = expand_func(
-        builds,
-        expand_attr_list,
-        'platform',
-        godot_platforms.keys() )
 
     # Expand build tools
     builds:list[SimpleNamespace] = expand_func(
