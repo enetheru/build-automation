@@ -144,7 +144,11 @@ def _git_fetch_with_retry(repo: Repo, remote_name: str, refspec, opts,
             with _make_fetch_progress() as progress:
                 label = remote_name if attempt == 1 else f'{remote_name} (retry {attempt - 1})'
                 bridge = _RichFetchProgress(progress, label=label)
-                fetch_kwargs = dict(progress=bridge, tags=True, force=True, verbose=True)
+                # tags=False: incremental branch updates do not need to re-walk
+                # every tag (Godot has hundreds); that flood of stderr lines was
+                # also a major source of "stuck in a thread" feel under Rich.
+                # Initial clone still uses tags=True.
+                fetch_kwargs = dict(progress=bridge, tags=False, force=True, verbose=True)
                 # Only pass refspec if the caller supplied one; otherwise use
                 # the remote's configured refspec (much better default).
                 if refspec:
@@ -243,26 +247,26 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
     # update
     fmt.h("Looking for Updates")
     if opts.verbose: fmt.hu()
-    checked_list = []
-    fetch_list = {}
+
+    # remote name -> set of branch names that need a fetch
+    fetch_list: dict[str, set[str]] = {}
+    # cache remote hashes so we only ls-remote once per (url, ref)
+    remote_hash_cache: dict[tuple[str, str], str | None] = {}
 
     # Accept full SHA1 or common short hashes (4+ hex chars)
     sha_re = re.compile(r'^[0-9a-f]{4,40}$', re.I)
 
-    # Foreach build config
+    # Walk every build so each (remote, ref) is evaluated — not just the first
+    # build that happens to use a given remote.
     for build in project.build_configs.values():
         # derive the final source definition by merging the generated config with the cmdline override.
         gitdef: SimpleNamespace = SimpleNamespace(
             {**vars(build.source_def), **vars(getattr(opts, 'srcdef', SimpleNamespace()))})
 
-        # skip remotes we have already checked, or add it to the checked list.
-        if gitdef.remote in checked_list: continue
-        checked_list.append(gitdef.remote)
-
-        # Add the new remote to the bare repo if it doesnt exist, and add it to the list to fetch
+        # Add the new remote to the bare repo if it doesnt exist, and queue a fetch
         if gitdef.remote not in [remote.name for remote in repo.remotes]:
-            add_remote( repo, gitdef, opts)
-            fetch_list[gitdef.remote] = gitdef.ref
+            add_remote(repo, gitdef, opts)
+            fetch_list.setdefault(gitdef.remote, set()).add(gitdef.ref)
             continue
 
         # If we are being passed a commit hash, full or short, continue if it exists.
@@ -272,7 +276,10 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
             continue
 
         # get the remote hash for the ref we want. or disable the build if it does not exist
-        remote_hash = resolve_remote_ref(gitdef.url, gitdef.ref, opts)
+        cache_key = (gitdef.url, gitdef.ref)
+        if cache_key not in remote_hash_cache:
+            remote_hash_cache[cache_key] = resolve_remote_ref(gitdef.url, gitdef.ref, opts)
+        remote_hash = remote_hash_cache[cache_key]
         if not remote_hash:
             fmt.hu(f"disabling build: '{build.name}'")
             build.disabled = True
@@ -281,39 +288,44 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
         # FIXME, i should re-arrange the testing logic so that i can more appropriately disable
         #  build configurations
 
-        # test the local bare repo to see if it contains the ref
-        ref = f"refs/heads/{gitdef.ref}" if gitdef.remote == 'origin' else f"refs/remotes/{gitdef.remote}/{gitdef.ref}"
-        local_hash = resolve_local_ref(repo, ref)
+        # Local tracking refs live under refs/remotes/<remote>/* (configured
+        # fetch refspec). Bare clones of origin also keep refs/heads/* —
+        # resolve_local_tracking_ref tries both. Looking only at refs/heads/
+        # for origin falsely reported "not available" and triggered a full
+        # +refs/heads/*:refs/heads/* fetch of every Godot branch (hangs for a
+        # long time in GitPython's output-pump thread).
+        local_hash = resolve_local_tracking_ref(repo, gitdef.remote, gitdef.ref)
         if not local_hash:
-            fmt.hu(f"local ref not yet available: {ref}")
-            fetch_list[gitdef.remote] = gitdef.ref
+            fmt.hu(f"local ref not yet available: {gitdef.remote}/{gitdef.ref}")
+            fetch_list.setdefault(gitdef.remote, set()).add(gitdef.ref)
             continue
 
         # if the remote ref, and the local ref are different, we need to fetch.
         if local_hash != remote_hash:
-            fmt.hu('Local and remote hash difference, update Needed')
-            fetch_list[gitdef.remote] = gitdef.ref
+            fmt.hu(
+                f"Local and remote hash difference for "
+                f"{gitdef.remote}/{gitdef.ref}, update needed"
+            )
+            fetch_list.setdefault(gitdef.remote, set()).add(gitdef.ref)
 
     fmt.hd()
 
-    if len(fetch_list):
+    if fetch_list:
         fmt.h("Fetching updates:")
-        for remote, ref in fetch_list.items():
-            # Passing refspec=None means "use the remote's configured
-            # fetch refspec" — which we ensured is
-            # +refs/heads/*:refs/remotes/<remote>/* for every remote.
-            fmt.hu(f'git fetch --progress --tags --force {remote}')
+        for remote, refs in fetch_list.items():
+            # Fetch only the branches we need into the remote-tracking
+            # namespace (matches add_remote / bare-clone fetch config).
+            # Avoids the previous origin special-case that pulled every
+            # branch + all tags into refs/heads/* on a multi-GB repo.
+            refspecs = [
+                f"+refs/heads/{ref}:refs/remotes/{remote}/{ref}"
+                for ref in sorted(refs)
+            ]
+            fmt.hu(f'git fetch --progress --force {remote} {" ".join(refspecs)}')
             try:
-                if remote == "origin":
-                    refspec = f"+refs/heads/*:refs/heads/*"
-                else:
-                    refspec = None
-                _git_fetch_with_retry(repo, remote, refspec, opts)
+                _git_fetch_with_retry(repo, remote, refspecs, opts)
             except GitCommandError as e:
                 handle_error(f"git fetch {remote}", e, opts)
-
-            # fetch_args = ['--verbose', '--progress', '--tags', '--force', remote, '*:*']
-            # _git_fetch_with_retry(repo, remote, ref, opts)
     fmt.h("[green]Up-To-Date")
 
 
@@ -399,3 +411,28 @@ def resolve_local_ref(repo:Repo, ref: str):
     except GitCommandError:
         # handle_error(f"git rev-parse {ref[:8]}", e, opts)
         return None
+
+
+def _local_tracking_candidates(remote: str, ref: str) -> list[str]:
+    """Possible local names for a remote branch, ordered by preference.
+
+    Fetch refspecs (see add_remote / bare-clone defaults) store tracking
+    branches under ``refs/remotes/<remote>/<ref>``.  A bare clone of origin
+    also places branches under ``refs/heads/<ref>``.
+    """
+    candidates = [
+        f"refs/remotes/{remote}/{ref}",
+        f"{remote}/{ref}",
+    ]
+    if remote == "origin":
+        candidates.extend([f"refs/heads/{ref}", ref])
+    return candidates
+
+
+def resolve_local_tracking_ref(repo: Repo, remote: str, ref: str):
+    """Resolve a remote branch to a local commit hash, trying known namespaces."""
+    for candidate in _local_tracking_candidates(remote, ref):
+        local_hash = resolve_local_ref(repo, candidate)
+        if local_hash:
+            return local_hash
+    return None

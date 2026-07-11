@@ -53,7 +53,27 @@ def source_git():
         repo = git.Repo(gitdir)
         fmt.h(f'git-dir: {gitdir.as_posix()}')
 
-        pattern = srcdef['ref'] if srcdef['remote'] == 'origin' else f'{srcdef['remote']}/{srcdef['ref']}'
+        # Prefer remote-tracking names (refs/remotes/<remote>/<ref>). Origin
+        # bare clones may only have refs/heads/<ref> until the first fetch.
+        pattern = srcdef.get('resolved_commit')
+        if not pattern:
+            remote = srcdef['remote']
+            ref = srcdef['ref']
+            candidates = [
+                f'{remote}/{ref}',
+                f'refs/remotes/{remote}/{ref}',
+            ]
+            if remote == 'origin':
+                candidates.extend([f'refs/heads/{ref}', ref])
+            pattern = candidates[0]
+            for candidate in candidates:
+                try:
+                    repo.git.rev_parse('--verify', candidate)
+                    pattern = candidate
+                    break
+                except GitCommandError:
+                    continue
+
         bare_hash : git.RefLog
         # FIXME, what is the point if this section?
         try:
