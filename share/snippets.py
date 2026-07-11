@@ -78,14 +78,13 @@ def source_git():
         # FIXME, what is the point if this section?
         try:
             bare_hash = repo.git.log('--format=%h', '-1',  pattern)
-            fmt.hu( f'{repo.git.log('--oneline', '-1',  pattern)}' )
         except GitCommandError as e:
             handle_error(f"git log bare pattern={pattern}", e, opts)
 
         worktree_path = build['source_path']
 
         if not worktree_path.exists():
-            # Perhaps we deleted the worktree folder, in which case prune it
+            # Perhaps we deleted the worktree folder, in which case prune it from the repo
             cmd_args = [ 'prune',
                 '--verbose' if opts['verbose'] else None,
                 '--dry-run' if opts['dry'] else None ]
@@ -96,36 +95,31 @@ def source_git():
 
             cmd_args = [ 'add', worktree_path.as_posix(), pattern ]
             if opts['dry']:
-                print(f'dry-run: git worktree {' '.join(filter(None, cmd_args))}')
+                fmt.hu(f'dry-run: git worktree {' '.join(filter(None, cmd_args))}')
             else:
                 try:
                     repo.git.worktree( *filter(None, cmd_args) )
                 except GitCommandError as e:
                     handle_error(f"git worktree {' '.join(cmd_args)}", e, opts, critical=True)
 
-
-        if worktree_path.exists():
-            worktree = git.Repo( worktree_path )
-            fmt.h(f'worktree: {worktree_path.as_posix()}')
-
-            worktree_hash = worktree.git.log('--format=%h', '-1')
-            fmt.hu( f'{worktree.git.log('--oneline', '-1')}' )
-
-            if bare_hash != worktree_hash:
-                fmt.h("Updating WorkTree")
-                cmd_args = [ '--force', '--detach', pattern ]
-                if opts['dry']:
-                    print(f'dry-run: git checkout {' '.join(filter(None, cmd_args))}')
-                else:
-                    worktree.git.checkout( *filter(None, cmd_args) )
+        fmt.h("WorkTree")
+        fmt.hu(f'worktree path: {worktree_path.as_posix()}')
+        worktree = git.Repo( worktree_path )
+        worktree_hash = worktree.git.log('--format=%h', '-1')
+        if bare_hash != worktree_hash:
+            fmt.hu("Updating WorkTree")
+            cmd_args = [ '--force', '--detach', pattern ]
+            if opts['dry']:
+                print(f'dry-run: git checkout {' '.join(filter(None, cmd_args))}')
             else:
-                fmt.h("WorkTree is Up-to-Date")
+                worktree.git.checkout( *filter(None, cmd_args) )
+        else:
+            fmt.hu("WorkTree is Up-to-Date")
 
-
-            console.print( rPadding(
-                Panel( worktree.git.log( '-1'),  expand=False, title=pattern, title_align='left', width=120 ),
-                (0,0,0,fmt.pad.sizeu()) )
-            )
+        console.print( rPadding(
+            Panel( worktree.git.log( '-1'),  expand=False, title=pattern, title_align='left', width=120 ),
+            (0,0,0,fmt.pad.sizeu()) )
+        )
 
         section.end()
         config['ok'] = True
