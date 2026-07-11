@@ -10,6 +10,7 @@ The module also includes utilities to integrate with build tools, such as cmake,
 building and compiling code for different platforms and architectures.
 """
 import itertools
+import platform
 import shlex
 import subprocess
 from copy import deepcopy
@@ -37,10 +38,11 @@ def generic_toolchain_expand( self:SimpleNamespace, build:SimpleNamespace ) -> l
     """
     configs_out:list = []
 
-    for arch, platform in itertools.product(self.arch_list, self.platform_list):
+    for target_arch, target_platform in itertools.product(self.arch_list, self.platform_list):
         tc = deepcopy(self)
-        setattr(tc, 'target_platform', platform )
-        setattr(tc, 'target_arch', arch )
+        setattr(tc, 'host_arch', platform.machine() )
+        setattr(tc, 'target_platform', target_platform )
+        setattr(tc, 'target_arch', target_arch )
 
         build = deepcopy(build)
         setattr(build, 'toolchain', tc )

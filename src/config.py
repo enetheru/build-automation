@@ -224,7 +224,8 @@ cmake_base = SimpleNamespace({**vars(buildtool_base), **{
 scons_base = SimpleNamespace({**vars(buildtool_base), **{
     'name'          :'scons',
     'verbs'         :['build', 'clean'],
-    'build_vars'    :list[str]()
+    'build_vars'    :list[str](),
+    'cache_limit'   :32
 }})
 
 # MARK: SourceDef

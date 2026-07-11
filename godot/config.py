@@ -3,6 +3,7 @@ Configuration settings and build definitions for the Godot project.
 """
 
 import copy
+import pathlib
 
 from src.config import gopts, project_base, git_base, scons_base, godot_platforms, godot_arch
 from src.expand_config import expand_func, short_host, expand_attr_list
@@ -242,14 +243,6 @@ def build_scons():
     #[=================================[ Build ]=================================]
     scons:dict = buildtool
 
-
-# macos things
-# $ scons -j 7 target=template_release extra_suffix=min compiledb=yes debug_symbols=yes separate_debug_symbols=yes platform=macos arch=x86_64 cache_path=/Users/enetheru/build/godot/scons_cache cache_limit=48
-# Building for macOS 10.13+.
-# WARNING: Target architecture 'x86_64' does not support the Metal rendering driver
-# ERROR: MoltenVK SDK installation directory not found, use 'vulkan_sdk_path' SCons parameter to specify SDK path.
-
-
     if config['ok'] and 'build' in build['verbs'] and 'build' in opts['build_actions']:
         console.set_window_title(f'Build - {build['name']}')
 
@@ -259,9 +252,10 @@ def build_scons():
                 fnf.add_note( f'Missing Folder {scons['build_dir']}' )
                 raise fnf
 
-            # Use a project wide build cache
-            scons['build_vars'].append(f'cache_path={Path( scons["cache_path"] ).as_posix()}')
-            scons['build_vars'].append('cache_limit=100')
+            # use a cache if paths exist
+            if pathlib.Path(scons['cache_path']).exists():
+                scons['build_vars'].append(f'cache_path={Path( scons["cache_path"] ).as_posix()}')
+                scons['build_vars'].append(f'cache_limit={scons["cache_limit"]}')
 
             jobs = opts["jobs"]
             cmd_chunks = [
@@ -389,32 +383,39 @@ def configure_scons( config:SimpleNamespace ) -> bool:
     config.script_parts +=  [check_scons, clean_scons, build_scons]
 
     tc = config.toolchain
-    arch = godot_arch[tc.target_arch]
-    platform = godot_platforms[tc.target_platform]
-
     scons = config.buildtool
     scons.build_dir = ''
+
+    # == Build Cache ==
+    match tc.host:
+        case 'Windows':
+            setattr(scons, 'cache_path', Path("D:/godot/scons_cache"))
+            setattr(scons, 'cache_limit', 100)
+        case 'Darwin':
+            setattr(scons, 'cache_path', Path("/Volumes/Cache/godot/scons_cache"))
+
     scons.build_vars += [
         "compiledb=yes",
         "debug_symbols=yes",
         "separate_debug_symbols=yes",
-        f"platform={platform}",
-        f"arch={arch}",
+        f"platform={godot_platforms[tc.target_platform]}",
+        f"arch={godot_arch[tc.target_arch]}",
     ]
 
-    if platform == 'windows':
-        scons.build_vars.append('winrt=no')
-        scons.build_vars.append('accesskit=no')
-        scons.build_vars.append('d3d12=no')
-        scons.build_vars.append('angle=no')
-    elif platform == 'macos':
-        scons.build_vars.append('accesskit=no')
-        scons.build_vars.append('angle=no')
-
-    if tc.host == "Darwin":
-        scons.cache_path = Path("/Volumes/Cache/godot/scons_cache")
-    elif tc.host == "Windows":
-        scons.cache_path = Path("D:/godot/scons_cache")
+    match godot_platforms[tc.target_platform]:
+        case 'windows':
+            scons.build_vars.append('winrt=no')
+            scons.build_vars.append('accesskit=no')
+            scons.build_vars.append('d3d12=no')
+            scons.build_vars.append('angle=no')
+        case 'macos':
+            scons.build_vars.append('accesskit=no')
+            scons.build_vars.append('angle=no')
+        case 'ios':
+            # TODO consider supporting simulator builds
+            scons.build_vars.append('generate_bundled=yes')
+            if tc.host_arch != tc.target_arch:
+                return False
 
     match tc.name:
         case 'msvc' | 'appleclang':
