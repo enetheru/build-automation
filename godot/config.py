@@ -411,6 +411,7 @@ def configure_scons( config:SimpleNamespace ) -> bool:
         case 'macos':
             scons.build_vars.append('accesskit=no')
             scons.build_vars.append('angle=no')
+            scons.build_vars.append('generate_bundle=yes')
         case 'ios':
             # TODO consider supporting simulator builds
             scons.build_vars.append('generate_bundled=yes')
