@@ -403,9 +403,6 @@ def configure_scons( config:SimpleNamespace ) -> bool:
         scons.build_vars.append('d3d12=no')
         scons.build_vars.append('angle=no')
 
-# toolchain = {
-#     'name':'msys2-mingw32',
-
     match tc.name:
         case 'msvc' | 'appleclang':
             pass
@@ -449,50 +446,9 @@ def configure_scons( config:SimpleNamespace ) -> bool:
         case "msys2-clang64":
             scons.build_vars.append("use_mingw=yes")
             scons.build_vars.append("use_llvm=yes")
-            return False
-        # It appeasr that all of my msys2 builds are broken.
 
         case "msys2-ucrt64" | "msys2-mingw32" | "msys2-mingw64":
             scons.build_vars.append("use_mingw=yes")
-            # return False
-            # ModuleNotFoundError: No module named 'rich'
-            #
-            # pip install rich
-            # error: externally-managed-environment
-            #
-            # × This environment is externally managed
-            # ╰─> To install Python packages system-wide, try 'pacman -S
-            # $MINGW_PACKAGE_PREFIX-python-xyz', where xyz is the package you
-            # are trying to install.
-            #
-            # If you wish to install a non-MSYS2-packaged Python package,
-            # create a virtual environment using 'python -m venv path/to/venv'.
-            # Then use path/to/venv/bin/python and path/to/venv/bin/pip.
-            #
-            # If you wish to install a non-MSYS2 packaged Python application,
-            # it may be easiest to use 'pipx install xyz', which will manage a
-            # virtual environment for you. Make sure you have $MINGW_PACKAGE_PREFIX-python-pipx
-            # installed via pacman.
-            #
-            # note: If you believe this is a mistake, please contact your Python installation or OS distribution provider. You can override this, at the risk of breaking your Python installation or OS, by passing --break-system-packages.
-            # hint: See PEP 668 for the detailed specification.
-            #
-            # $pacman -S $MINGW_PACKAGE_PREFIX-python-rich
-            # error: target not found: mingw-w64-i686-python-rich
-            #
-            # https://www.msys2.org/news/#2026-01-31-more-strict-pip-install-for-local-installations
-            #
-            # C:/msys64/msys2_shell.cmd -mingw32 -defterm -no-start -c "python C:/build/godot/w64.msys2-mingw32.x86_32.windows.editor.default.4.7.py"
-            #
-            # PATH=C:\msys64\mingw32\bin;C:\msys64\usr\local\bin;C:\msys64\usr\bin;C:\msys64\usr\bin;C:\Windows\System3 ...
-            # 1 - Git Checkout
-            # Traceback (most recent call last):
-            # File "C:/build/godot/w64.msys2-mingw32.x86_32.windows.editor.default.4.7.py", line 139, in <module>
-            # raise fnf
-            # FileNotFoundError
-            # Missing bare git repo path: git, project needs to be fetched
-            #
-            # so something about being in an msys2 env is not letting it see the git path.. weird.
 
         case _:
             return False
