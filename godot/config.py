@@ -26,7 +26,7 @@ from share.script_preamble import *
 # godotengine - master   | Emscripten 3.1.62
 
 # But in the github action runner, it's 3.1.64
-# And all of the issues related show 3.1.64
+# And all the issues related show 3.1.64
 
 # MARK: Notes
 
@@ -50,7 +50,7 @@ sources:dict = {
     'libtracy': SimpleNamespace({**vars(origin), **{
         'remote':'enetheru',
         'url': "https://github.com/enetheru/godot.git/",
-        'ref': 'tracy-shared',
+        'ref': 'tracy-shared'
     }}),
 }
 
@@ -100,6 +100,13 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         expand_attr_list,
         'toolchain',
         gopts.toolchains.values() )
+
+    # Expand platforms
+    builds:list[SimpleNamespace] = expand_func(
+        builds,
+        expand_attr_list,
+        'platform',
+        godot_platforms.keys() )
 
     # Expand build tools
     builds:list[SimpleNamespace] = expand_func(
@@ -242,6 +249,14 @@ def build_scons():
     #[=================================[ Build ]=================================]
     scons:dict = buildtool
 
+
+# macos things
+# $ scons -j 7 target=template_release extra_suffix=min compiledb=yes debug_symbols=yes separate_debug_symbols=yes platform=macos arch=x86_64 cache_path=/Users/enetheru/build/godot/scons_cache cache_limit=48
+# Building for macOS 10.13+.
+# WARNING: Target architecture 'x86_64' does not support the Metal rendering driver
+# ERROR: MoltenVK SDK installation directory not found, use 'vulkan_sdk_path' SCons parameter to specify SDK path.
+
+
     if config['ok'] and 'build' in build['verbs'] and 'build' in opts['build_actions']:
         console.set_window_title(f'Build - {build['name']}')
 
@@ -252,8 +267,7 @@ def build_scons():
                 raise fnf
 
             # Use a project wide build cache
-            scons_cache = Path("D:/godot/scons_cache")
-            scons['build_vars'].append(f'cache_path={scons_cache.as_posix()}')
+            scons['build_vars'].append(f'cache_path={Path( scons["cache_path"] ).as_posix()}')
             scons['build_vars'].append('cache_limit=100')
 
             jobs = opts["jobs"]
@@ -402,6 +416,11 @@ def configure_scons( config:SimpleNamespace ) -> bool:
         scons.build_vars.append('accesskit=no')
         scons.build_vars.append('d3d12=no')
         scons.build_vars.append('angle=no')
+        scons.cache_path = Path("D:/godot/scons_cache")
+    elif platform == 'macos':
+        scons.build_vars.append('accesskit=no')
+        scons.build_vars.append('angle=no')
+        scons.cache_path = Path("/Volumes/Cache/godot/scons_cache")
 
     match tc.name:
         case 'msvc' | 'appleclang':
