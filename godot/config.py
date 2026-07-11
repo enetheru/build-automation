@@ -179,7 +179,7 @@ def delete_translations():
 
     # MARK: Delete Translations
     #[=========================[ Delete Translations ]=========================]
-    fmt.t3("Removing Translations")
+    console.rule("Removing Translations")
     fmt.h( ' '.join(os.listdir(build['source_path'] / 'doc/translations/') ) )
     for file in Path(build['source_path'] / 'doc/translations/').glob('*.po'):
         os.remove( file )

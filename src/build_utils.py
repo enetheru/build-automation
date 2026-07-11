@@ -205,9 +205,9 @@ def process_project(opts: SimpleNamespace, project: SimpleNamespace):
     ):
         if opts.verbose:
             fmt.t2(project.name)
-            fmt.t3("Project Config:")
+            console.rule("Project Config:")
             write_namespace(pretendio, project, 'project')
-            fmt.t3("Build Configurations")
+            console.rule("Build Configurations")
             for build in project.build_configs.values():
                 fmt.h(build.name)
 

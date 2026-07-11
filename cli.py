@@ -88,7 +88,7 @@ def main():
     console.print(panel)
 
     if gopts.verbose:
-        fmt.t3( "Options" )
+        console.rule("Options")
         pprint( gopts.__dict__, expand_all=True )
 
     with fmt.Section("Import Toolchains"):

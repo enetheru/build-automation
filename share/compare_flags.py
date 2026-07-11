@@ -412,6 +412,7 @@ class CompileCommandsCleaner:
 
     def display_configs(self, results: Dict[str, SimpleNamespace], selected_categories: Optional[List[str]] = None):
         """Display the parsed configurations, filtered by selected categories."""
+        console = Console()
         available_categories = set(self.categories.keys())
         categories_to_show = available_categories if selected_categories is None else set(
             selected_categories) & available_categories
@@ -419,7 +420,7 @@ class CompileCommandsCleaner:
         for file, entry in results.items():
 
             print()
-            fmt.t3(file)
+            console.rule(str(file))
             fmt.h(f"Config: {pretty_repr(vars(entry.config), indent_size=8)}", level=1)
 
             for cmd_type, categorized in entry.commands.items():

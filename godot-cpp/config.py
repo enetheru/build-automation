@@ -369,7 +369,7 @@ def test_script():
         talley = 0
         for set_name, set_value in godot_sets.items():
             if opts['verbose']:
-                fmt.t3("Running Test")
+                console.rule("Running Test")
                 fmt.h('Using Fileset:')
                 p( set_value, pretty=True )
             result = run_test( set_value )

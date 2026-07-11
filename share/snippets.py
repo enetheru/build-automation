@@ -183,7 +183,7 @@ def cmake_check():
 
     # Create Build Directory
     if not build_path.is_dir():
-        fmt.t3(f"Creating {cmake['build_dir']}")
+        console.rule(f"Creating {cmake['build_dir']}")
         os.mkdir(build_path)
 
     try:
