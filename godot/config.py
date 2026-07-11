@@ -392,7 +392,6 @@ def configure_scons( config:SimpleNamespace ) -> bool:
     arch = godot_arch[tc.target_arch]
     platform = godot_platforms[tc.target_platform]
 
-    # config.buildtool = copy.deepcopy(config.buildtool)
     scons = config.buildtool
     scons.build_dir = ''
     scons.build_vars += [
@@ -401,7 +400,6 @@ def configure_scons( config:SimpleNamespace ) -> bool:
         "separate_debug_symbols=yes",
         f"platform={platform}",
         f"arch={arch}",
-        # "build_profile=build_profile.json",
     ]
 
     if platform == 'windows':
@@ -409,13 +407,14 @@ def configure_scons( config:SimpleNamespace ) -> bool:
         scons.build_vars.append('accesskit=no')
         scons.build_vars.append('d3d12=no')
         scons.build_vars.append('angle=no')
-        scons.cache_path = Path("D:/godot/scons_cache")
     elif platform == 'macos':
         scons.build_vars.append('accesskit=no')
         scons.build_vars.append('angle=no')
 
     if tc.host == "Darwin":
         scons.cache_path = Path("/Volumes/Cache/godot/scons_cache")
+    elif tc.host == "Windows":
+        scons.cache_path = Path("D:/godot/scons_cache")
 
     match tc.name:
         case 'msvc' | 'appleclang':
