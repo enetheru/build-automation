@@ -569,16 +569,18 @@ def libtracy_config( cfg:SimpleNamespace ) -> bool:
     if cfg.source_def.ref != 'tracy-shared':
         return False
     cfg.buildtool.build_vars += [
-        # "--debug=explain", # This is entirely useless.
-        # "--tree=derived", # This doesnt have any effect that I can see.
-        "compiledb=yes",
+        'extra_suffix=tracy',
         "profiler=tracy",
-        "profiler_path=C:/git/wolfpld/tracy",
         # "profiler_sample_callstack=yes",
         # "profiler_track_memory=yes",
-        'extra_suffix=tracy',
         'tracy_as_shared=yes',
     ]
+    tc = cfg.toolchain
+    match tc.host:
+        case 'Windows':
+            cfg.buildtool.build_vars.append("profiler_path=C:/git/wolfpld/tracy")
+        case 'Darwin':
+            cfg.buildtool.build_vars.append("profiler_path=/Users/enetheru/src/tracy")
     return True
 
 
