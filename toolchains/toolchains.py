@@ -28,7 +28,7 @@ Args:
 Returns:
     list: Expanded configs for each arch/platform combo.
 """
-def generic_toolchain_expand( self:SimpleNamespace, cfg:SimpleNamespace ) -> list:
+def generic_toolchain_expand( self:SimpleNamespace, build:SimpleNamespace ) -> list:
     """
 
     :param self:
@@ -38,11 +38,13 @@ def generic_toolchain_expand( self:SimpleNamespace, cfg:SimpleNamespace ) -> lis
     configs_out:list = []
 
     for arch, platform in itertools.product(self.arch_list, self.platform_list):
-        cfg = deepcopy(cfg)
-        setattr(cfg, 'toolchain', self )
-        setattr(cfg, 'arch', arch )
-        setattr(cfg, 'platform', platform )
-        configs_out.append( cfg )
+        tc = deepcopy(self)
+        setattr(tc, 'target_platform', platform )
+        setattr(tc, 'target_arch', arch )
+
+        build = deepcopy(build)
+        setattr(build, 'toolchain', tc )
+        configs_out.append( build )
 
     return configs_out
 

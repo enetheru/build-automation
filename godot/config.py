@@ -120,14 +120,14 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     for build in builds:
 
         # buildtool = build.buildtool
-        toolchain = build.toolchain
+        tc = build.toolchain
 
         name_parts = [
             short_host(),
             # buildtool.name, this is always "scons" for godot.
-            toolchain.name,
-            build.arch if build.platform not in ['emscripten'] else None,
-            godot_platforms[build.platform] if build.platform not in ['android', 'emscripten'] else None,
+            tc.name,
+            tc.target_arch if tc.target_platform not in ['emscripten'] else None,
+            godot_platforms[tc.target_platform] if tc.target_platform not in ['android', 'emscripten'] else None,
             build.target,
             build.variant,
             # build.source_def.remote if build.source_def.remote != 'origin' else None,
@@ -388,9 +388,9 @@ def configure_scons( config:SimpleNamespace ) -> bool:
     config.verbs += ['build', 'clean']
     config.script_parts +=  [check_scons, clean_scons, build_scons]
 
-    platform = godot_platforms[config.platform]
-    arch = godot_arch[config.arch]
     tc = config.toolchain
+    arch = godot_arch[tc.target_arch]
+    platform = godot_platforms[tc.target_platform]
 
     # config.buildtool = copy.deepcopy(config.buildtool)
     scons = config.buildtool
@@ -413,6 +413,8 @@ def configure_scons( config:SimpleNamespace ) -> bool:
     elif platform == 'macos':
         scons.build_vars.append('accesskit=no')
         scons.build_vars.append('angle=no')
+
+    if tc.host == "Darwin":
         scons.cache_path = Path("/Volumes/Cache/godot/scons_cache")
 
     match tc.name:
