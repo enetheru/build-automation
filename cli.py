@@ -145,9 +145,6 @@ def main():
 
         with fmt.Section("Show Statistics"):
             show_statistics( gopts )
-        console.pop( "build_log" )
-        import sys
-        sys.exit(0)
 
     # perform any actions triggered by verbs for toolchains.
     with fmt.Section("Process Toolchain Actions"):
