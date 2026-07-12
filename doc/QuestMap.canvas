@@ -90,7 +90,6 @@
 			"width":540,
 			"height":60
 		},
-		{"id":"e8fcc423d2190d4d","type":"file","file":"doc/QuestLogs/MainQuest.md","x":-1460,"y":-120,"width":400,"height":180},
 		{
 			"id":"61e86664131691af",
 			"type":"text",
@@ -121,16 +120,8 @@
 			"width":540,
 			"height":60
 		},
-		{
-			"id":"6571032fb686f477",
-			"type":"text",
-			"text":"# MacOS\n- [ ] Test for and Install the MoltenVK toolkit",
-			"styleAttributes":{},
-			"x":800,
-			"y":360,
-			"width":540,
-			"height":140
-		}
+		{"id":"eb363b6e59e44b32","type":"file","file":"QuestLogs/GodotMacOS.md","x":800,"y":340,"width":540,"height":180},
+		{"id":"e8fcc423d2190d4d","type":"file","file":"QuestLogs/MainQuest.md","x":-1440,"y":-200,"width":400,"height":280}
 	],
 	"edges":[
 		{
@@ -252,7 +243,7 @@
 			"toFloating":false,
 			"fromNode":"7d3b16e3c63360b4",
 			"fromSide":"right",
-			"toNode":"6571032fb686f477",
+			"toNode":"eb363b6e59e44b32",
 			"toSide":"left"
 		}
 	],
