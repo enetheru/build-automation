@@ -393,8 +393,11 @@ def configure_scons( config:SimpleNamespace ) -> bool:
             setattr(scons, 'cache_limit', 100)
         case 'Darwin':
             setattr(scons, 'cache_path', Path("/Volumes/Cache/godot/scons_cache"))
+            setattr(scons, 'cache_limit', 100)
 
+    # == Default Options ==
     scons.build_vars += [
+        "verbose=yes",
         "compiledb=yes",
         "debug_symbols=yes",
         "separate_debug_symbols=yes",
