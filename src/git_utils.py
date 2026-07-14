@@ -230,6 +230,7 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
     if not gitdir.exists():
         fmt.h('Cloning Repository')
         repo = git.Repo.clone_from(srcdef_for_clone.url, gitdir, progress=print, bare=True, tags=True)
+        #FIXME the clone doesnt use the progress bars we setup for fetching.
     else:
         repo = git.Repo(gitdir)
         prune_worktrees(opts, repo)
