@@ -3,6 +3,12 @@ import os
 import sys
 from types import SimpleNamespace
 
+# Machine env GIT_PYTHON_GIT_EXECUTABLE is ssh.exe. GitPython then runs
+# `ssh version`, and ssh treats "version" as a hostname.
+_git_exec = os.environ.get("GIT_PYTHON_GIT_EXECUTABLE", "")
+if _git_exec and os.path.basename(_git_exec).lower() not in {"git", "git.exe", "git.cmd"}:
+    del os.environ["GIT_PYTHON_GIT_EXECUTABLE"]
+
 import git
 
 from pathlib import Path

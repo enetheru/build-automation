@@ -1,0 +1,7 @@
+# Generated scripts, logs, and one build tree per config.
+*
+!/.gitignore
+!/config.py
+!/CMakeLists.txt
+!/src/
+!/src/**

@@ -221,9 +221,13 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
         fmt.h("Dry-Run: Skipping Fetch")
         return
 
+    srcdef_for_clone = project.sources.get('origin') or next(iter(project.sources.values()))
+    if getattr(srcdef_for_clone, 'type', 'git') != 'git':
+        fmt.h(f"Skipping fetch ({srcdef_for_clone.type} source)")
+        return
+
     os.chdir(project.path)
 
-    srcdef_for_clone = project.sources.get('origin') or next(iter(project.sources.values()))
     gitdir = project.path / getattr(srcdef_for_clone, 'gitdir', Path('git'))
 
     # Ensure git repo exists, and is clean
