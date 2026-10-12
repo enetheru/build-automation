@@ -76,6 +76,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     :param opts:
     :return:
     """
+    import platform
     from src.config import build_base
 
     from share.snippets import show_stats
@@ -101,6 +102,20 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         expand_attr_list,
         'toolchain',
         gopts.toolchains.values() )
+
+    # generic_toolchain_expand records the pair on the toolchain.
+    # Variant filters and the mingw arch checks read build.arch.
+    # Android's expand records the ABI on the build and leaves the pair unset.
+    for build in builds:
+        tc = build.toolchain
+        if not hasattr(tc, 'host'):
+            tc.host = platform.system()
+        if hasattr(tc, 'target_arch'):
+            build.arch = tc.target_arch
+            build.platform = tc.target_platform
+        else:
+            tc.target_arch = build.arch
+            tc.target_platform = build.platform
 
     # Expand build tools
     builds:list[SimpleNamespace] = expand_func(
@@ -131,8 +146,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
             godot_platforms[tc.target_platform] if tc.target_platform not in ['android', 'emscripten'] else None,
             build.target,
             build.variant,
-            # build.source_def.remote if build.source_def.remote != 'origin' else None,
-            # build.source_def.ref
+            build.source_def.ref,
         ]
 
         build.name = '.'.join(filter(None, name_parts))
@@ -489,17 +503,6 @@ def configure_scons( config:SimpleNamespace ) -> bool:
 # │                                                    |___/                   │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-def config_double( cfg:SimpleNamespace ) -> bool:
-    """
-    Configure build for double precision.
-    :param cfg:
-    :return:
-    """
-    if cfg.arch not in ['x86_64', 'arm64']: return False
-    cfg.buildtool.build_vars.append("precision=double")
-    return True
-
-
 def config_dev( cfg:SimpleNamespace ) -> bool:
     """
     Configure build for development.
@@ -589,7 +592,6 @@ def libtracy_config( cfg:SimpleNamespace ) -> bool:
 
 variations = {
     'default': lambda cfg: True,
-    'double': config_double,
     'dev_build': config_dev,
     'minimum': config_minim,
     'tracy': config_tracy,

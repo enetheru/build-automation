@@ -97,13 +97,15 @@ def collect_options(builds) -> tuple[list[str], list[tuple[str, list[str]]]]:
     and target even when only one value is present, is a list.
     """
     arches, platforms, generators = [], [], []
-    configs, targets, variants = [], [], []
+    configs, targets, variants, versions = [], [], [], []
     for build in builds:
         tool = _get(build, 'buildtool')
         toolchain = _get(build, 'toolchain')
+        source = _get(build, 'source_def')
         arches.append(_get(build, 'arch') or _get(toolchain, 'target_arch'))
         platforms.append(_get(build, 'platform') or _get(toolchain, 'target_platform'))
         variants.append(_get(build, 'variant'))
+        versions.append(_get(source, 'ref') if source is not None else None)
         if tool is None:
             targets.append(_get(build, 'target'))
             continue
@@ -137,25 +139,32 @@ def collect_options(builds) -> tuple[list[str], list[tuple[str, list[str]]]]:
     add('generator', generators)
     add('config', configs, keep_single=True)
     add('target', targets, keep_single=True)
+    add('version', versions)
     return switches, lists
 
 
 def configuration_folder(project_name: str, build) -> str:
     """Project-relative folder for one configuration.
 
-    CMake and SCons both build under source_dir. Hello leaves source_dir
-    as '.', so the build_dir name is the folder. godot-cpp checks sources
-    out per toolchain and builds in a directory under that checkout.
+    Hello leaves source_dir as '.' and puts the cache name in build_dir.
+    godot-cpp builds in a directory under the checkout, so both parts show.
+    Godot sets build_dir to '' and builds in the checkout itself.
     """
     tool = _get(build, 'buildtool')
     build_dir = _get(tool, 'build_dir') if tool is not None else None
-    if not build_dir:
-        build_dir = _get(build, 'name')
-    folder = str(build_dir).replace('\\', '/')
     source = _get(build, 'source_dir')
     source = '' if source is None else str(source).replace('\\', '/')
-    if source not in ('', '.'):
-        folder = f'{source}/{folder}'
+    build_dir = '' if build_dir is None else str(build_dir).replace('\\', '/')
+
+    if build_dir and source not in ('', '.') and not build_dir.startswith(source + '/'):
+        folder = f'{source}/{build_dir}'
+    elif build_dir:
+        folder = build_dir
+    elif source not in ('', '.'):
+        folder = source
+    else:
+        folder = str(_get(build, 'name') or '')
+
     prefix = project_name + '/'
     if folder.startswith(prefix):
         return folder

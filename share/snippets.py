@@ -21,11 +21,13 @@ def source_git():
 
     # MARK: Git-Checkout
     #[=================================[ Source ]=================================]
-    from git.exc import GitCommandError
+    from git.exc import GitCommandError, InvalidGitRepositoryError
     from rich.panel import Panel
     from rich.padding import Padding as rPadding
     from src.error import handle_error
     import pathlib
+    import shutil
+    import stat
 
     if config['ok'] and 'source' in opts['build_actions']:
         console.set_window_title(f'Source - {build['name']}')
@@ -81,10 +83,39 @@ def source_git():
         except GitCommandError as e:
             handle_error(f"git log bare pattern={pattern}", e, opts)
 
-        worktree_path = build['source_path']
+        worktree_path = Path(build['source_path'])
 
-        if not worktree_path.exists():
-            # Perhaps we deleted the worktree folder, in which case prune it from the repo
+        def is_worktree(path: Path) -> bool:
+            if not path.exists():
+                return False
+            try:
+                git.Repo(path)
+                return True
+            except InvalidGitRepositoryError:
+                return False
+
+        # git worktree add refuses a path that already exists. A leftover
+        # directory with no .git is not a checkout, so replace it.
+        if not is_worktree(worktree_path):
+            if worktree_path.exists() and not opts['dry']:
+                project_root = Path(project['path']).resolve()
+                target = worktree_path.resolve()
+                bare = Path(gitdir).resolve()
+                if target in (project_root, bare) or project_root not in target.parents:
+                    raise RuntimeError(f'Refusing to replace {target.as_posix()}')
+
+                fmt.hu(f'Replacing existing directory {worktree_path.as_posix()}')
+
+                def make_writable(func, path, exc):
+                    os.chmod(path, stat.S_IWRITE)
+                    func(path)
+
+                if worktree_path.is_symlink() or worktree_path.is_file():
+                    worktree_path.unlink()
+                else:
+                    shutil.rmtree(worktree_path, onexc=make_writable)
+
+            # A deleted worktree can stay registered until it is pruned.
             cmd_args = [ 'prune',
                 '--verbose' if opts['verbose'] else None,
                 '--dry-run' if opts['dry'] else None ]
