@@ -253,7 +253,10 @@ def cmake_build():
             build_opts += cmake.get("build_vars", [])
 
             with Timer(name='build') as timer:
-                targets = ' '.join(cmake.get('targets', []))
+                chosen = list(cmake.get('targets') or [])
+                if not chosen and cmake.get('target'):
+                    chosen = [cmake['target']]
+                targets = ' '.join(chosen)
                 fmt.s2(f" Building targets: {targets or 'default'} ")
                 target_opts = copy.copy(build_opts)
                 if targets:

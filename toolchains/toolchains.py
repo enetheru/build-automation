@@ -127,7 +127,7 @@ def configure_llvm( self:SimpleNamespace, config:SimpleNamespace ) -> bool:
     match config.buildtool.name:
         case 'cmake':
             cmake = config.buildtool
-            cmake.toolchain = gopts.path / 'share' / 'toolchain-llvm.cmake'
+            cmake.toolchain = gopts.path / 'toolchains' / 'toolchain-llvm.cmake'
 
     return True
 
@@ -185,7 +185,7 @@ def configure_llvm_mingw( self:SimpleNamespace, config:SimpleNamespace ) -> bool
     match config.buildtool.name:
         case 'cmake':
             cmake = config.buildtool
-            cmake.toolchain = gopts.path / 'share' / 'toolchain-llvm-mingw.cmake'
+            cmake.toolchain = gopts.path / 'toolchains' / 'toolchain-llvm-mingw.cmake'
             cmake.config_vars.append(f'-DLLVM_MINGW_PROCESSOR={config.arch}')
 
     return True
@@ -233,7 +233,7 @@ def configure_mingw( self:SimpleNamespace, config:SimpleNamespace ) -> bool:
     match config.buildtool.name:
         case 'cmake':
             cmake = config.buildtool
-            cmake.toolchain = 'share\\toolchain-mingw64.cmake'
+            cmake.toolchain = gopts.path / 'toolchains' / 'toolchain-mingw64.cmake'
     return True
 
 def mingw64_toolchain() -> SimpleNamespace:
@@ -348,7 +348,7 @@ windows_toolchains.append( msys2_clang64_toolchain() )
 # ╰──────────────────────────────────╯
 # The variations of toolchains for mingw are listed here: https://www.mingw-w64.org/downloads/
 android_toolchain:SimpleNamespace | None = android.android_toolchain()
-if android_toolchain is SimpleNamespace:
+if android_toolchain is not None:
     windows_toolchains.append( android_toolchain )
 
 # MARK: Emscripten
@@ -428,7 +428,7 @@ def win32_emscripten_cmake( build:SimpleNamespace ):
     """
     toolchain = build.toolchain
     cmake = build.buildtool
-    cmake.toolchain = 'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake',
+    cmake.toolchain = 'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
     cmake.generators = ['Ninja','Ninja Multi-Config']
 
 def win32_emscripten_toolchain() -> SimpleNamespace:

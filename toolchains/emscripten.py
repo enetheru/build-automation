@@ -132,7 +132,7 @@ def win32_emscripten_cmake( build:SimpleNamespace ):
     """
     toolchain = build.toolchain
     cmake = build.buildtool
-    cmake.toolchain = 'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake',
+    cmake.toolchain = 'C:/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake'
     cmake.generators = ['Ninja','Ninja Multi-Config']
 
 def win32_emscripten_toolchain() -> SimpleNamespace:

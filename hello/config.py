@@ -7,6 +7,7 @@ Filter so the rest of the tree is left alone:
 
 `plain` prints "hello, world". `shout` passes -DHELLO_SHOUT=ON and prints "HELLO, WORLD".
 The binary also prints the config name, compiler id, system, and processor.
+`test` runs only when this host can execute that platform and architecture.
 """
 from copy import deepcopy
 from pathlib import Path
@@ -81,6 +82,7 @@ def generate(opts: SimpleNamespace) -> SimpleNamespace:
         build.name = '.'.join(filter(None, name_parts))
         build.host = host
         build.source_dir = Path('.')
+        build.can_test = host_can_run(getattr(build, 'platform', ''), getattr(build, 'arch', ''))
         build.verbs = list(build.verbs) + ['test']
         buildtool.build_dir = build.name
         buildtool.config_vars.append(f'-DHELLO_BUILD_NAME={build.name}')
@@ -90,18 +92,56 @@ def generate(opts: SimpleNamespace) -> SimpleNamespace:
     return project
 
 
-def configure_hello(build: SimpleNamespace) -> bool:
-    """Keep CMake configs. Emscripten stores its toolchain file as a one-element tuple."""
-    tool = build.buildtool
-    if getattr(tool, 'name', None) != 'cmake':
+def host_can_run(target_platform: str, target_arch: str) -> bool:
+    """True when this machine can execute a binary for that platform and architecture.
+
+    Windows x64 can run 32-bit x86. Windows on ARM and Apple Silicon can run
+    the emulated architectures those operating systems provide. Anything else,
+    including Android and Emscripten, is not executed here.
+    """
+    import platform
+    import sys
+
+    arch_names = {
+        'amd64': 'x86_64',
+        'x64': 'x86_64',
+        'x86_64': 'x86_64',
+        'i686': 'x86',
+        'i386': 'x86',
+        'x86': 'x86',
+        'x86_32': 'x86',
+        'aarch64': 'arm64',
+        'arm64': 'arm64',
+        'arm64-v8a': 'arm64',
+        'armv7': 'arm32',
+        'armv32': 'arm32',
+        'armeabi-v7a': 'arm32',
+        'wasm32': 'wasm32',
+        'wasm64': 'wasm64',
+    }
+    host_os = sys.platform
+    native_platforms = {
+        'win32': {'win32', 'windows'},
+        'darwin': {'darwin', 'macos'},
+        'linux': {'linux'},
+    }.get(host_os, set())
+    if str(target_platform).lower() not in native_platforms:
         return False
 
-    toolchain_file = getattr(tool, 'toolchain', None)
-    if isinstance(toolchain_file, tuple):
-        if len(toolchain_file) != 1:
-            return False
-        tool.toolchain = toolchain_file[0]
-    return True
+    host_arch = arch_names.get(platform.machine().lower(), platform.machine().lower())
+    target = arch_names.get(str(target_arch).lower(), str(target_arch).lower())
+    runnable = {host_arch}
+    if host_os == 'win32' and host_arch == 'x86_64':
+        runnable.add('x86')
+    elif host_os == 'win32' and host_arch == 'arm64':
+        runnable.update({'x86_64', 'x86'})
+    elif host_os == 'darwin' and host_arch == 'arm64':
+        runnable.add('x86_64')
+    return target in runnable
+
+
+def configure_hello(build: SimpleNamespace) -> bool:
+    return getattr(build.buildtool, 'name', None) == 'cmake'
 
 
 def expand_variations(build: SimpleNamespace) -> list[SimpleNamespace]:
@@ -136,33 +176,36 @@ def test_hello():
     if config['ok'] and 'test' in opts['build_actions']:
         with fmt.Section('Test'):
             console.set_window_title(f"Test - {build['name']}")
-            build_path = Path(buildtool['build_path'])
-            config_type = buildtool.get('config_type')
-            candidates = []
-            for name in ('hello.exe', 'hello'):
-                candidates.append(build_path / name)
-                if config_type:
-                    candidates.append(build_path / config_type / name)
-
-            exe = next((path for path in candidates if path.is_file()), None)
-            if exe is None:
-                fmt.h(f'No hello binary under {build_path.as_posix()}')
-                config['ok'] = False
+            if not build.get('can_test'):
+                fmt.h(f"Skip test: host cannot run {build.get('platform')} {build.get('arch')}")
             else:
-                expected = 'HELLO, WORLD' if str(build['name']).endswith('.shout') else 'hello, world'
-                lines = []
+                build_path = Path(buildtool['build_path'])
+                config_type = buildtool.get('config_type')
+                candidates = []
+                for name in ('hello.exe', 'hello'):
+                    candidates.append(build_path / name)
+                    if config_type:
+                        candidates.append(build_path / config_type / name)
 
-                def collect(line):
-                    lines.append(line)
-                    print(line)
+                exe = next((path for path in candidates if path.is_file()), None)
+                if exe is None:
+                    fmt.h(f'No hello binary under {build_path.as_posix()}')
+                    config['ok'] = False
+                else:
+                    expected = 'HELLO, WORLD' if str(build['name']).endswith('.shout') else 'hello, world'
+                    lines = []
 
-                with Timer(name='test') as timer:
-                    stream_command(f'"{exe.as_posix()}"', dry=opts['dry'], stdout_handler=collect)
-                    got = lines[0] if lines else ''
-                    if not opts['dry'] and got != expected:
-                        fmt.h(f'expected {expected!r}, got {got!r}')
-                        timer.status = TaskStatus.FAILED
-                        config['ok'] = False
+                    def collect(line):
+                        lines.append(line)
+                        print(line)
 
-                stats['test'] = timer.get_dict()
-                config['ok'] = timer.ok() and config['ok']
+                    with Timer(name='test') as timer:
+                        stream_command(f'"{exe.as_posix()}"', dry=opts['dry'], stdout_handler=collect)
+                        got = lines[0] if lines else ''
+                        if not opts['dry'] and got != expected:
+                            fmt.h(f'expected {expected!r}, got {got!r}')
+                            timer.status = TaskStatus.FAILED
+                            config['ok'] = False
+
+                    stats['test'] = timer.get_dict()
+                    config['ok'] = timer.ok() and config['ok']
