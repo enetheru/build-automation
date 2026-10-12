@@ -42,23 +42,27 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     sources |= gopts.sources
 
 
+    # The build script invokes `scons` from PATH. Skip those rows when it is absent.
+    import shutil
+    buildtools = {}
+    if shutil.which('scons'):
+        buildtools['scons'] = SimpleNamespace({**vars(scons_base), **{
+            'expand':expand_scons,
+        }})
+    buildtools['cmake'] = SimpleNamespace({**vars(cmake_base), **{
+        'expand':expand_cmake,
+        'targets':['godot-cpp-test'],
+        'config_vars':[
+            '-DGODOTCPP_ENABLE_TESTING=ON',
+            '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
+        ]
+    }})
+
     project = SimpleNamespace({**vars(project_base), **{
         'name': name,
         'path': opts.path / name,
         'sources': sources,
-        'buildtools': {
-            'scons': SimpleNamespace({**vars(scons_base), **{
-                'expand':expand_scons,
-            }}),
-            'cmake': SimpleNamespace({**vars(cmake_base), **{
-                'expand':expand_cmake,
-                'targets':['godot-cpp-test'],
-                'config_vars':[
-                    '-DGODOTCPP_ENABLE_TESTING=ON',
-                    '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
-                ]
-            }}),
-        },
+        'buildtools': buildtools,
     }})
 
     build_start = SimpleNamespace({ **vars(build_base), **{
