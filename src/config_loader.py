@@ -9,6 +9,7 @@ from typing import cast
 from src import format as fmt
 from src.config import gopts
 from src.error import handle_error
+from src.select import row_selected
 from src.utils import setattrdefault
 
 
@@ -159,10 +160,13 @@ def import_projects(opts: SimpleNamespace) -> dict:
             if gopts.debug: raise Exception(msg)
             fmt.hu(f"[red]{msg}")
 
-        # match --filter <regex>
+        # --build-regex selects caches. --config-regex and --target-regex
+        # select arguments inside a cache. A single-config type that does
+        # not match is a different cache, so that row is dropped here.
         builds: dict = project.build_configs
         project.build_configs = {k: v for k, v in builds.items()
-            if fmt.re.search( opts.build_regex, v.name )}
+            if fmt.re.search( opts.build_regex, v.name )
+            and row_selected(v, getattr(opts, 'config_regex', '.*'), getattr(opts, 'target_regex', '.*'))}
 
     # Filter projects with zero valid build configurations
     projects = {v.name: v for v in projects.values() if len(v.build_configs)}

@@ -172,9 +172,9 @@ def expand_toolchains( cfg:SimpleNamespace, project:SimpleNamespace ) -> list:
 
 def expand_cmake( config:SimpleNamespace ) -> list:
     """
-    Expands the given CMake configuration into all combinations of CMake settings, including
-    configuration types, generators, and targets. This function is intended to construct a list
-    of detailed configurations based on the base configuration object provided.
+    Expands the given CMake configuration across generators and targets.
+    Single-config generators also expand configuration types. Ninja Multi-Config
+    and the Visual Studio generator keep every configuration type on one setup.
 
     :param config: The base configuration, containing details about the build tool, toolchain,
         and associated settings required to generate multiple configurations.
@@ -198,17 +198,29 @@ def expand_cmake( config:SimpleNamespace ) -> list:
     generators = cmake_base.generators
     targets = cmake_base.targets
 
+    # Ninja Multi-Config and the Visual Studio generator take every
+    # configuration from one configure. Single-config generators fix
+    # CMAKE_BUILD_TYPE, so each type stays its own directory.
+    multi_config = {'msvc', 'ninja-multi'}
+    rows:list = []
+    for generator_key, generator in generators.items():
+        if generator_key == 'msvc' and toolchain.name != generator_key:
+            continue
+        if generator_key in multi_config:
+            rows.append((generator_key, generator, None, None))
+        else:
+            for ctype_key, config_type in config_types.items():
+                rows.append((generator_key, generator, ctype_key, config_type))
+
+    # Targets are --target arguments of one cache, same as configuration
+    # types on a multi-config generator. An empty target list still emits
+    # nothing: the product used to be empty in that case.
+    target_names = list(targets)
     configs_out:list = []
-    for ctype_key, generator_key, target in itertools.product(config_types, generators, targets ):
-        config_type = config_types[ ctype_key ]
-        generator = generators[generator_key]
+    if not target_names:
+        return configs_out
 
-        # Handle exclusionary cases
-        match generator_key:
-            case 'msvc':
-                # skip visual studio generator with toolchains that are not msvc
-                if toolchain.name != generator_key: continue
-
+    for generator_key, generator, ctype_key, config_type in rows:
         cfg = deepcopy(config)
         cmake = cfg.buildtool
 
@@ -217,36 +229,46 @@ def expand_cmake( config:SimpleNamespace ) -> list:
         delattr(cmake, 'config_types')
         delattr(cmake, 'targets')
 
-
-        cmake.config_type = config_type
         cmake.generator = generator
-        cmake.target = target
+        cmake.build_targets = target_names
+        if len(target_names) == 1:
+            cmake.target = target_names[0]
         setattr(cmake, 'short_gen', generator_key)
-        setattr(cmake, 'short_type', ctype_key)
 
         if gopts.debug:
             cmake.config_vars.extend([ f'--debug-output', f'--debug-trycompile' ])
         cmake.config_vars.append( f'--fresh')
         # cmake.config_vars.append( f'--trace')
 
+        if generator_key in multi_config:
+            pairs = list(config_types.items())
+            cmake.config_keys = [key for key, _name in pairs]
+            cmake.configuration_types = [name for _key, name in pairs]
+            setattr(cmake, 'short_type', None)
+            cmake.config_vars.append(
+                '-DCMAKE_CONFIGURATION_TYPES=' + ';'.join(cmake.configuration_types))
+        else:
+            cmake.config_type = config_type
+            cmake.config_keys = [ctype_key]
+            setattr(cmake, 'short_type', ctype_key)
+
         match generator_key:
             case 'msvc':
                 _A = {'x86_32':'Win32', 'x86_64':'x64', 'arm64':'ARM64'}
                 cmake.config_vars.append( f'-A {_A[cfg.arch]}')
-                cmake.build_vars.append(f'--config {config_type}')
                 # cmake['tool_vars'] = ['-nologo', '-verbosity:normal', "-consoleLoggerParameters:'ShowCommandLine;ForceNoAlign'"]
 
             case 'ninja':
                 cmake.config_vars.append(f'-DCMAKE_BUILD_TYPE={config_type}')
 
             case 'ninja-multi':
-                cmake.build_vars.append(f'--config {config_type}')
+                pass
 
             case 'mingw':
                 if toolchain.name != 'mingw64': continue
                 cmake.config_vars.append(f'-DCMAKE_BUILD_TYPE={config_type}')
             case _:
-                if cfg.debug: raise Exception(f'Unknown config type: {config_type}')
+                if cfg.debug: raise Exception(f'Unknown generator: {generator_key}')
 
         if hasattr(toolchain, 'cmake'):
             toolchain.cmake( cfg )

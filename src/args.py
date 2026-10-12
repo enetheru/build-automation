@@ -65,6 +65,11 @@ def parse_args(opts: SimpleNamespace):
     build_opts = parser.add_argument_group("Build Options")
     build_opts.add_argument('-b', "--build-regex", type=str, default=".*",
                             help="Regex to filter build configurations (default: match all)")
+    build_opts.add_argument('--config-regex', type=str, default='.*',
+                            help="Regex for configuration types inside a build "
+                                 "(debug, release, reldeb, or the CMake name). Default: all")
+    build_opts.add_argument('--target-regex', type=str, default='.*',
+                            help="Regex for CMake targets inside a build. Default: all")
     build_opts.add_argument('--build-actions', nargs='+', default=[],
                             help="Actions to perform on matching builds (e.g. 'source', 'configure', 'build', 'clean')")
 

@@ -3,11 +3,15 @@
 Filter so the rest of the tree is left alone:
 
     python cli.py --list -p ^hello$
-    python cli.py -p ^hello$ -b "debug-ninja\\.llvm\\.x86_64\\.windows$" build test
+    python cli.py --list -p ^hello$ --config-regex ^debug$
+    python cli.py -p ^hello$ -b "ninja-multi\\.llvm\\.x86_64\\.windows$" --config-regex ^debug$ build test
 
 `plain` prints "hello, world". `shout` passes -DHELLO_SHOUT=ON and prints "HELLO, WORLD".
 The binary also prints the config name, compiler id, system, and processor.
 `test` runs only when this host can execute that platform and architecture.
+Ninja Multi-Config and the Visual Studio generator are one setup. Debug, Release,
+and RelWithDebInfo stay on that script. `--config-regex` and `--target-regex`
+choose which of those to build. The default is all of them.
 """
 from copy import deepcopy
 from pathlib import Path
@@ -71,9 +75,14 @@ def generate(opts: SimpleNamespace) -> SimpleNamespace:
         if platform not in ('android', 'emscripten'):
             platform_name = godot_platforms.get(platform, platform)
 
+        if getattr(buildtool, 'configuration_types', None):
+            tool_name = f'{buildtool.name}-{buildtool.short_gen}'
+        else:
+            tool_name = f'{buildtool.name}-{buildtool.short_type}-{buildtool.short_gen}'
+
         name_parts = [
             host,
-            f'{buildtool.name}-{buildtool.short_type}-{buildtool.short_gen}',
+            tool_name,
             toolchain.name,
             arch if platform != 'emscripten' else None,
             platform_name,
@@ -179,33 +188,46 @@ def test_hello():
             if not build.get('can_test'):
                 fmt.h(f"Skip test: host cannot run {build.get('platform')} {build.get('arch')}")
             else:
+                from src.select import chosen_config_types
                 build_path = Path(buildtool['build_path'])
-                config_type = buildtool.get('config_type')
-                candidates = []
-                for name in ('hello.exe', 'hello'):
-                    candidates.append(build_path / name)
-                    if config_type:
-                        candidates.append(build_path / config_type / name)
+                pattern_config = opts.get('config_regex') or '.*'
+                config_names = chosen_config_types(buildtool, pattern_config)
+                if not config_names and not buildtool.get('configuration_types'):
+                    one = buildtool.get('config_type')
+                    config_names = [one] if one else [None]
+                expected = 'HELLO, WORLD' if str(build['name']).endswith('.shout') else 'hello, world'
+                failed = False
 
-                exe = next((path for path in candidates if path.is_file()), None)
-                if exe is None:
-                    fmt.h(f'No hello binary under {build_path.as_posix()}')
-                    config['ok'] = False
-                else:
-                    expected = 'HELLO, WORLD' if str(build['name']).endswith('.shout') else 'hello, world'
-                    lines = []
+                with Timer(name='test') as timer:
+                    for config_name in config_names:
+                        candidates = []
+                        for name in ('hello.exe', 'hello'):
+                            if config_name:
+                                candidates.append(build_path / config_name / name)
+                            candidates.append(build_path / name)
 
-                    def collect(line):
-                        lines.append(line)
-                        print(line)
+                        exe = next((path for path in candidates if path.is_file()), None)
+                        where = f'{build_path.as_posix()}/{config_name}' if config_name else build_path.as_posix()
+                        if exe is None:
+                            fmt.h(f'No hello binary under {where}')
+                            failed = True
+                            continue
 
-                    with Timer(name='test') as timer:
+                        lines = []
+
+                        def collect(line):
+                            lines.append(line)
+                            print(line)
+
                         stream_command(f'"{exe.as_posix()}"', dry=opts['dry'], stdout_handler=collect)
                         got = lines[0] if lines else ''
                         if not opts['dry'] and got != expected:
-                            fmt.h(f'expected {expected!r}, got {got!r}')
-                            timer.status = TaskStatus.FAILED
-                            config['ok'] = False
+                            fmt.h(f'{config_name or "default"}: expected {expected!r}, got {got!r}')
+                            failed = True
 
-                    stats['test'] = timer.get_dict()
-                    config['ok'] = timer.ok() and config['ok']
+                    if failed:
+                        timer.status = TaskStatus.FAILED
+                        config['ok'] = False
+
+                stats['test'] = timer.get_dict()
+                config['ok'] = timer.ok() and config['ok']

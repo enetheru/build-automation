@@ -113,7 +113,7 @@ def main():
         fmt.h(f"Toolchains ({len(gopts.toolchains)}) - available: {t_verbs}")
         p_verbs = ', '.join(gopts.project_verbs) if gopts.project_verbs else 'none'
         b_verbs = ', '.join(gopts.build_verbs) if gopts.build_verbs else 'none'
-        fmt.h(f"Projects ({len(gopts.projects)}) ({total_builds} builds)")
+        fmt.h(f"Projects ({len(gopts.projects)}) ({total_builds} configurations)")
         fmt.h(f"  project actions: {p_verbs}")
         fmt.h(f"  build actions: [{b_verbs}]")
 
@@ -137,11 +137,24 @@ def main():
                         verbs = f' - available actions:{project.verbs}'
                     fmt.h(f'{project.name}{verbs}')
 
-            with fmt.Section(f"Build Configurations ({n_builds})"):
-                fmt.h(f"Available Actions: {gopts.build_verbs or None}")
-                for project_name,project in projects.items():
-                    for build_name in project.build_configs:
-                        fmt.h(f'{project_name} | {build_name}')
+            from src.select import collect_options, configuration_folder
+            with fmt.Section('Options'):
+                for project_name, project in projects.items():
+                    fmt.h(project_name)
+                    switches, lists = collect_options(project.build_configs.values())
+                    if switches:
+                        fmt.hu('switches')
+                        for name in switches:
+                            fmt.h(name, level=fmt.pad.level + 2)
+                    if lists:
+                        fmt.hu('lists')
+                        for name, values in lists:
+                            fmt.h(f'{name}: {", ".join(values)}', level=fmt.pad.level + 2)
+
+            with fmt.Section(f"Configurations ({n_builds})"):
+                for project_name, project in projects.items():
+                    for build in project.build_configs.values():
+                        fmt.h(configuration_folder(project_name, build))
 
         with fmt.Section("Show Statistics"):
             show_statistics( gopts )

@@ -253,21 +253,46 @@ def cmake_build():
             build_opts += cmake.get("build_vars", [])
 
             with Timer(name='build') as timer:
-                chosen = list(cmake.get('targets') or [])
-                if not chosen and cmake.get('target'):
-                    chosen = [cmake['target']]
-                targets = ' '.join(chosen)
-                fmt.s2(f" Building targets: {targets or 'default'} ")
-                target_opts = copy.copy(build_opts)
-                if targets:
-                    target_opts.append(f" --target {targets}")
+                from src.select import chosen_config_types, chosen_targets
+                # The script keeps the full list. This run's regex picks the subset.
+                pattern_config = opts.get('config_regex') or '.*'
+                pattern_target = opts.get('target_regex') or '.*'
+                recorded_configs = list(cmake.get('configuration_types') or [])
+                if recorded_configs:
+                    configurations = chosen_config_types(cmake, pattern_config)
+                else:
+                    configurations = [None]
+                recorded_targets = list(cmake.get('build_targets') or [])
+                if not recorded_targets and cmake.get('target'):
+                    recorded_targets = [cmake['target']]
+                selected_targets = chosen_targets(cmake, pattern_target)
+                targets = ' '.join(selected_targets)
+                failed = False
+                if recorded_configs and not configurations:
+                    fmt.h(f'No configuration matches /{pattern_config}/')
+                    failed = True
+                if recorded_targets and not selected_targets:
+                    fmt.h(f'No target matches /{pattern_target}/')
+                    failed = True
+                if not failed:
+                    for config_name in configurations:
+                        label = config_name or 'default'
+                        fmt.s2(f" Building {label}: {targets or 'default'} ")
+                        target_opts = copy.copy(build_opts)
+                        if config_name:
+                            target_opts.append(f'--config {config_name}')
+                        if targets:
+                            target_opts.append(f" --target {targets}")
 
-                if "tool_vars" in cmake:
-                    target_opts.append('--')
-                    target_opts += cmake["tool_vars"]
+                        if "tool_vars" in cmake:
+                            target_opts.append('--')
+                            target_opts += cmake["tool_vars"]
 
-                stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
-                print('')
+                        stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
+                        print('')
+                if failed:
+                    timer.status = TaskStatus.FAILED
+                    config['ok'] = False
                 # TODO I was working on putting all or no --target arguments rather than looping over them.
                 # for target in cmake["targets"]:
                 #     s2(f" Building target: {target} ")
