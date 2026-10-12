@@ -372,7 +372,7 @@ def emscripten_update( toolchain:SimpleNamespace, config:SimpleNamespace, consol
     console.set_window_title('Updating Emscripten SDK')
     fmt.t2("Emscripten Update")
 
-    emscripten_path = Path( toolchain.path )
+    emscripten_path = Path( toolchain.sdk_path )
     os.chdir(emscripten_path)
     stream_command( 'git pull', dry=config.dry )
 
@@ -398,7 +398,7 @@ def win32_emscripten_script():
     from pathlib import Path
 
     cmd_prefix = f'pwsh -Command'
-    emscripten_tool = (Path(toolchain['path']) / 'emsdk.ps1').as_posix()
+    emscripten_tool = (Path(toolchain['sdk_path']) / 'emsdk.ps1').as_posix()
 
     def emscripten_check( line ):
         """
@@ -516,7 +516,7 @@ def darwin_emscripten_script():
     import stat
 
     cmd_prefix = f'{os.environ['SHELL']} -c'
-    emscripten_tool = (Path(toolchain['path']) / 'emsdk').as_posix()
+    emscripten_tool = (Path(toolchain['sdk_path']) / 'emsdk').as_posix()
 
     def emscripten_check( line ):
         """
@@ -538,7 +538,7 @@ def darwin_emscripten_script():
         stream_command( f'{cmd_prefix} "{emscripten_tool} {emscripten_check.task} {toolchain['version']}"',
             dry=opts['dry'] )
 
-        env_script = (toolchain['path'] / 'emsdk_env.sh').as_posix()
+        env_script = (toolchain['sdk_path'] / 'emsdk_env.sh').as_posix()
         os.chmod(env_script, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         stream_command( f'{cmd_prefix} "source {env_script}; python {build['script_path']}"', dry=opts['dry'] )
         quit()
@@ -561,7 +561,7 @@ def darwin_emscripten_toolchain() -> SimpleNamespace:
     toolchain = SimpleNamespace({**vars(toolchain_base), **{
         'name':'emscripten',
         'desc':'[Emscripten](https://emscripten.org/)',
-        'path':Path('/Users/enetheru/emsdk'),
+        'sdk_path':Path('/Users/enetheru/emsdk'),
         'version':'3.1.64',
         'verbs':['update', 'script'],
         'update':emscripten_update,
