@@ -141,12 +141,21 @@ def collect_options(builds) -> tuple[list[str], list[tuple[str, list[str]]]]:
 
 
 def configuration_folder(project_name: str, build) -> str:
-    """Project-relative folder for one configuration."""
+    """Project-relative folder for one configuration.
+
+    CMake and SCons both build under source_dir. Hello leaves source_dir
+    as '.', so the build_dir name is the folder. godot-cpp checks sources
+    out per toolchain and builds in a directory under that checkout.
+    """
     tool = _get(build, 'buildtool')
     build_dir = _get(tool, 'build_dir') if tool is not None else None
     if not build_dir:
         build_dir = _get(build, 'name')
     folder = str(build_dir).replace('\\', '/')
+    source = _get(build, 'source_dir')
+    source = '' if source is None else str(source).replace('\\', '/')
+    if source not in ('', '.'):
+        folder = f'{source}/{folder}'
     prefix = project_name + '/'
     if folder.startswith(prefix):
         return folder

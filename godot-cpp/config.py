@@ -32,6 +32,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     name = 'godot-cpp'
 
     origin = SimpleNamespace({**vars(git_base), **{
+        'name': 'origin',
         'tag': '4.5',
         'url': "https://github.com/godotengine/godot-cpp.git/",
         'ref': 'e83fd0904c13356ed1d4c3d09f8bb9132bdc6b77'
@@ -82,9 +83,26 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     # Host environment toolchain and build tools
     # builds:list[SimpleNamespace] = expand_func([build_start], expand_attr_list, 'buildtools', project.buildtools.values())
     builds = expand_func( builds, expand_toolchains, project )
+
+    # generic_toolchain_expand records the pair on the toolchain.
+    # SCons, naming, and the mingw processor flag read them on the build.
+    # Android's expand already set the ABI and platform.
+    for build in builds:
+        toolchain = build.toolchain
+        if hasattr(toolchain, 'target_arch'):
+            build.arch = toolchain.target_arch
+            build.platform = toolchain.target_platform
+
     builds = expand_func( builds, configure_toolchain )
 
     builds = expand_func( builds, expand_buildtools, project )
+
+    # llvm, llvm-mingw, and mingw64 attach the CMake toolchain file here.
+    # Each row already has its own buildtool, so the processor flag stays per arch.
+    for build in builds:
+        configure = getattr(build.toolchain, 'configure', None)
+        if configure is not None:
+            configure(build)
 
     # target and variants
     # builds = expand_func( builds, expand_variant )
