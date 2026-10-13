@@ -192,7 +192,6 @@ def expand_cmake( config:SimpleNamespace ) -> list:
 
     toolchain = config.toolchain
 
-    # config.cmake['config_vars'] += ['-DCMAKE_CXX_COMPILER_LAUNCHER=ccache']
     cmake_base = config.buildtool
     config_types = cmake_base.config_types
     generators = cmake_base.generators

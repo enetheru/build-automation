@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 from share.snippets import show_stats
 from src.config import build_base, cmake_base, godot_platforms, project_base
+from src.compiler_cache import apply_cmake_compiler_cache
 from src.expand_config import expand_attr_list, expand_cmake, expand_func, short_host
 
 
@@ -95,6 +96,7 @@ def generate(opts: SimpleNamespace) -> SimpleNamespace:
         build.verbs = list(build.verbs) + ['test']
         buildtool.build_dir = build.name
         buildtool.config_vars.append(f'-DHELLO_BUILD_NAME={build.name}')
+        apply_cmake_compiler_cache(build)
         build.script_parts = list(build.script_parts) + [test_hello, show_stats]
 
     project.build_configs = {build.name: build for build in builds}

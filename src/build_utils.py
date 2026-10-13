@@ -8,7 +8,9 @@ from types import SimpleNamespace
 
 from rich import print
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from src import format as fmt
 from src.ConsoleMultiplex import ConsoleMultiplex, TeeOutput
@@ -111,15 +113,23 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         # ====================[ Run Build Script ]=====================-
         # Our little output handler which captures the lines and looks for data to
         # use in the statistics
+        def emit(line: str) -> None:
+            # markup=False: ninja "[1/83]" and g++ notes are not Rich tags.
+            console.print(line, markup=False, highlight=False, soft_wrap=True)
+
         def monitor_output( line ):
             """
 
             :param line:
             """
             if line.startswith('json:'): stats['subs'].update(json.loads( line[6:] ))
-            else: print( line )
+            else: emit(line)
 
         errors:list = []
+        def capture_error(line: str) -> None:
+            errors.append(line)
+            emit(line)
+
         shell = getattr(build.toolchain, 'shell', [])
         env = getattr(build.toolchain, 'env', None )
 
@@ -130,7 +140,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
             stats |= { 'start_time':datetime.now() }
             proc = stream_command( run_cmd, env=env,
                                    stdout_handler=monitor_output,
-                                   stderr_handler=lambda msg: errors.append(msg)
+                                   stderr_handler=capture_error
                                    )
             print( "Post process")
             end_time = datetime.now()
@@ -165,7 +175,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
             }
             handle_error(f"process_build cmd={run_cmd}", e, opts)
             if errors:
-                console.print( Panel( '\n'.join( errors ), title='stderr', style="red"))
+                console.print(Panel(Text('\n'.join(errors)), title='stderr', style="red"))
 
         # TODO create a timeout for the processing, something reasonable.
         #   this should be defined in the build config as the largest possible build time that is expected.

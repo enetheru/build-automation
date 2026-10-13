@@ -26,6 +26,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         dict: A dictionary mapping project names to their SimpleNamespace configurations with build configs.
     """
     from share.snippets import source_git, show_stats
+    from src.compiler_cache import apply_cmake_compiler_cache
     from src.config import project_base, scons_base, cmake_base, git_base, build_base, godot_platforms, godot_arch, gopts
     from src.expand_config import expand_func
 
@@ -65,6 +66,8 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         'sources': sources,
         'buildtools': buildtools,
     }})
+    # project_base keeps a view of the toolchain dict from before -t filters it.
+    project.toolchains = gopts.toolchains.values()
 
     build_start = SimpleNamespace({ **vars(build_base), **{
         'verbs': ['source'],
@@ -110,6 +113,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     # Naming up to now.
     for build in builds:
 
+        apply_cmake_compiler_cache(build)
         buildtool = build.buildtool
         toolchain = build.toolchain
 

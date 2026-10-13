@@ -13,14 +13,25 @@ References:
 """
 import os
 import shlex
+import sys
 from collections import deque
 from typing import cast, BinaryIO, TextIO
-
-from rich import print
 
 from concurrent.futures import ThreadPoolExecutor
 from subprocess import PIPE, CalledProcessError, CompletedProcess, Popen
 from functools import partial
+
+def _write_out(line: str) -> None:
+    """Write a child stdout line and flush. A pipe is block-buffered, so an
+    unflushed compiler diagnostic is gone when the build then raises."""
+    sys.stdout.write(line + '\n')
+    sys.stdout.flush()
+
+def _write_err(line: str) -> None:
+    """Keep child stderr on stderr. rich.print would send it to stdout and
+    treat square brackets as markup."""
+    sys.stderr.write(line + '\n')
+    sys.stderr.flush()
 
 # https://www.devgem.io/posts/capturing-realtime-output-from-a-subprocess-in-python
 # https://stackoverflow.com/questions/54091396/live-output-stream-from-python-subprocess
@@ -31,8 +42,8 @@ def stream_command(
     dry=False,
     quiet=False,
     env=None,
-    stdout_handler=print,
-    stderr_handler=print,
+    stdout_handler=_write_out,
+    stderr_handler=_write_err,
     check=True,
     text=True,
     stdout=PIPE,
