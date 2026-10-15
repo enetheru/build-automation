@@ -48,10 +48,10 @@ sources:dict = {
     '4.7': SimpleNamespace({**vars(origin), **{
         'ref': '4.7'
     }}),
-    'libtracy': SimpleNamespace({**vars(origin), **{
-        'remote':'enetheru',
-        'url': "https://github.com/enetheru/godot.git/",
-        'ref': 'tracy-shared'
+    'tracy': SimpleNamespace({**vars(origin), **{
+        'remote':'godot-private',
+        'url': "C:/godot/src/godot-private",
+        'ref': 'enetheru/4.7-tracy'
     }}),
 }
 
@@ -146,7 +146,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
             godot_platforms[tc.target_platform] if tc.target_platform not in ['android', 'emscripten'] else None,
             build.target,
             build.variant,
-            build.source_def.ref,
+            build.source_def.ref.replace('/', '-'),
         ]
 
         build.name = '.'.join(filter(None, name_parts))
@@ -532,9 +532,9 @@ def config_tracy( cfg:SimpleNamespace ) -> bool:
     :param cfg:
     :return:
     """
-    # tracy was introduced in master within the 4.6 dev cycle.
-    valid_branches = ['master', '4.6', '4.7']
-    if not cfg.source_def.ref in valid_branches: return False
+    # This branch lives only in godot-private. Upstream refs do not get it.
+    if cfg.source_def.ref != 'enetheru/4.7-tracy':
+        return False
     scons = cfg.buildtool
 
     # Enable the tracy profiler.
@@ -566,36 +566,11 @@ def tracy_script():
     #[=================================[ Tracy ]=================================]
     os.environ["TRACY_NO_DBGHELP_INIT_LOAD"] = "1"
 
-def libtracy_config( cfg:SimpleNamespace ) -> bool:
-    """
-
-    :param cfg:
-    :return:
-    """
-    if cfg.source_def.ref != 'tracy-shared':
-        return False
-    cfg.buildtool.build_vars += [
-        'extra_suffix=tracy',
-        "profiler=tracy",
-        # "profiler_sample_callstack=yes",
-        # "profiler_track_memory=yes",
-        'tracy_as_shared=yes',
-    ]
-    tc = cfg.toolchain
-    match tc.host:
-        case 'Windows':
-            cfg.buildtool.build_vars.append("profiler_path=C:/git/wolfpld/tracy")
-        case 'Darwin':
-            cfg.buildtool.build_vars.append("profiler_path=/Users/enetheru/src/tracy")
-    return True
-
-
 variations = {
     'default': lambda cfg: True,
     'dev_build': config_dev,
     'minimum': config_minim,
     'tracy': config_tracy,
-    'libtracy': libtracy_config
 }
 
 
