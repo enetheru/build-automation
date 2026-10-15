@@ -4,6 +4,7 @@ Configuration settings and build definitions for the Godot project.
 
 import copy
 import pathlib
+import re
 
 from src.config import gopts, project_base, git_base, scons_base, godot_platforms, godot_arch
 from src.expand_config import expand_func, short_host, expand_attr_list
@@ -70,6 +71,32 @@ project = SimpleNamespace({**vars(project_base), **{
 # │  ██████  ███████ ██   ████ ███████ ██   ██ ██   ██    ██    ███████        │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
+_VERSION_NUM = re.compile(r'^(\d+\.\d+(?:\.\d+)?)')
+
+
+def _describe_version(repo: pathlib.Path, ref: str) -> str | None:
+    """Tag name when `ref` is that tag, otherwise `<version>~`.
+
+    `<version>~` is the numeric part of the closest ancestor tag. The tilde
+    means the ref has commits after that tag. Both forms are filename-safe.
+    """
+    import git
+    from git.exc import GitCommandError
+
+    g = git.cmd.Git(repo)
+    try:
+        return g.describe('--tags', '--exact-match', ref)
+    except GitCommandError:
+        pass
+    try:
+        tag = g.describe('--tags', '--abbrev=0', ref)
+    except GitCommandError:
+        return None
+    match = _VERSION_NUM.match(tag)
+    version = match.group(1) if match else tag.replace('/', '-')
+    return f'{version}~'
+
+
 def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     """
     Generate the project build configuration.
@@ -133,10 +160,21 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     ]
 
     # Naming up to now.
+    # origin/4.7 is also past 4.7.2-stable, so describing every ref would
+    # give the private branch and the 4.7 branch the same suffix.
+    version_labels: dict[str, str | None] = {}
     for build in builds:
 
         # buildtool = build.buildtool
         tc = build.toolchain
+        ref = build.source_def.ref
+        if ref == 'enetheru/4.7-tracy':
+            if ref not in version_labels:
+                repo = pathlib.Path(build.source_def.url)
+                version_labels[ref] = _describe_version(repo, ref) if repo.exists() else None
+            version = version_labels[ref]
+        else:
+            version = ref.replace('/', '-')
 
         name_parts = [
             short_host(),
@@ -146,7 +184,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
             godot_platforms[tc.target_platform] if tc.target_platform not in ['android', 'emscripten'] else None,
             build.target,
             build.variant,
-            build.source_def.ref.replace('/', '-'),
+            version,
         ]
 
         build.name = '.'.join(filter(None, name_parts))
@@ -566,11 +604,25 @@ def tracy_script():
     #[=================================[ Tracy ]=================================]
     os.environ["TRACY_NO_DBGHELP_INIT_LOAD"] = "1"
 
+
+def config_libtracy( cfg:SimpleNamespace ) -> bool:
+    """
+    Tracy build that links Tracy as a shared library.
+    :param cfg:
+    :return:
+    """
+    if not config_tracy(cfg):
+        return False
+    cfg.buildtool.build_vars.append('tracy_as_shared=yes')
+    return True
+
+
 variations = {
     'default': lambda cfg: True,
     'dev_build': config_dev,
     'minimum': config_minim,
     'tracy': config_tracy,
+    'libtracy': config_libtracy,
 }
 
 
