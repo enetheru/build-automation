@@ -152,6 +152,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         project.buildtools.values() )
 
     builds = expand_func( builds, expand_variations )
+    builds = expand_func( builds, expand_dev )
     builds = expand_func( builds, expand_tests )
 
     # Configure the builds.
@@ -177,6 +178,12 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         else:
             version = ref.replace('/', '-')
 
+        # A dev copy of the default variant keeps the name `dev_build`.
+        # The other variants keep their label and gain a dev_build tag.
+        variant = build.variant
+        dev = getattr(build, 'dev_build', None)
+        if variant == 'default' and dev:
+            variant = None
         name_parts = [
             short_host(),
             # buildtool.name, this is always "scons" for godot.
@@ -184,7 +191,8 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
             tc.target_arch if tc.target_platform not in ['emscripten'] else None,
             godot_platforms[tc.target_platform] if tc.target_platform not in ['android', 'emscripten'] else None,
             build.target,
-            build.variant,
+            variant,
+            dev,
             getattr(build, 'tests', None),
             version,
         ]
@@ -713,18 +721,6 @@ def configure_scons( config:SimpleNamespace ) -> bool:
 # │                                                    |___/                   │
 # ╰────────────────────────────────────────────────────────────────────────────╯
 
-def config_dev( cfg:SimpleNamespace ) -> bool:
-    """
-    Configure build for development.
-    :param cfg:
-    :return:
-    """
-    if cfg.arch not in ['x86_64', 'arm64']: return False
-    cfg.buildtool.build_vars.append('dev_build=yes')
-    cfg.buildtool.build_vars.append('separate_debug_symbols=yes')
-    return True
-
-
 def config_minim( cfg:SimpleNamespace ) -> bool:
     """
     Configure a minimum build profile.
@@ -811,6 +807,25 @@ def config_libtracy( cfg:SimpleNamespace ) -> bool:
     return True
 
 
+def expand_dev( config:SimpleNamespace ) -> list[SimpleNamespace]:
+    """
+    Each build, and on x86_64 and arm64 the same build with dev_build on.
+    The dev copy carries a dev_build tag. The other copy keeps its name.
+    :param config:
+    :return:
+    """
+    configs_out = [copy.deepcopy(config)]
+    setattr(configs_out[0], 'dev_build', None)
+    if getattr(config, 'arch', None) not in ('x86_64', 'arm64'):
+        return configs_out
+
+    dev = copy.deepcopy(config)
+    setattr(dev, 'dev_build', 'dev_build')
+    dev.buildtool.build_vars.append('dev_build=yes')
+    configs_out.append(dev)
+    return configs_out
+
+
 def expand_tests( config:SimpleNamespace ) -> list[SimpleNamespace]:
     """
     Each build, and the same build with the unit tests switched on.
@@ -830,7 +845,6 @@ def expand_tests( config:SimpleNamespace ) -> list[SimpleNamespace]:
 
 variations = {
     'default': lambda cfg: True,
-    'dev_build': config_dev,
     'minimum': config_minim,
     'tracy': config_tracy,
     'libtracy': config_libtracy,
