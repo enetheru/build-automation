@@ -409,6 +409,117 @@ def clean_scons():
         stats['clean'] = timer.get_dict()
         config['ok'] = timer.ok()
 
+
+def _host_can_run(host: str, platform_name: str, arch: str) -> bool:
+    """True when this machine can execute that Godot binary."""
+    import platform
+    machine = platform.machine().lower()
+    host_arch = {
+        'amd64': 'x86_64',
+        'x86_64': 'x86_64',
+        'x86': 'x86_32',
+        'i686': 'x86_32',
+        'arm64': 'arm64',
+        'aarch64': 'arm64',
+    }.get(machine, godot_arch.get(machine, machine))
+
+    if host == 'Windows' and platform_name == 'windows':
+        if arch == host_arch:
+            return True
+        if host_arch == 'x86_64' and arch == 'x86_32':
+            return True
+        if host_arch == 'arm64' and arch in ('x86_64', 'x86_32'):
+            return True
+    if host == 'Darwin' and platform_name == 'macos':
+        if arch == host_arch:
+            return True
+        if host_arch == 'arm64' and arch == 'x86_64':
+            return True
+    if host == 'Linux' and platform_name in ('linux', 'linuxbsd'):
+        return arch == host_arch
+    return False
+
+
+def test_scons():
+    """
+    Run the profiling seam tests linked into a tests=yes binary.
+    The case filter is part of this action: [Profiling].
+    """
+    console = rich.console.Console()
+    config:dict = {}
+    opts:dict = {}
+    build:dict = {}
+    stats:dict = {}
+    buildtool:dict = {}
+    project:dict = {}
+    toolchain:dict = {}
+    # start_script
+
+    if config['ok'] and 'test' in opts['build_actions']:
+        console.set_window_title(f'Test - {build["name"]}')
+
+        with Timer(name='test') as timer, fmt.Section('Test'):
+            from subprocess import CalledProcessError
+
+            if not build.get('can_test'):
+                host = toolchain.get('host', '')
+                fmt.h(f'Skip test: {host} cannot run this binary')
+            else:
+                def scons_opt(name):
+                    value = None
+                    for item in buildtool.get('build_vars', []):
+                        key, sep, val = str(item).partition('=')
+                        if sep and key == name:
+                            value = val
+                    return value
+
+                # Same suffix SConstruct builds, including detect.py's .llvm prefix.
+                platform_name = scons_opt('platform') or ''
+                if platform_name in ('linux', 'bsd'):
+                    platform_name = 'linuxbsd'
+                target = scons_opt('target') or build.get('target', '')
+                arch = scons_opt('arch') or ''
+                parts = ['godot', platform_name, target]
+                if scons_opt('dev_build') == 'yes':
+                    parts.append('dev')
+                if scons_opt('precision') == 'double':
+                    parts.append('double')
+                parts.append(arch)
+                if scons_opt('threads') == 'no':
+                    parts.append('nothreads')
+                extra = scons_opt('extra_suffix') or ''
+                if scons_opt('use_llvm') == 'yes':
+                    extra = f'llvm.{extra}' if extra else 'llvm'
+                if extra:
+                    parts.append(extra)
+
+                stem = '.'.join(part for part in parts if part)
+                build_dir = buildtool.get('build_dir') or (project['path'] / build['source_dir'])
+                bin_dir = Path(build_dir) / 'bin'
+                if platform_name == 'windows':
+                    exe = bin_dir / f'{stem}.console.exe'
+                    if not exe.is_file():
+                        exe = bin_dir / f'{stem}.exe'
+                else:
+                    exe = bin_dir / stem
+
+                if not exe.is_file():
+                    fmt.h(f'Missing test binary {exe.as_posix()}')
+                    timer.status = TaskStatus.FAILED
+                else:
+                    # [Profiling] is the seam suite. The case filter lives on this action.
+                    try:
+                        proc = stream_command(
+                            [str(exe), '--test', '--test-case=*Profiling*'],
+                            dry=opts['dry'],
+                        )
+                        timer.status = TaskStatus.FAILED if proc.returncode else TaskStatus.COMPLETED
+                    except CalledProcessError:
+                        timer.status = TaskStatus.FAILED
+
+        stats['test'] = timer.get_dict()
+        config['ok'] = timer.ok() and config['ok']
+
 # MARK: ToolChains
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │ _____         _  ___ _         _                                           │
@@ -574,6 +685,15 @@ def configure_scons( config:SimpleNamespace ) -> bool:
 
         case _:
             return False
+
+    if getattr(config, 'tests', None):
+        config.can_test = _host_can_run(
+            tc.host,
+            godot_platforms[tc.target_platform],
+            godot_arch[tc.target_arch],
+        )
+        config.verbs.append('test')
+        config.script_parts.append(test_scons)
 
     return True
 
