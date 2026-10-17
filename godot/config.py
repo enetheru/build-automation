@@ -306,10 +306,57 @@ def build_scons():
                 fnf.add_note( f'Missing Folder {scons['build_dir']}' )
                 raise fnf
 
-            # use a cache if paths exist
-            if pathlib.Path(scons['cache_path']).exists():
-                scons['build_vars'].append(f'cache_path={Path( scons["cache_path"] ).as_posix()}')
+            # The Windows letter moves. Find the volume by label at build time.
+            # A configured path is used as-is when that path is already there.
+            def scons_cache_dir():
+                configured = scons.get('cache_path')
+                if configured and pathlib.Path(configured).exists():
+                    return pathlib.Path(configured)
+                label = scons.get('cache_volume')
+                if not label or os.name != 'nt':
+                    return None
+                import ctypes
+                kernel = ctypes.windll.kernel32
+                name = ctypes.create_unicode_buffer(261)
+                serial = ctypes.c_ulong()
+                maxcomp = ctypes.c_ulong()
+                flags = ctypes.c_ulong()
+                fsname = ctypes.create_unicode_buffer(261)
+                rel = scons.get('cache_relpath', 'godot/scons_cache')
+                # SEM_FAILCRITICALERRORS. An empty reader must not pop a dialog.
+                previous_mode = kernel.SetErrorMode(1)
+                try:
+                    found = _windows_cache_volume(kernel, name, serial, maxcomp, flags, fsname, label, rel)
+                finally:
+                    kernel.SetErrorMode(previous_mode)
+                return found
+
+            def _windows_cache_volume(kernel, name, serial, maxcomp, flags, fsname, label, rel):
+                import ctypes
+                import string
+                for letter in string.ascii_uppercase:
+                    root = f'{letter}:\\'
+                    if kernel.GetDriveTypeW(root) == 1:
+                        continue
+                    if not kernel.GetVolumeInformationW(
+                        root, name, len(name),
+                        ctypes.byref(serial), ctypes.byref(maxcomp), ctypes.byref(flags),
+                        fsname, len(fsname)):
+                        continue
+                    if name.value.casefold() != str(label).casefold():
+                        continue
+                    candidate = pathlib.Path(root) / rel
+                    if candidate.is_dir():
+                        return candidate
+                return None
+
+            cache_dir = scons_cache_dir()
+            if cache_dir is not None:
+                print(f'SCons cache: {cache_dir.as_posix()}')
+                scons['build_vars'].append(f'cache_path={cache_dir.as_posix()}')
                 scons['build_vars'].append(f'cache_limit={scons["cache_limit"]}')
+            else:
+                print('SCons cache: not connected')
 
             jobs = opts["jobs"]
             cmd_chunks = [
@@ -441,9 +488,12 @@ def configure_scons( config:SimpleNamespace ) -> bool:
     scons.build_dir = ''
 
     # == Build Cache ==
+    # Windows resolves cache_volume at build time because the letter changes.
+    # Darwin mounts that same volume at a stable /Volumes path.
     match tc.host:
         case 'Windows':
-            setattr(scons, 'cache_path', Path("D:/godot/scons_cache"))
+            setattr(scons, 'cache_volume', 'Cache')
+            setattr(scons, 'cache_relpath', 'godot/scons_cache')
             setattr(scons, 'cache_limit', 100)
         case 'Darwin':
             setattr(scons, 'cache_path', Path("/Volumes/Cache/godot/scons_cache"))
