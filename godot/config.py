@@ -152,6 +152,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         project.buildtools.values() )
 
     builds = expand_func( builds, expand_variations )
+    builds = expand_func( builds, expand_tests )
 
     # Configure the builds.
     builds = [
@@ -184,6 +185,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
             godot_platforms[tc.target_platform] if tc.target_platform not in ['android', 'emscripten'] else None,
             build.target,
             build.variant,
+            getattr(build, 'tests', None),
             version,
         ]
 
@@ -564,9 +566,29 @@ def config_minim( cfg:SimpleNamespace ) -> bool:
     return True
 
 
+# SConstruct BoolVariables. tracy_memory is yes here because
+# profiler_track_memory=yes also defines TRACY_MEMORY_ENABLED.
+_TRACY_FEATURES = (
+    ("tracy_zones", "yes"),
+    ("tracy_plots", "yes"),
+    ("tracy_messages", "yes"),
+    ("tracy_memory", "yes"),
+    ("tracy_locks", "yes"),
+    ("tracy_gpu", "yes"),
+    ("tracy_gdscript_zones", "no"),
+    ("tracy_frames", "yes"),
+    ("tracy_frame_images", "no"),
+)
+
+
+def _append_tracy_features( scons ) -> None:
+    for name, value in _TRACY_FEATURES:
+        scons.build_vars.append(f"{name}={value}")
+
+
 def config_tracy( cfg:SimpleNamespace ) -> bool:
     """
-    Configure build with Tracy profiler.
+    Configure build with Tracy profiler, linked into the engine.
     :param cfg:
     :return:
     """
@@ -587,6 +609,8 @@ def config_tracy( cfg:SimpleNamespace ) -> bool:
 
     # profiler_track_memory: Profile memory allocations, if the profiler supports it. (yes|no)
     scons.build_vars.append("profiler_track_memory=yes")
+
+    _append_tracy_features(scons)
 
     cfg.buildtool.build_vars.append('extra_suffix=tracy')
 
@@ -615,6 +639,23 @@ def config_libtracy( cfg:SimpleNamespace ) -> bool:
         return False
     cfg.buildtool.build_vars.append('tracy_as_shared=yes')
     return True
+
+
+def expand_tests( config:SimpleNamespace ) -> list[SimpleNamespace]:
+    """
+    Each build, and the same build with the unit tests switched on.
+    The tests copy carries a tests tag. The other copy keeps the existing name.
+    :param config:
+    :return:
+    """
+    configs_out = []
+    for tests in (False, True):
+        cfg = copy.deepcopy(config)
+        setattr(cfg, 'tests', 'tests' if tests else None)
+        if tests:
+            cfg.buildtool.build_vars.append('tests=yes')
+        configs_out.append(cfg)
+    return configs_out
 
 
 variations = {
