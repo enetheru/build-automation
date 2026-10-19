@@ -627,7 +627,6 @@ def test_scons():
                     source_dir = Path(build_dir)
                     run_timeout = int(tt.get('timeout') or 300)
                     is_tracy = scons_opt('profiler') == 'tracy'
-                    on_linux = sys.platform.startswith('linux')
                     stages = {}
                     order = []
 
@@ -728,8 +727,11 @@ def test_scons():
                         started = time.monotonic()
                         cap_log_path = logdir / f'{name}-capture.log'
                         with open(cap_log_path, 'w', encoding='utf-8') as cap_log:
+                            popen_kw = {}
+                            if sys.platform == 'win32':
+                                popen_kw['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
                             cap = subprocess.Popen(cap_cmd, stdout=cap_log, stderr=subprocess.STDOUT,
-                                                   stdin=subprocess.DEVNULL)
+                                                   stdin=subprocess.DEVNULL, **popen_kw)
                             time.sleep(2)   # the manual flow starts the capture 2 s ahead
                             eng = run(f'{name}-engine', eng_cmd, run_timeout)
                             try:
@@ -792,9 +794,12 @@ def test_scons():
 
                     def ensure_analyzer():
                         # The libTracyServer analyser from the silent-client run, built once.
+                        # Prefer a prebuilt binary on any OS (e.g. trace-analyzer.exe on Windows).
                         binary = Path(tt.get('analyzer') or '')
                         if binary.is_file():
                             return binary, None
+                        if not sys.platform.startswith('linux'):
+                            return None, 'analyser binary missing; auto-build is Linux-only (need g++ and libTracyServer.a)'
                         src = Path(tt.get('analyzer_src') or '')
                         tools_dir = Path(tt.get('tools_path') or '') / 'csvexport'
                         libs = [tools_dir / 'libTracyServer.a',
@@ -960,8 +965,6 @@ def test_scons():
                         tracy_gate = None
                         if not is_tracy:
                             tracy_gate = 'not a profiler=tracy build'
-                        elif not on_linux:
-                            tracy_gate = f'Tracy capture stages run on Linux only (host {sys.platform})'
                         elif not tool('capture'):
                             tracy_gate = f'no tracy-capture at {tt.get("capture")}'
                         silent_client = None
