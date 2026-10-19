@@ -38,6 +38,52 @@ origin = SimpleNamespace({**vars(git_base), **{
     'ref': 'master'
 }})
 
+# The Tracy fork comes from the local Godot clone on the box, not the internet.
+# Fetching from a local repo only sees its branches (refs/heads/*), so the ref is
+# the clone's local `tracy` branch.
+TRACY_SOURCE_PATH = "C:/Godot/src/godot-private"
+TRACY_REF = 'enetheru/4.7-tracy'
+
+# The Tracy profiler sources, pinned to one release. config_tracy checks the
+# version header so a different Tracy in that folder can't slip into a build.
+TRACY_VERSION = '0.14.1'
+TRACY_PROFILER_PATH = "C:/git/wolfpld/tracy"
+
+# Tools and harnesses for the test step (box defaults). The generated build
+# script only carries the body of test_scons, so configure_scons copies these
+# onto the build as build['tracy_test']. A missing tool or harness makes its
+# stage skip with a message.
+TRACY_TOOLS_PATH = "C:/Users/nicho/AppData/Local/Microsoft/WinGet/Packages/wolfpld.tracy_Microsoft.Winget.Source_8wekyb3d8bbwe"
+TRACY_CAPTURE = f"{TRACY_TOOLS_PATH}/tracy-capture.exe"
+TRACY_CSVEXPORT = f"{TRACY_TOOLS_PATH}/tracy-csvexport.exe"
+# Notes, toggle harness and libTracyServer analyser source from the silent-client run.
+TRACY_SILENT_CLIENT_LOGS = "C:/build/godot/logs/godot-tracy-build-logs/silent-client-f4c9c31"
+TRACY_ANALYZER_SRC = f"{TRACY_SILENT_CLIENT_LOGS}/trace-analyzer.cpp"
+# Built once by the test step when missing, against the csvexport build's libTracyServer.a.
+TRACY_ANALYZER = f"{TRACY_TOOLS_PATH}/trace-analyzer.exe"
+TRACY_FIBERS_GD = "/workspace/fiber-trace-harness/fibers.gd"
+TRACY_TOGGLE_GD = f"{TRACY_SILENT_CLIENT_LOGS}/toggle.gd"
+TRACY_CAPTURE_ADDR = '127.0.0.1'
+TRACY_CAPTURE_PORT = '8086'
+TRACY_TEST_FEATURES = 'zones,plots,messages,frames,gdscript_zones_auto,gdscript_zones_manual'
+TRACY_TEST_TIMEOUT = 300    # seconds for one engine run
+
+TRACY_TEST = {
+    'version': TRACY_VERSION,
+    'profiler_path': TRACY_PROFILER_PATH,
+    'tools_path': TRACY_TOOLS_PATH,
+    'capture': TRACY_CAPTURE,
+    'csvexport': TRACY_CSVEXPORT,
+    'analyzer': TRACY_ANALYZER,
+    'analyzer_src': TRACY_ANALYZER_SRC,
+    'fibers_gd': TRACY_FIBERS_GD,
+    'toggle_gd': TRACY_TOGGLE_GD,
+    'address': TRACY_CAPTURE_ADDR,
+    'port': TRACY_CAPTURE_PORT,
+    'features': TRACY_TEST_FEATURES,
+    'timeout': TRACY_TEST_TIMEOUT,
+}
+
 sources:dict = {
     'origin': origin,
     '4.5': SimpleNamespace({**vars(origin), **{
@@ -51,8 +97,8 @@ sources:dict = {
     }}),
     'tracy': SimpleNamespace({**vars(origin), **{
         'remote':'godot-private',
-        'url': "C:/godot/src/godot-private",
-        'ref': 'enetheru/4.7-tracy'
+        'url': TRACY_SOURCE_PATH,
+        'ref': TRACY_REF
     }}),
 }
 
@@ -170,7 +216,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         # buildtool = build.buildtool
         tc = build.toolchain
         ref = build.source_def.ref
-        if ref == 'enetheru/4.7-tracy':
+        if ref == TRACY_REF:
             if ref not in version_labels:
                 repo = pathlib.Path(build.source_def.url)
                 version_labels[ref] = _describe_version(repo, ref) if repo.exists() else None
@@ -450,8 +496,11 @@ def _host_can_run(host: str, platform_name: str, arch: str) -> bool:
 
 def test_scons():
     """
-    Run the profiling seam tests linked into a tests=yes binary.
-    The case filter is part of this action: [Profiling].
+    Test a tests=yes binary the way godot-build tests it by hand:
+    version check, Tracy version and defines, the [Profiling] doctests, then
+    on profiler=tracy builds a fibers capture with zone counts, a silenced run
+    and a capture toggle run. Logs and summary.json go to
+    <build_dir>/test-logs/<short-commit>/.
     """
     console = rich.console.Console()
     config:dict = {}
@@ -466,6 +515,7 @@ def test_scons():
     if config['ok'] and 'test' in opts['build_actions']:
         console.set_window_title(f'Test - {build["name"]}')
 
+        test_summary = None
         with Timer(name='test') as timer, fmt.Section('Test'):
             from subprocess import CalledProcessError
 
@@ -515,17 +565,518 @@ def test_scons():
                     fmt.h(f'Missing test binary {exe.as_posix()}')
                     timer.status = TaskStatus.FAILED
                 else:
-                    # [Profiling] is the seam suite. The case filter lives on this action.
+                    # Helpers are nested defs: the generated script keeps only the body
+                    # after `# start_script`, so module-level names are not there.
+                    import csv
+                    import hashlib
+                    import json
+                    import re
+                    import shutil
+                    import socket
+                    import subprocess
+                    import sys
+                    import time
+
+                    tt = dict(build.get('tracy_test') or {})
+                    dry = bool(opts['dry'])
+                    source_dir = Path(build_dir)
+                    run_timeout = int(tt.get('timeout') or 300)
+                    is_tracy = scons_opt('profiler') == 'tracy'
+                    on_linux = sys.platform.startswith('linux')
+                    stages = {}
+                    order = []
+
+                    def stage(name):
+                        rec = {'status': 'pass'}
+                        stages[name] = rec
+                        order.append(name)
+                        return rec
+
+                    def skip(rec, why):
+                        rec['status'] = 'skip'
+                        rec['reason'] = why
+                        fmt.h(f'Skip: {why}')
+
+                    def fail(rec, why):
+                        rec['status'] = 'fail'
+                        rec.setdefault('failures', []).append(why)
+                        fmt.h(f'FAIL: {why}')
+
+                    def tail(text, n=20):
+                        for line in text.rstrip().splitlines()[-n:]:
+                            print(f'    {line}')
+
+                    def run(name, args, timeout, echo=20):
+                        # Like stream_command: print the command, launch nothing when dry.
+                        args = [str(a) for a in args]
+                        print(f'  $ {args}')
+                        if dry:
+                            return None
+                        started = time.monotonic()
+                        try:
+                            proc = subprocess.run(args, capture_output=True, text=True, encoding='utf-8',
+                                                  errors='backslashreplace', timeout=timeout, stdin=subprocess.DEVNULL)
+                            rc, out, err = proc.returncode, proc.stdout, proc.stderr
+                        except subprocess.TimeoutExpired as e:
+                            out = e.stdout.decode('utf-8', 'backslashreplace') if isinstance(e.stdout, bytes) else (e.stdout or '')
+                            err = e.stderr.decode('utf-8', 'backslashreplace') if isinstance(e.stderr, bytes) else (e.stderr or '')
+                            rc = f'timeout after {timeout} s'
+                        except OSError as e:
+                            rc, out, err = f'launch error: {e}', '', ''
+                        secs = round(time.monotonic() - started, 3)
+                        (logdir / f'{name}.cmd').write_text(subprocess.list2cmdline(args) + '\n', encoding='utf-8')
+                        (logdir / f'{name}.stdout.log').write_text(out, encoding='utf-8')
+                        (logdir / f'{name}.stderr.log').write_text(err, encoding='utf-8')
+                        if echo:
+                            tail(out + err, echo)
+                        return {'rc': rc, 'out': out, 'err': err, 'secs': secs}
+
+                    def git_head():
+                        if dry:
+                            return None
+                        try:
+                            proc = subprocess.run(['git', '-C', str(source_dir), 'rev-parse', 'HEAD'],
+                                                  capture_output=True, text=True, timeout=30)
+                        except (OSError, subprocess.SubprocessError):
+                            return None
+                        head = proc.stdout.strip()
+                        return head if proc.returncode == 0 and re.fullmatch(r'[0-9a-f]{40}', head) else None
+
+                    # Same parsing as _tracy_version_at, which the script cannot import.
+                    def tracy_version_at(path):
+                        try:
+                            text = (Path(path) / 'public/common/TracyVersion.hpp').read_text()
+                        except OSError:
+                            return None
+                        parts = [re.search(rf'{name}\s*=\s*(\d+)', text) for name in ('Major', 'Minor', 'Patch')]
+                        if not all(parts):
+                            return None
+                        return '.'.join(m.group(1) for m in parts)
+
+                    def tool(key):
+                        value = tt.get(key)
+                        return Path(value) if value and Path(value).is_file() else None
+
+                    def port_busy(address, port):
+                        try:
+                            with socket.create_connection((address, int(port)), timeout=1):
+                                return True
+                        except OSError:
+                            return False
+
+                    def capture_run(rec, name, harness, unsilence):
+                        # tracy-capture in the background, then the engine with a subprocess timeout.
+                        trace = logdir / f'{name}.tracy'
+                        cap_cmd = [str(tool('capture')), '-o', str(trace), '-a', tt['address'], '-p', tt['port'], '-f']
+                        eng_cmd = [str(exe), '--headless'] + (['--tracy'] if unsilence else []) + [
+                            '--script', str(harness), '--tracy-features', tt['features']]
+                        rec['capture_cmd'] = subprocess.list2cmdline(cap_cmd)
+                        rec['engine_cmd'] = subprocess.list2cmdline(eng_cmd)
+                        print(f'  $ {cap_cmd} &')
+                        if dry:
+                            print(f'  $ {eng_cmd}')
+                            rec['status'] = 'dry'
+                            return None, ''
+                        if port_busy(tt['address'], tt['port']):
+                            fail(rec, f"{tt['address']}:{tt['port']} already has a Tracy client; another engine is running")
+                            return None, ''
+                        started = time.monotonic()
+                        cap_log_path = logdir / f'{name}-capture.log'
+                        with open(cap_log_path, 'w', encoding='utf-8') as cap_log:
+                            cap = subprocess.Popen(cap_cmd, stdout=cap_log, stderr=subprocess.STDOUT,
+                                                   stdin=subprocess.DEVNULL)
+                            time.sleep(2)   # the manual flow starts the capture 2 s ahead
+                            eng = run(f'{name}-engine', eng_cmd, run_timeout)
+                            try:
+                                cap_rc = cap.wait(timeout=60)
+                            except subprocess.TimeoutExpired:
+                                cap.terminate()
+                                try:
+                                    cap.wait(timeout=10)
+                                except subprocess.TimeoutExpired:
+                                    cap.kill()
+                                    cap.wait()
+                                cap_rc = 'timeout: capture still running 60 s after the engine exited'
+                        rec['secs'] = round(time.monotonic() - started, 3)
+                        cap_text = cap_log_path.read_text(encoding='utf-8', errors='backslashreplace')
+                        fmt.h(f'{name} capture:')
+                        tail(cap_text, 12)
+                        rec['engine_rc'] = eng['rc']
+                        rec['capture_rc'] = cap_rc
+                        m = re.search(r'^Zones:\s*([\d,]+)', cap_text, re.M)
+                        rec['capture_zones'] = int(m.group(1).replace(',', '')) if m else None
+                        m = re.search(r'^Frames:\s*([\d,]+)', cap_text, re.M)
+                        rec['capture_frames'] = int(m.group(1).replace(',', '')) if m else None
+                        if eng['rc'] != 0:
+                            fail(rec, f'engine exited {eng["rc"]}')
+                        if cap_rc != 0:
+                            fail(rec, f'tracy-capture exited {cap_rc}')
+                        for label, text in (('engine', eng['out'] + eng['err']), ('capture', cap_text)):
+                            if 'Instrumentation failure' in text:
+                                fail(rec, f'"Instrumentation failure" in {label} output')
+                        size = trace.stat().st_size if trace.is_file() else 0
+                        rec['trace'] = trace.as_posix()
+                        rec['trace_bytes'] = size
+                        if not size:
+                            fail(rec, f'{trace.as_posix()} is missing or empty')
+                            return None, eng['out']
+                        return trace, eng['out']
+
+                    def zone_csv(name, trace):
+                        # tracy-csvexport: name,src_file,src_line,total_ns,total_perc,counts,mean,min,max,std
+                        res = run(f'{name}-csvexport', [tool('csvexport'), trace], 120, echo=0)
+                        if res is None or res['rc'] != 0:
+                            return None
+                        csv_path = logdir / f'{name}-zones.csv'
+                        csv_path.write_text(res['out'], encoding='utf-8')
+                        rows = list(csv.reader(res['out'].splitlines()))[1:]
+                        total = 0
+                        unknown = 0
+                        names = set()
+                        for row in rows:
+                            if len(row) < 10:
+                                continue
+                            zname = ','.join(row[:-9])
+                            count = int(row[-5])
+                            total += count
+                            names.add(zname)
+                            if zname == '???':
+                                unknown += count
+                        return {'zones_csv': csv_path.as_posix(), 'zones': total,
+                                'distinct_zone_names': len(names), 'unknown_zones': unknown}
+
+                    def ensure_analyzer():
+                        # The libTracyServer analyser from the silent-client run, built once.
+                        binary = Path(tt.get('analyzer') or '')
+                        if binary.is_file():
+                            return binary, None
+                        src = Path(tt.get('analyzer_src') or '')
+                        tools_dir = Path(tt.get('tools_path') or '') / 'csvexport'
+                        libs = [tools_dir / 'libTracyServer.a',
+                                tools_dir / '_deps/capstone-build/libcapstone.a',
+                                tools_dir / '_deps/zstd-build/lib/libzstd.a']
+                        cxx = shutil.which('g++')
+                        missing = [p.as_posix() for p in [src, *libs] if not p.is_file()]
+                        if not cxx or missing or not tt.get('analyzer'):
+                            return None, f'cannot build the analyser (g++={cxx}, missing {missing})'
+                        # Reuse the include paths CMake gave csvexport, so the headers match the library.
+                        includes = []
+                        try:
+                            ninja = (tools_dir / 'build.ninja').read_text(encoding='utf-8')
+                            m = re.search(r'csvexport\.cpp\.o:.*?\n(?:  .*\n)*?  INCLUDES = (.*)\n', ninja)
+                            includes = m.group(1).split() if m else []
+                        except OSError:
+                            pass
+                        if not includes:
+                            profiler = Path(tt.get('profiler_path') or '')
+                            includes = [f'-I{profiler / "public/common"}', f'-I{profiler / "server"}']
+                        binary.parent.mkdir(parents=True, exist_ok=True)
+                        partial = binary.with_name(binary.name + '.partial')
+                        cmd = [cxx, '-O2', '-std=gnu++20', '-flto=auto', *includes, '-o', partial, src,
+                               *libs, '-lpthread']
+                        res = run('analyzer-build', cmd, 900, echo=10)
+                        if res is None:
+                            return None, 'dry'
+                        if res['rc'] != 0 or not partial.is_file():
+                            return None, f'analyser build exited {res["rc"]}'
+                        partial.replace(binary)
+                        return binary, None
+
+                    def analyse(name, trace):
+                        binary, why = ensure_analyzer()
+                        if binary is None:
+                            return None, why
+                        res = run(f'{name}-analysis', [binary, trace], 300, echo=0)
+                        if res is None:
+                            return None, 'dry'
+                        (logdir / f'{name}-analysis.txt').write_text(res['out'], encoding='utf-8')
+                        if res['rc'] != 0:
+                            return None, f'analyser exited {res["rc"]}'
+                        text = res['out']
+                        info = {'analysis': (logdir / f'{name}-analysis.txt').as_posix()}
+                        m = re.search(r'^first time ([\d.]+) s', text, re.M)
+                        info['first_time'] = float(m.group(1)) if m else None
+                        frames = [(int(c), float(last) if last else None) for c, last in
+                                  re.findall(r"^frame set .*?: (\d+) frames(?: first [\d.]+ last ([\d.]+))?", text, re.M)]
+                        info['frames'] = sum(c for c, _ in frames)
+                        info['last_frame'] = max((last for _, last in frames if last is not None), default=None)
+                        m = re.search(r'^zonesCnt\(worker\)=(\d+).*?(?: first ([\d.]+) last ([\d.]+))?$', text, re.M)
+                        info['zones'] = int(m.group(1)) if m else None
+                        info['first_zone'] = float(m.group(2)) if m and m.group(2) else None
+                        info['last_zone'] = float(m.group(3)) if m and m.group(3) else None
+                        info['message_list'] = [(float(t), int(srcid), msg) for t, srcid, msg in
+                                                re.findall(r"^  MSG ([\d.]+) .*? src=(\d+) sev=\d+ '(.*)'$", text, re.M)]
+                        m = re.search(r'^messages: (\d+)', text, re.M)
+                        info['messages'] = int(m.group(1)) if m else None
+                        plots = [(ptype, pname, float(last) if last else None) for ptype, pname, last in
+                                 re.findall(r"^  PLOT type=(\w+) name='(.*?)' points=\d+(?: first [\d.]+ last ([\d.]+))?", text, re.M)]
+                        info['plots'] = len(plots)
+                        info['engine_plots'] = sum(1 for ptype, _, _ in plots if ptype != 'SysTime')
+                        info['plot_list'] = plots
+                        return info, None
+
+                    def public(info):
+                        return {k: v for k, v in (info or {}).items() if k not in ('message_list', 'plot_list')}
+
+                    head = git_head()
+                    short = head[:10] if head else ('dry' if dry else 'unknown')
+                    log_root = Path(tt['log_root']) if tt.get('log_root') else source_dir / 'test-logs'
+                    logdir = log_root / short
+                    if not dry:
+                        logdir.mkdir(parents=True, exist_ok=True)
+                    fmt.h(f'Test binary: {exe.as_posix()}')
+                    fmt.h(f'Test logs: {logdir.as_posix()}')
+                    flow_started = time.monotonic()
+
                     try:
-                        proc = stream_command(
-                            [str(exe), '--test', '--test-case=*Profiling*'],
-                            dry=opts['dry'],
-                        )
-                        timer.status = TaskStatus.FAILED if proc.returncode else TaskStatus.COMPLETED
-                    except CalledProcessError:
-                        timer.status = TaskStatus.FAILED
+                        # 1. Version: the binary must carry the source's commit.
+                        rec = stage('version')
+                        fmt.h('Version check')
+                        res = run('version', [exe, '--headless', '--version'], 60)
+                        if res is None:
+                            rec['status'] = 'dry'
+                        else:
+                            version = (res['out'] or res['err']).strip().splitlines()
+                            rec['output'] = version[-1] if version else ''
+                            rec['source_commit'] = head
+                            hashes = re.findall(r'\b([0-9a-f]{7,40})\b', rec['output'])
+                            if res['rc'] != 0:
+                                fail(rec, f'--version exited {res["rc"]}')
+                            elif not head:
+                                fail(rec, f'cannot read HEAD of {source_dir.as_posix()}')
+                            elif not any(head.startswith(h) for h in hashes):
+                                fail(rec, f'version {rec["output"]!r} does not name commit {head[:10]}')
+                            else:
+                                fmt.h(f'{rec["output"]} matches {head[:10]}')
+
+                        # 2. Tracy version and the generated profiling defines.
+                        rec = stage('tracy_defines')
+                        fmt.h('Tracy version and defines')
+                        if is_tracy:
+                            profiler_path = scons_opt('profiler_path') or tt.get('profiler_path')
+                            found = tracy_version_at(profiler_path) if profiler_path else None
+                            rec['tracy_path'] = profiler_path
+                            rec['tracy_version'] = found
+                            if found != tt.get('version'):
+                                fail(rec, f'expected Tracy {tt.get("version")} at {profiler_path}, found {found}')
+                        gen_h = source_dir / 'core/profiling/profiling.gen.h'
+                        rec['gen_h'] = gen_h.as_posix()
+                        if gen_h.is_file():
+                            data = gen_h.read_bytes()
+                            rec['gen_h_sha256'] = hashlib.sha256(data).hexdigest()
+                            defines = {}
+                            for dname, dvalue in re.findall(
+                                    r'^#define\s+((?:TRACY|GODOT_TRACY|GODOT_PROFILER|GODOT_USE_TRACY)\w*)[ \t]*(.*)$',
+                                    data.decode('utf-8', 'replace'), re.M):
+                                defines[dname] = dvalue.strip()
+                            rec['defines'] = defines
+                            fmt.h(f'{len(defines)} defines, sha256 {rec["gen_h_sha256"][:16]}')
+                            if is_tracy:
+                                if 'TRACY_ENABLE' not in defines or 'GODOT_USE_TRACY' not in defines:
+                                    fail(rec, 'profiler=tracy build but profiling.gen.h does not enable Tracy')
+                                pinned = [defines.get(f'GODOT_TRACY_PINNED_VERSION_{p}') for p in ('MAJOR', 'MINOR', 'PATCH')]
+                                if all(pinned) and '.'.join(pinned) != tt.get('version'):
+                                    fail(rec, f'profiling.gen.h pins Tracy {".".join(pinned)}')
+                        elif dry:
+                            rec['status'] = 'dry'
+                        elif is_tracy:
+                            fail(rec, f'missing {gen_h.as_posix()}')
+                        else:
+                            skip(rec, f'no {gen_h.as_posix()} (not a profiler build)')
+
+                        # 3. [Profiling] doctests.
+                        rec = stage('doctest')
+                        fmt.h('Doctests [Profiling]')
+                        res = run('doctest', [exe, '--headless', '--test', '--test-case=*[Profiling]*'], 900, echo=12)
+                        if res is None:
+                            rec['status'] = 'dry'
+                        else:
+                            rec['rc'] = res['rc']
+                            rec['secs'] = res['secs']
+                            text = res['out'] + res['err']
+                            m = re.search(r'test cases:\s*(\d+)\s*\|\s*(\d+) passed\s*\|\s*(\d+) failed\s*\|\s*(?:(\d+) skipped)?', text)
+                            if m:
+                                rec['test_cases'] = {'total': int(m.group(1)), 'passed': int(m.group(2)),
+                                                     'failed': int(m.group(3)), 'skipped': int(m.group(4) or 0)}
+                            m = re.search(r'assertions:\s*(\d+)\s*\|\s*(\d+) passed\s*\|\s*(\d+) failed\s*\|\s*(?:(\d+) skipped)?', text)
+                            if m:
+                                rec['assertions'] = {'total': int(m.group(1)), 'passed': int(m.group(2)),
+                                                     'failed': int(m.group(3)), 'skipped': int(m.group(4) or 0)}
+                            if res['rc'] != 0:
+                                fail(rec, f'doctest exited {res["rc"]}')
+                            if 'test_cases' not in rec or 'assertions' not in rec:
+                                fail(rec, 'no doctest summary in the output')
+                            elif rec['test_cases']['failed'] or rec['assertions']['failed']:
+                                fail(rec, 'doctest reported failures')
+                            elif not rec['test_cases']['total']:
+                                fail(rec, 'no test case matched *[Profiling]*')
+
+                        # Tracy capture stages share these gates.
+                        tracy_gate = None
+                        if not is_tracy:
+                            tracy_gate = 'not a profiler=tracy build'
+                        elif not on_linux:
+                            tracy_gate = f'Tracy capture stages run on Linux only (host {sys.platform})'
+                        elif not tool('capture'):
+                            tracy_gate = f'no tracy-capture at {tt.get("capture")}'
+                        silent_client = None
+                        if tracy_gate is None and not dry:
+                            # The silent-client feature adds the --tracy launch flag.
+                            res = run('help', [exe, '--headless', '--help'], 60, echo=0)
+                            plain = re.sub(r'\x1b\[[0-9;]*m', '', res['out'] + res['err'])
+                            silent_client = bool(re.search(r'^\s*--tracy\s', plain, re.M))
+                            fmt.h(f'silent-client support (--tracy in --help): {silent_client}')
+
+                        # 4. Fibers capture.
+                        rec = stage('fibers_capture')
+                        fmt.h('Fibers capture')
+                        fibers_trace = None
+                        if tracy_gate:
+                            skip(rec, tracy_gate)
+                        elif not tool('fibers_gd'):
+                            skip(rec, f'no fibers harness at {tt.get("fibers_gd")}')
+                        else:
+                            fibers_trace, _ = capture_run(rec, 'fibers', tool('fibers_gd'),
+                                                          unsilence=silent_client or dry)
+                            if rec['status'] != 'pass':
+                                fibers_trace = None
+
+                        # 5. Counts from the fibers trace.
+                        rec = stage('counts')
+                        fmt.h('Zone, message, plot and frame counts')
+                        if stages['fibers_capture']['status'] == 'dry':
+                            rec['status'] = 'dry'
+                            print(f"  $ {[tt.get('csvexport'), str(logdir / 'fibers.tracy')]}")
+                        elif fibers_trace is None:
+                            skip(rec, 'no fibers trace')
+                        elif not tool('csvexport'):
+                            skip(rec, f'no tracy-csvexport at {tt.get("csvexport")}')
+                        else:
+                            counts = zone_csv('fibers', fibers_trace)
+                            if counts is None:
+                                fail(rec, 'tracy-csvexport failed')
+                            else:
+                                rec.update(counts)
+                                info, why = analyse('fibers', fibers_trace)
+                                if info is None:
+                                    rec['analyser'] = f'skipped: {why}'
+                                    fmt.h(f'No message/plot/frame counts: {why}')
+                                else:
+                                    rec.update({k: v for k, v in public(info).items() if k != 'zones'})
+                                    rec['analyser_zones'] = info['zones']
+                                fmt.h(f"zones {rec['zones']}, distinct {rec['distinct_zone_names']}, "
+                                      f"??? {rec['unknown_zones']}, messages {rec.get('messages')}, "
+                                      f"plots {rec.get('plots')}, frames {rec.get('frames')}")
+                                if not rec['zones']:
+                                    fail(rec, 'fibers trace has 0 zones')
+                                if rec['unknown_zones']:
+                                    fail(rec, f"fibers trace has {rec['unknown_zones']} ??? zones")
+
+                        # 6. Silenced run: launched without --tracy, the engine sends nothing.
+                        rec = stage('silenced')
+                        fmt.h('Silenced run')
+                        if tracy_gate:
+                            skip(rec, tracy_gate)
+                        elif silent_client is False:
+                            skip(rec, 'build has no silent-client support (--tracy missing from --help)')
+                        elif not tool('fibers_gd'):
+                            skip(rec, f'no fibers harness at {tt.get("fibers_gd")}')
+                        else:
+                            trace, _ = capture_run(rec, 'silenced', tool('fibers_gd'), unsilence=False)
+                            if trace is not None and rec['status'] == 'pass':
+                                info, why = analyse('silenced', trace)
+                                if info is None:
+                                    skip(rec, f'cannot inspect the trace: {why}')
+                                else:
+                                    rec.update(public(info))
+                                    if rec['capture_zones']:
+                                        fail(rec, f"tracy-capture reports {rec['capture_zones']} zones")
+                                    if info['zones']:
+                                        fail(rec, f"{info['zones']} zones while silenced")
+                                    if info['messages']:
+                                        fail(rec, f"{info['messages']} messages while silenced")
+                                    if info['engine_plots']:
+                                        fail(rec, f"{info['engine_plots']} engine plots while silenced")
+                                    # Allowed: Tracy's CPU-usage plot (SysTime) and the 3 frames the
+                                    # 0.14.1 server adds at handshake and connect, all at or before
+                                    # the client's first time.
+                                    first = info['first_time']
+                                    if info['frames'] > 3 or (info['frames'] and first is not None
+                                                              and info['last_frame'] > first + 1e-6):
+                                        fail(rec, f"{info['frames']} frames, beyond the 3 server frames")
+
+                        # 7. Toggle run: Profiler.set_capture_enabled on at frame 100, off at 200.
+                        rec = stage('toggle')
+                        fmt.h('Toggle run')
+                        if tracy_gate:
+                            skip(rec, tracy_gate)
+                        elif silent_client is False:
+                            skip(rec, 'build has no silent-client support (--tracy missing from --help)')
+                        elif not tool('toggle_gd'):
+                            skip(rec, f'no toggle harness at {tt.get("toggle_gd")}')
+                        else:
+                            trace, eng_out = capture_run(rec, 'toggle', tool('toggle_gd'), unsilence=False)
+                            if trace is not None and rec['status'] == 'pass':
+                                for line in ('UNSILENCE request at frame 100', 'SILENCE request at frame 200',
+                                             'END at frame 300'):
+                                    if line not in eng_out:
+                                        fail(rec, f'engine output lacks {line!r}')
+                                info, why = analyse('toggle', trace)
+                                if info is None:
+                                    skip(rec, f'cannot inspect the trace: {why}')
+                                else:
+                                    rec.update(public(info))
+                                    msgs = info['message_list']
+                                    starts = [t for t, _, msg in msgs if msg == 'Godot Tracy capture started']
+                                    stops = [t for t, _, msg in msgs if msg == 'Godot Tracy capture stopped']
+                                    rec['capture_started_at'] = starts[0] if starts else None
+                                    rec['capture_stopped_at'] = stops[-1] if stops else None
+                                    if not starts:
+                                        fail(rec, "no 'Godot Tracy capture started' message")
+                                    if not stops:
+                                        fail(rec, "no 'Godot Tracy capture stopped' message")
+                                    if not info['zones']:
+                                        fail(rec, 'no zones between the boundaries')
+                                    if stops:
+                                        stop_t = stops[-1]
+                                        late_msgs = [msg for t, _, msg in msgs if t > stop_t]
+                                        rec['messages_after_stop'] = len(late_msgs)
+                                        rec['zones_after_stop'] = int(info['last_zone'] is not None
+                                                                      and info['last_zone'] > stop_t)
+                                        # Plot points after the stop are recorded, not judged.
+                                        rec['engine_plots_after_stop'] = sum(
+                                            1 for ptype, _, last in info['plot_list']
+                                            if ptype != 'SysTime' and last is not None and last > stop_t)
+                                        if late_msgs:
+                                            fail(rec, f'{len(late_msgs)} messages after capture stopped: {late_msgs[:3]}')
+                                        if rec['zones_after_stop']:
+                                            fail(rec, f"a zone starts at {info['last_zone']}, after the stop at {stop_t}")
+                                    if starts:
+                                        rec['engine_messages_before_start'] = sum(
+                                            1 for t, srcid, _ in msgs if t < starts[0] and srcid == 0)
+                    except (OSError, subprocess.SubprocessError) as e:
+                        rec = stages.get('error') or stage('error')
+                        fail(rec, f'{type(e).__name__}: {e}')
+
+                    failed = [n for n in order if stages[n]['status'] == 'fail']
+                    test_summary = {
+                        'ok': not failed,
+                        'binary': exe.as_posix(),
+                        'commit': head,
+                        'log_dir': logdir.as_posix(),
+                        'secs': round(time.monotonic() - flow_started, 3),
+                        'stages': stages,
+                    }
+                    if not dry:
+                        (logdir / 'summary.json').write_text(json.dumps(test_summary, indent=2, default=str),
+                                                             encoding='utf-8')
+                    for n in order:
+                        fmt.h(f"{n}: {stages[n]['status']}")
+                    timer.status = TaskStatus.FAILED if failed else TaskStatus.COMPLETED
 
         stats['test'] = timer.get_dict()
+        if test_summary is not None:
+            stats['test']['summary'] = test_summary
         config['ok'] = timer.ok() and config['ok']
 
 # MARK: ToolChains
@@ -701,6 +1252,7 @@ def configure_scons( config:SimpleNamespace ) -> bool:
             godot_arch[tc.target_arch],
         )
         config.verbs.append('test')
+        config.tracy_test = dict(TRACY_TEST)
         config.script_parts.append(test_scons)
 
     return True
@@ -752,6 +1304,22 @@ def _append_tracy_features( scons ) -> None:
         scons.build_vars.append(f"{name}={value}")
 
 
+def _tracy_version_at( path:str ) -> str | None:
+    """
+    Read the Tracy version from public/common/TracyVersion.hpp under path.
+    :return: The version as 'major.minor.patch', or None if it can't be read.
+    """
+    header = pathlib.Path(path) / 'public/common/TracyVersion.hpp'
+    try:
+        text = header.read_text()
+    except OSError:
+        return None
+    parts = [re.search(rf'{name}\s*=\s*(\d+)', text) for name in ('Major', 'Minor', 'Patch')]
+    if not all(parts):
+        return None
+    return '.'.join(m.group(1) for m in parts)
+
+
 def config_tracy( cfg:SimpleNamespace ) -> bool:
     """
     Configure build with Tracy profiler, linked into the engine.
@@ -759,7 +1327,7 @@ def config_tracy( cfg:SimpleNamespace ) -> bool:
     :return:
     """
     # This branch lives only in godot-private. Upstream refs do not get it.
-    if cfg.source_def.ref != 'enetheru/4.7-tracy':
+    if cfg.source_def.ref != TRACY_REF:
         return False
     scons = cfg.buildtool
 
@@ -767,7 +1335,11 @@ def config_tracy( cfg:SimpleNamespace ) -> bool:
     scons.build_vars.append("profiler=tracy")
 
     # profiler_path: Path to the Profiler framework. Only tracy and perfetto are supported at the moment.
-    scons.build_vars.append("profiler_path=C:/git/wolfpld/tracy")
+    found = _tracy_version_at(TRACY_PROFILER_PATH)
+    if found != TRACY_VERSION:
+        print(f"Skipping tracy build: expected Tracy {TRACY_VERSION} at {TRACY_PROFILER_PATH}, found {found}")
+        return False
+    scons.build_vars.append(f"profiler_path={TRACY_PROFILER_PATH}")
 
     # profiler_sample_callstack: Profile random samples application-wide using a callstack based sampler. (yes|no)
     if cfg.target != 'template_release':
