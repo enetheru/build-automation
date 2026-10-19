@@ -28,10 +28,10 @@ tools.
 
 ## Usage
 
-Run the build system using `build.py`:
+Run the build system using `cli.py`:
 
 ```bash
-python build.py [options] [actions]
+python cli.py [options] [actions]
 ```
 
 ### Command-Line Options
@@ -54,22 +54,22 @@ python build.py [options] [actions]
 
 - List all available configurations:
   ```bash
-  python build.py --list
+  python cli.py --list
   ```
 
 - Build all configurations for the `godot-cpp` project:
   ```bash
-  python build.py build
+  python cli.py build
   ```
 
 - Build only MSVC-based configurations in debug mode:
   ```bash
-  python build.py --toolchain-regex msvc --build-regex debug build
+  python cli.py --toolchain-regex msvc --build-regex debug build
   ```
 
 - Perform a dry run for Android builds:
   ```bash
-  python build.py --dry --build-regex android build
+  python cli.py --dry --build-regex android build
   ```
   
 ## python regex examples
@@ -85,8 +85,8 @@ python build.py [options] [actions]
 2. Implement a `generate` function that returns a dictionary of project configurations, similar to the `godot-cpp` example in `config.py`.
     - Define the project name, Git repository details (`gitdef`), and build configurations (`build_configs`).
     - Use expansion functions (e.g., `expand_scons`, `expand_cmake`) to generate build variants.
-3. Ensure the project directory is in the same parent directory as `build.py` for automatic detection via globbing (`*/config.py`).
-4. Run `python build.py --list` to verify the project is detected.
+3. Ensure the project directory is in the same parent directory as `cli.py` for automatic detection via globbing (`*/config.py`).
+4. Run `python cli.py --list` to verify the project is detected.
 
 ## Adding a New Toolchain
 
