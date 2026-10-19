@@ -1,0 +1,16 @@
+# Per-machine Tracy paths for Samuel's Windows machine.
+# Copy to godot/paths.local.py (gitignored) and adjust; godot/config.py loads it
+# when present. Any name left out keeps its default from config.py (None).
+
+TRACY_SOURCE_PATH = "C:/Godot/src/godot-private"
+TRACY_REF = 'enetheru/4.7-tracy'
+TRACY_PROFILER_PATH = "C:/git/wolfpld/tracy"
+TRACY_TOOLS_PATH = "C:/Users/nicho/AppData/Local/Microsoft/WinGet/Packages/wolfpld.tracy_Microsoft.Winget.Source_8wekyb3d8bbwe"
+TRACY_CAPTURE = f"{TRACY_TOOLS_PATH}/tracy-capture.exe"
+TRACY_CSVEXPORT = f"{TRACY_TOOLS_PATH}/tracy-csvexport.exe"
+TRACY_SILENT_CLIENT_LOGS = "C:/build/godot/logs/godot-tracy-build-logs/silent-client-f4c9c31"
+TRACY_ANALYZER_SRC = f"{TRACY_SILENT_CLIENT_LOGS}/trace-analyzer.cpp"
+TRACY_ANALYZER = f"{TRACY_TOOLS_PATH}/trace-analyzer.exe"
+# No Windows copy of the fibers harness yet; set this once there is one.
+TRACY_FIBERS_GD = None
+TRACY_TOGGLE_GD = f"{TRACY_SILENT_CLIENT_LOGS}/toggle.gd"

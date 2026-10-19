@@ -76,6 +76,8 @@ mono_crash.*.json
 /*/*.py
 !/*/config.py
 !/*/actions.py
+# Per-machine paths (copy a paths.local.*.example); never commit.
+/*/paths.local.py
 
 #re-include shared scripts and toolchains
 !/share/*

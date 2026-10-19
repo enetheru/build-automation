@@ -38,36 +38,78 @@ origin = SimpleNamespace({**vars(git_base), **{
     'ref': 'master'
 }})
 
-# The Tracy fork comes from the local Godot clone on the box, not the internet.
-# Fetching from a local repo only sees its branches (refs/heads/*), so the ref is
-# the clone's local `tracy` branch.
-TRACY_SOURCE_PATH = "C:/Godot/src/godot-private"
-TRACY_REF = 'enetheru/4.7-tracy'
+# MARK: Tracy paths
+# Machine-specific Tracy paths live in godot/paths.local.py, which is
+# gitignored. To set up a machine, copy one of the committed examples:
+#   godot/paths.local.box.example      (the Linux box)
+#   godot/paths.local.windows.example  (Samuel's Windows machine)
+# to godot/paths.local.py and edit it. Without that file the paths stay None,
+# the `tracy` source is left out, config_tracy skips the tracy variants, and
+# the test step skips every stage whose tool or harness is missing.
 
-# The Tracy profiler sources, pinned to one release. config_tracy checks the
-# version header so a different Tracy in that folder can't slip into a build.
+# Shared, machine-independent settings. config_tracy checks the version header
+# so a different Tracy in TRACY_PROFILER_PATH can't slip into a build.
 TRACY_VERSION = '0.14.1'
-TRACY_PROFILER_PATH = "C:/git/wolfpld/tracy"
-
-# Tools and harnesses for the test step (box defaults). The generated build
-# script only carries the body of test_scons, so configure_scons copies these
-# onto the build as build['tracy_test']. A missing tool or harness makes its
-# stage skip with a message.
-TRACY_TOOLS_PATH = "C:/Users/nicho/AppData/Local/Microsoft/WinGet/Packages/wolfpld.tracy_Microsoft.Winget.Source_8wekyb3d8bbwe"
-TRACY_CAPTURE = f"{TRACY_TOOLS_PATH}/tracy-capture.exe"
-TRACY_CSVEXPORT = f"{TRACY_TOOLS_PATH}/tracy-csvexport.exe"
-# Notes, toggle harness and libTracyServer analyser source from the silent-client run.
-TRACY_SILENT_CLIENT_LOGS = "C:/build/godot/logs/godot-tracy-build-logs/silent-client-f4c9c31"
-TRACY_ANALYZER_SRC = f"{TRACY_SILENT_CLIENT_LOGS}/trace-analyzer.cpp"
-# Built once by the test step when missing, against the csvexport build's libTracyServer.a.
-TRACY_ANALYZER = f"{TRACY_TOOLS_PATH}/trace-analyzer.exe"
-TRACY_FIBERS_GD = "/workspace/fiber-trace-harness/fibers.gd"
-TRACY_TOGGLE_GD = f"{TRACY_SILENT_CLIENT_LOGS}/toggle.gd"
 TRACY_CAPTURE_ADDR = '127.0.0.1'
 TRACY_CAPTURE_PORT = '8086'
 TRACY_TEST_FEATURES = 'zones,plots,messages,frames,gdscript_zones_auto,gdscript_zones_manual'
 TRACY_TEST_TIMEOUT = 300    # seconds for one engine run
 
+# Per-machine paths, all unset here. paths.local.py overrides them.
+# TRACY_SOURCE_PATH: the Godot clone that carries the Tracy fork. Fetching from
+#   a local repo only sees its branches (refs/heads/*), so TRACY_REF names a
+#   branch in that clone.
+# TRACY_PROFILER_PATH: the Tracy profiler sources, pinned to TRACY_VERSION.
+# The rest are tools and harnesses for the test step.
+TRACY_SOURCE_PATH: str | None = None
+TRACY_REF: str | None = None
+TRACY_PROFILER_PATH: str | None = None
+TRACY_TOOLS_PATH: str | None = None
+TRACY_CAPTURE: str | None = None
+TRACY_CSVEXPORT: str | None = None
+# Notes, toggle harness and libTracyServer analyser source from the silent-client run.
+TRACY_SILENT_CLIENT_LOGS: str | None = None
+TRACY_ANALYZER_SRC: str | None = None
+# Built once by the test step when missing, against the csvexport build's libTracyServer.a.
+TRACY_ANALYZER: str | None = None
+TRACY_FIBERS_GD: str | None = None
+TRACY_TOGGLE_GD: str | None = None
+
+# Names paths.local.py may set. The shared settings above may be overridden too.
+_LOCAL_OVERRIDES = (
+    'TRACY_SOURCE_PATH', 'TRACY_REF', 'TRACY_PROFILER_PATH', 'TRACY_TOOLS_PATH',
+    'TRACY_CAPTURE', 'TRACY_CSVEXPORT', 'TRACY_SILENT_CLIENT_LOGS',
+    'TRACY_ANALYZER_SRC', 'TRACY_ANALYZER', 'TRACY_FIBERS_GD', 'TRACY_TOGGLE_GD',
+    'TRACY_VERSION', 'TRACY_CAPTURE_ADDR', 'TRACY_CAPTURE_PORT',
+    'TRACY_TEST_FEATURES', 'TRACY_TEST_TIMEOUT',
+)
+
+
+def _load_local_paths() -> None:
+    """Apply godot/paths.local.py, when present, over the defaults above."""
+    import importlib.util
+    try:
+        local = pathlib.Path(__file__).with_name('paths.local.py')
+    except NameError:   # no __file__, nothing to look for
+        return
+    if not local.is_file():
+        return
+    spec = importlib.util.spec_from_file_location('godot_paths_local', local)
+    if spec is None or spec.loader is None:
+        return
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    for name in _LOCAL_OVERRIDES:
+        if hasattr(mod, name):
+            globals()[name] = getattr(mod, name)
+
+
+_load_local_paths()
+
+# Built after the local overrides. The generated build script only carries the
+# body of test_scons, so configure_scons copies this onto the build as
+# build['tracy_test']. A missing tool or harness makes its stage skip with a
+# message.
 TRACY_TEST = {
     'version': TRACY_VERSION,
     'profiler_path': TRACY_PROFILER_PATH,
@@ -95,12 +137,15 @@ sources:dict = {
     '4.7': SimpleNamespace({**vars(origin), **{
         'ref': '4.7'
     }}),
-    'tracy': SimpleNamespace({**vars(origin), **{
+}
+
+# The Tracy fork only exists where paths.local.py points at it.
+if TRACY_SOURCE_PATH and TRACY_REF:
+    sources['tracy'] = SimpleNamespace({**vars(origin), **{
         'remote':'godot-private',
         'url': TRACY_SOURCE_PATH,
         'ref': TRACY_REF
-    }}),
-}
+    }})
 
 project = SimpleNamespace({**vars(project_base), **{
     'name': 'godot',
@@ -216,7 +261,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         # buildtool = build.buildtool
         tc = build.toolchain
         ref = build.source_def.ref
-        if ref == TRACY_REF:
+        if TRACY_REF and ref == TRACY_REF:
             if ref not in version_labels:
                 repo = pathlib.Path(build.source_def.url)
                 version_labels[ref] = _describe_version(repo, ref) if repo.exists() else None
@@ -1327,7 +1372,7 @@ def config_tracy( cfg:SimpleNamespace ) -> bool:
     :return:
     """
     # This branch lives only in godot-private. Upstream refs do not get it.
-    if cfg.source_def.ref != TRACY_REF:
+    if not TRACY_REF or cfg.source_def.ref != TRACY_REF:
         return False
     scons = cfg.buildtool
 
@@ -1335,6 +1380,9 @@ def config_tracy( cfg:SimpleNamespace ) -> bool:
     scons.build_vars.append("profiler=tracy")
 
     # profiler_path: Path to the Profiler framework. Only tracy and perfetto are supported at the moment.
+    if not TRACY_PROFILER_PATH:
+        print("Skipping tracy build: TRACY_PROFILER_PATH is not set (see godot/paths.local.*.example)")
+        return False
     found = _tracy_version_at(TRACY_PROFILER_PATH)
     if found != TRACY_VERSION:
         print(f"Skipping tracy build: expected Tracy {TRACY_VERSION} at {TRACY_PROFILER_PATH}, found {found}")
