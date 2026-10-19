@@ -368,8 +368,8 @@ def build_scons():
 
             jobs = opts["jobs"]
             cmd_chunks = [
-                "--clean -s" if 'clean' in opts['build_actions'] else None,
                 "scons",
+                "--clean -s" if 'clean' in opts['build_actions'] else None,
                 f"-j {jobs}" if jobs > 0 else None,
                 "verbose=yes" if opts["verbose"] else None,
             ]

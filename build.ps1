@@ -13,5 +13,5 @@ $OutputEncoding = New-Object System.Text.UTF8Encoding
 [console]::InputEncoding = $OutputEncoding
 [console]::OutputEncoding = $OutputEncoding
 
-"calling: python build.py $args"
-python build.py $args
+"calling: python cli.py $args"
+python cli.py $args
