@@ -1464,6 +1464,36 @@ def test_scons():
                         fail(res, f'{len(outside)} GPU zones outside the unsilenced window')
                 return res
 
+            def gpu_frame_gap(times):
+                # Zones inside one GPU frame sit near the median gap. The gap
+                # before the next frame is many times larger (about 0.05 ms
+                # versus 0.64 ms on the late_gpu capture). 20x the median
+                # falls between the two. The floor covers tied timestamps.
+                xs = sorted(times)
+                gaps = sorted(b - a for a, b in zip(xs, xs[1:]) if b > a)
+                if not gaps:
+                    return 1e-3
+                return max(gaps[len(gaps) // 2] * 20.0, 1e-4)
+
+            def split_gpu_silence(times, stop_t, start_t, eps):
+                # godot_tracy_flush_frame_requests writes the stop message at
+                # the frame mark, after that frame's GPU work was submitted,
+                # and only then turns capture off. That frame's GPU timestamps
+                # fall after the message, in one burst. A later burst was
+                # submitted while silenced.
+                before = [t for t in times if t <= stop_t + eps]
+                mid = sorted(t for t in times if stop_t + eps < t < start_t - eps)
+                after = [t for t in times if t >= start_t - eps]
+                if len(mid) < 2:
+                    return before, mid, [], after
+                gap = gpu_frame_gap(before or mid)
+                cut = len(mid)
+                for i in range(len(mid) - 1):
+                    if mid[i + 1] - mid[i] > gap:
+                        cut = i + 1
+                        break
+                return before, mid[:cut], mid[cut:], after
+
             def gpu_run_checks(sub, mode, info, times):
                 # tests/tracy_harness/README.md, "Late GPU start, runs A to D".
                 sf = sub['facts']
@@ -1493,14 +1523,16 @@ def test_scons():
                     if not stops or not restart:
                         return fail(sub, "missing 'Godot Tracy capture stopped' then 'started' messages")
                     stop_t, start_t = stops[0], restart[0]
-                    sf['gpu_zones_before_stop'] = sum(1 for t in times if t <= stop_t + eps)
-                    sf['gpu_zones_while_silenced'] = sum(1 for t in times if stop_t + eps < t < start_t - eps)
-                    sf['gpu_zones_after_restart'] = sum(1 for t in times if t >= start_t - eps)
-                    if sf['gpu_zones_while_silenced']:
-                        fail(sub, f"{sf['gpu_zones_while_silenced']} GPU zones while silenced")
-                    if not sf['gpu_zones_before_stop']:
+                    before, in_flight, silenced, after = split_gpu_silence(times, stop_t, start_t, eps)
+                    sf['gpu_zones_before_stop'] = len(before)
+                    sf['gpu_zones_in_flight'] = len(in_flight)
+                    sf['gpu_zones_while_silenced'] = len(silenced)
+                    sf['gpu_zones_after_restart'] = len(after)
+                    if silenced:
+                        fail(sub, f"{len(silenced)} GPU zones while silenced")
+                    if not before:
                         fail(sub, 'no GPU zones before the silence')
-                    if not sf['gpu_zones_after_restart']:
+                    if not after:
                         fail(sub, 'no GPU zones after the unsilence')
                 else:   # D: silenced throughout; only the GPU context entry may be there.
                     if info['gpu_zones']:
