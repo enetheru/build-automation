@@ -91,6 +91,7 @@ short_sha = repo.git.rev_parse(sha, short=4)
 	import_env_vars               = ""        # A comma-separated list of environment variables to copy from the outer environment
 	disable_3d                    = "no"      # Disable 3D nodes for a smaller executable
 	disable_advanced_gui          = "no"      # Disable advanced GUI nodes and behaviors
+	disable_path_overrides        = "yes"     # Disable CLI arguments to override project path/main pack/scene and run scripts (export template only). tests=yes templates get "no"
 	build_profile                 = ""        # Path to a file containing a feature build profile
 	modules_enabled_by_default    = "yes"     # If no, disable all modules except ones explicitly enabled
 	no_editor_splash              = "yes"     # Don't use the custom splash screen for the editor

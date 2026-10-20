@@ -648,6 +648,17 @@ def test_scons():
                         value = val
                 return value
 
+            def path_overrides_disabled():
+                # SConstruct defines OVERRIDE_PATH_ENABLED for editor builds and for
+                # templates built with disable_path_overrides=no (expand_tests adds it).
+                # Without it main.cpp rejects --path and --main-pack, ignores --script,
+                # and a failed project load ends in OS::alert, a modal dialog on Windows.
+                target = scons_opt('target') or build.get('target', '')
+                if not str(target).startswith('template'):
+                    return False
+                value = scons_opt('disable_path_overrides')
+                return value is None or value.lower() not in ('no', 'false', '0', 'n', 'f', 'off')
+
             def test_binary(bin_dir, platform_name):
                 # Same suffix SConstruct builds, including detect.py's .llvm prefix.
                 parts = ['godot', platform_name, scons_opt('target') or build.get('target', '')]
@@ -1084,10 +1095,14 @@ def test_scons():
                 fmt.h(f'silent-client support (--tracy in --help): {ctx["silent_client"]}')
                 fmt.h(f'--help mode: {ctx["help_mode"] or "(no on-demand/record-from-launch note)"}')
 
-            def capture_gate(res, need_silent_client=False):
+            def capture_gate(res, need_silent_client=False, needs_project=False):
                 # None when the capture stages can run, otherwise the result to return.
                 if not is_tracy:
                     return not_applicable(res, 'not a profiler=tracy build')
+                if needs_project and path_overrides_disabled():
+                    # Launching it would load no project and raise the alert dialog.
+                    return not_applicable(res, 'template built without disable_path_overrides=no: '
+                                               '--path and --script are not accepted')
                 if not tool('capture'):
                     return skip(res, f'no tracy-capture at {tt.get("capture")} (TRACY_CAPTURE)')
                 if need_silent_client and ctx['silent_client'] is False:
@@ -1205,7 +1220,7 @@ def test_scons():
 
             def stage_fibers_capture():
                 res = result()
-                gate = capture_gate(res)
+                gate = capture_gate(res, needs_project=True)
                 if gate:
                     return gate
                 script = harness('fibers_gd')
@@ -1260,7 +1275,7 @@ def test_scons():
             def stage_silenced():
                 # Launched without --tracy, the engine sends nothing. A GPU context entry is allowed.
                 res = result()
-                gate = capture_gate(res, need_silent_client=True)
+                gate = capture_gate(res, need_silent_client=True, needs_project=True)
                 if gate:
                     return gate
                 script = harness('fibers_gd')
@@ -1295,7 +1310,7 @@ def test_scons():
                 # Profiler.set_capture_enabled on at frame 100, off at 200: zones only in between.
                 res = result()
                 facts = res['facts']
-                gate = capture_gate(res, need_silent_client=True)
+                gate = capture_gate(res, need_silent_client=True, needs_project=True)
                 if gate:
                     return gate
                 script = harness('toggle_gd')
@@ -1399,7 +1414,7 @@ def test_scons():
                 # feature; skips only without a display or a Vulkan device.
                 res = result()
                 facts = res['facts']
-                gate = capture_gate(res, need_silent_client=True)
+                gate = capture_gate(res, need_silent_client=True, needs_project=True)
                 if gate:
                     return gate
                 defines = ctx.get('defines')
@@ -2012,6 +2027,10 @@ def expand_tests( config:SimpleNamespace ) -> list[SimpleNamespace]:
         setattr(cfg, 'tests', 'tests' if tests else None)
         if tests:
             cfg.buildtool.build_vars.append('tests=yes')
+            # Templates default to disable_path_overrides=yes, which rejects --path,
+            # --main-pack and --script. The test stages need them as the editor has them.
+            if str(getattr(cfg, 'target', '')).startswith('template'):
+                cfg.buildtool.build_vars.append('disable_path_overrides=no')
         configs_out.append(cfg)
     return configs_out
 
