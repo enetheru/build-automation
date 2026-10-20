@@ -2033,6 +2033,8 @@ def config_minim( cfg:SimpleNamespace ) -> bool:
 
 # SConstruct BoolVariables. tracy_memory is yes here because
 # profiler_track_memory=yes also defines TRACY_MEMORY_ENABLED.
+# Automatic GDScript zones stay on: the coroutine fiber path is compiled
+# only with them, and --tracy-features cannot add code the build left out.
 _TRACY_FEATURES = (
     ("tracy_zones", "yes"),
     ("tracy_plots", "yes"),
@@ -2040,9 +2042,9 @@ _TRACY_FEATURES = (
     ("tracy_memory", "yes"),
     ("tracy_locks", "yes"),
     ("tracy_gpu", "yes"),
-    ("tracy_gdscript_zones_auto", "no"),
+    ("tracy_gdscript_zones_auto", "yes"),
     ("tracy_frames", "yes"),
-    ("tracy_frame_images", "no"),
+    ("tracy_frame_images", "yes"),
 )
 
 
