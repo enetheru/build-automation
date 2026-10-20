@@ -1,6 +1,8 @@
 # Per-machine Tracy paths for the Linux box.
 # Copy to godot/paths.local.py (gitignored) and adjust; godot/config.py loads it
-# when present. Any name left out keeps its default from config.py (None).
+# when present. Any name left out keeps its default from config.py.
+# The test harness (fibers.gd, toggle.gd, late_gpu/, trace_analyzer.cpp) comes
+# from the Godot source under test; the analyser is built into logs-test/<build-name>/tools/.
 
 # Local Godot clone; a local fetch only sees branches, so the ref is its `tracy` branch.
 TRACY_SOURCE_PATH = "/home/box/shared/godot/godot"
@@ -9,8 +11,4 @@ TRACY_PROFILER_PATH = "/home/box/shared/godot/tracy-0.14.1"
 TRACY_TOOLS_PATH = "/home/box/shared/godot/tracy-0.14.1-tools"
 TRACY_CAPTURE = f"{TRACY_TOOLS_PATH}/capture/tracy-capture"
 TRACY_CSVEXPORT = f"{TRACY_TOOLS_PATH}/csvexport/tracy-csvexport"
-TRACY_SILENT_CLIENT_LOGS = "/home/box/shared/godot/godot-tracy-build-logs/silent-client-f4c9c31"
-TRACY_ANALYZER_SRC = f"{TRACY_SILENT_CLIENT_LOGS}/trace-analyzer.cpp"
-TRACY_ANALYZER = f"{TRACY_TOOLS_PATH}/trace-analyzer/trace-analyzer"
-TRACY_FIBERS_GD = "/workspace/fiber-trace-harness/fibers.gd"
-TRACY_TOGGLE_GD = f"{TRACY_SILENT_CLIENT_LOGS}/toggle.gd"
+# The GPU stage starts Xvfb when $DISPLAY is unset (Mesa llvmpipe gives Vulkan).

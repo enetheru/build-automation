@@ -1,17 +1,17 @@
 # Per-machine Tracy paths for Samuel's Windows machine.
 # Copy to godot/paths.local.py (gitignored) and adjust; godot/config.py loads it
-# when present. Any name left out keeps its default from config.py (None).
+# when present. Any name left out keeps its default from config.py.
+# The test harness (fibers.gd, toggle.gd, late_gpu/, trace_analyzer.cpp) comes
+# from the Godot source under test.
 
 TRACY_SOURCE_PATH = "C:/Godot/src/godot-private"
 TRACY_REF = 'enetheru/4.7-tracy'
+# Tracy v0.14.1 sources: the client for profiler_path and the server for the analyser.
 TRACY_PROFILER_PATH = "C:/git/wolfpld/tracy"
 TRACY_TOOLS_PATH = "C:/Users/nicho/AppData/Local/Microsoft/WinGet/Packages/wolfpld.tracy_Microsoft.Winget.Source_8wekyb3d8bbwe"
 TRACY_CAPTURE = f"{TRACY_TOOLS_PATH}/tracy-capture.exe"
 TRACY_CSVEXPORT = f"{TRACY_TOOLS_PATH}/tracy-csvexport.exe"
-TRACY_SILENT_CLIENT_LOGS = "C:/build/godot/logs/godot-tracy-build-logs/silent-client-f4c9c31"
-TRACY_ANALYZER_SRC = f"{TRACY_SILENT_CLIENT_LOGS}/trace-analyzer.cpp"
-TRACY_ANALYZER = f"{TRACY_TOOLS_PATH}/trace-analyzer.exe"
-# Capture stages now run on Windows when tracy-capture/csvexport exist.
-# Fibers/silenced still skip until fibers.gd is set; set this once there is one.
-TRACY_FIBERS_GD = None
-TRACY_TOGGLE_GD = f"{TRACY_SILENT_CLIENT_LOGS}/toggle.gd"
+# The analyser is built from the fork's misc/scripts/tracy/trace_analyzer with
+# CMake (cmake on PATH, or set TRACY_CMAKE) into logs-test/<build-name>/tools/. If that does
+# not work here, build it once by hand and point at it instead:
+# TRACY_ANALYZER = "C:/build/godot/tools/trace_analyzer.exe"
