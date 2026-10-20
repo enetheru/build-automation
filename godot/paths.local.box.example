@@ -2,7 +2,8 @@
 # Copy to godot/paths.local.py (gitignored) and adjust; godot/config.py loads it
 # when present. Any name left out keeps its default from config.py.
 # The test harness (fibers.gd, toggle.gd, late_gpu/, trace_analyzer.cpp) comes
-# from the Godot source under test; the analyser is built into logs-test/<build-name>/tools/.
+# from the Godot source under test; the analyser is built once per Tracy version
+# and cached in godot/trace_analyzer/<version>/.
 
 # Local Godot clone; a local fetch only sees branches, so the ref is its `tracy` branch.
 TRACY_SOURCE_PATH = "/home/box/shared/godot/godot"

@@ -12,6 +12,7 @@ TRACY_TOOLS_PATH = "C:/Users/nicho/AppData/Local/Microsoft/WinGet/Packages/wolfp
 TRACY_CAPTURE = f"{TRACY_TOOLS_PATH}/tracy-capture.exe"
 TRACY_CSVEXPORT = f"{TRACY_TOOLS_PATH}/tracy-csvexport.exe"
 # The analyser is built from the fork's misc/scripts/tracy/trace_analyzer with
-# CMake (cmake on PATH, or set TRACY_CMAKE) into logs-test/<build-name>/tools/. If that does
+# CMake (cmake on PATH, or set TRACY_CMAKE) in a short folder under %TEMP%, once
+# per Tracy version, and cached in godot/trace_analyzer/<version>/. If that does
 # not work here, build it once by hand and point at it instead:
 # TRACY_ANALYZER = "C:/build/godot/tools/trace_analyzer.exe"

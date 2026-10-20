@@ -78,6 +78,8 @@ mono_crash.*.json
 !/*/actions.py
 # Per-machine paths (copy a paths.local.*.example); never commit.
 /*/paths.local.py
+# Cached trace analyser builds, one per Tracy version (godot/trace_analyzer/<version>/).
+/godot/trace_analyzer/
 
 #re-include shared scripts and toolchains
 !/share/*

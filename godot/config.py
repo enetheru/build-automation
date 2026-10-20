@@ -99,8 +99,12 @@ TRACY_PROFILER_PATH: str | None = None
 TRACY_TOOLS_PATH: str | None = None
 TRACY_CAPTURE: str | None = None
 TRACY_CSVEXPORT: str | None = None
-# A prebuilt trace_analyzer. Unset, the test step builds the fork's analyser
-# into logs-test/<build-name>/tools/ (g++ against the csvexport build, or CMake).
+# A prebuilt trace_analyzer. Unset, the test step uses the cached analyser in
+# godot/trace_analyzer/<tracy-version>/ (gitignored), next to this file. The
+# analyser depends on the Tracy release, not on the Godot commit, so it is
+# built once per Tracy version, in a short temporary folder (g++ against the
+# csvexport build on Linux, else CMake), then copied into the cache. A change
+# to the analyser source (sha256 in trace_analyzer.info) rebuilds it.
 TRACY_ANALYZER: str | None = None
 # CMake for the analyser build; None looks for cmake on PATH.
 TRACY_CMAKE: str | None = None
@@ -154,6 +158,8 @@ TRACY_TEST = {
     'csvexport': TRACY_CSVEXPORT,
     'analyzer': TRACY_ANALYZER,
     'analyzer_src': TRACY_ANALYZER_SRC,
+    # The generated script cannot find this file, so it gets the cache folder here.
+    'analyzer_cache': (pathlib.Path(__file__).resolve().parent / 'trace_analyzer').as_posix(),
     'cmake': TRACY_CMAKE,
     'fibers_gd': TRACY_FIBERS_GD,
     'toggle_gd': TRACY_TOGGLE_GD,
@@ -628,6 +634,7 @@ def test_scons():
             import socket
             import subprocess
             import sys
+            import tempfile
             import time
             from datetime import datetime
 
@@ -648,13 +655,16 @@ def test_scons():
                         value = val
                 return value
 
+            def is_template():
+                target = scons_opt('target') or build.get('target', '')
+                return str(target).startswith('template')
+
             def path_overrides_disabled():
                 # SConstruct defines OVERRIDE_PATH_ENABLED for editor builds and for
                 # templates built with disable_path_overrides=no (expand_tests adds it).
                 # Without it main.cpp rejects --path and --main-pack, ignores --script,
                 # and a failed project load ends in OS::alert, a modal dialog on Windows.
-                target = scons_opt('target') or build.get('target', '')
-                if not str(target).startswith('template'):
+                if not is_template():
                     return False
                 value = scons_opt('disable_path_overrides')
                 return value is None or value.lower() not in ('no', 'false', '0', 'n', 'f', 'off')
@@ -798,9 +808,27 @@ def test_scons():
                 args = [str(a) for a in args]
                 return args[args.index(name) + 1] if name in args[:-1] else None
 
+            def stub_project():
+                # A template (no TOOLS_ENABLED) must load project data. Without --path it
+                # tries the cwd, which has none, and the failed load ends in OS::alert
+                # ("Couldn't load project data at path ..."), a modal dialog on Windows.
+                # The editor runs a --script without a project, so it gets no stub.
+                stub = (logdir / 'stub_project').resolve()
+                if not dry and 'stub_project' not in ctx:
+                    stub.mkdir(parents=True, exist_ok=True)
+                    (stub / 'project.godot').write_text(
+                        '; Minimal project for the --script test stages of template builds.\n'
+                        'config_version=5\n\n[application]\n\nconfig/name="tracy_test_stub"\n',
+                        encoding='utf-8')
+                    ctx['stub_project'] = stub.as_posix()
+                return stub
+
             def script_cmd(script, unsilence):
-                cmd = [str(exe), '--headless'] + (['--tracy'] if unsilence else [])
-                cmd += ['--script', str(script), '--tracy-features', tt['features']]
+                cmd = [str(exe), '--headless']
+                if is_template():
+                    cmd += ['--path', str(stub_project())]
+                cmd += ['--tracy'] if unsilence else []
+                cmd += ['--script', str(Path(script).resolve()), '--tracy-features', tt['features']]
                 if tt.get('mask') is not None:
                     cmd += ['--tracy-mask', tt['mask']]
                 return cmd
@@ -909,8 +937,8 @@ def test_scons():
                 return times
 
             def ensure_analyzer(res):
-                # 1. A prebuilt TRACY_ANALYZER. 2. The fork's trace_analyzer.cpp built once
-                # into logs-test/<build-name>/tools/ and rebuilt when the source or Tracy changes.
+                # 1. A prebuilt TRACY_ANALYZER. 2. The cached analyser for this Tracy version
+                # in godot/trace_analyzer/<version>/, built when it is missing or its source changed.
                 prebuilt = tool('analyzer')
                 if prebuilt:
                     return prebuilt, None
@@ -918,73 +946,147 @@ def test_scons():
                     ctx['analyzer'] = build_analyzer(res)
                 return ctx['analyzer']
 
+            def analyzer_tracy_version(profiler):
+                # TracyVersion.hpp of the sources it links against, else git describe of
+                # that tree, else the pinned TRACY_VERSION.
+                found = tracy_version_at(profiler) if tt.get('profiler_path') else None
+                if not found and tt.get('profiler_path') and profiler.is_dir():
+                    try:
+                        proc = subprocess.run(['git', '-C', str(profiler), 'describe', '--tags', '--always'],
+                                              capture_output=True, text=True, timeout=30)
+                        found = proc.stdout.strip() if proc.returncode == 0 else None
+                    except (OSError, subprocess.SubprocessError):
+                        found = None
+                found = found or tt.get('version') or 'unknown'
+                return re.sub(r'[^0-9A-Za-z._-]', '_', found.lstrip('v'))
+
+            def sha256_of(path):
+                return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+            def analyzer_stale(src, info_path):
+                # None while the cached analyser matches the source, else why it must be rebuilt.
+                # The info records source_sha256 (trace_analyzer.cpp) and, after a CMake build,
+                # cmakelists_sha256. Without a source to compare, the cached binary is kept.
+                if not src or not src.is_file():
+                    return None
+                try:
+                    recorded = dict(line.split(' ', 1) for line in
+                                    info_path.read_text(encoding='utf-8').splitlines() if ' ' in line)
+                except (OSError, ValueError):
+                    return f'no readable {info_path.name}'
+                if recorded.get('source_sha256') != sha256_of(src):
+                    return f'source changed ({src.name})'
+                cmakelists = src.parent / 'CMakeLists.txt'
+                if 'cmakelists_sha256' in recorded and cmakelists.is_file() \
+                        and recorded['cmakelists_sha256'] != sha256_of(cmakelists):
+                    return 'source changed (CMakeLists.txt)'
+                return None
+
             def build_analyzer(res):
-                # g++ against the csvexport CMake build's libraries (Linux, as before), else
-                # CMake with the fork's CMakeLists.txt (any host with cmake and a compiler;
-                # Tracy's CMake fetches zstd, capstone and PPQSort through CPM).
+                # The analyser depends on the Tracy release, not on the Godot commit, so one
+                # build per Tracy version is cached next to godot/config.py and reused by
+                # every build. It is built in a short temporary folder: the deep
+                # logs-test/<build-name>/ path broke the CMake build on Windows
+                # ("Filename too long" in the fetched dependencies).
+                # g++ against the csvexport CMake build's libraries (Linux), else CMake with
+                # the fork's CMakeLists.txt (Tracy's CMake fetches zstd, capstone, PPQSort).
+                # A change to the analyser source (see analyzer_stale) rebuilds the cache entry.
                 src = harness('analyzer_src')
                 profiler = Path(tt.get('profiler_path') or '')
+                exe_name = 'trace_analyzer.exe' if os.name == 'nt' else 'trace_analyzer'
+                version = analyzer_tracy_version(profiler)
+                cache_root = Path(tt.get('analyzer_cache') or (log_root / 'tools'))
+                cache_dir = cache_root / version
+                binary = cache_dir / exe_name
+                info_path = cache_dir / 'trace_analyzer.info'
+                res['facts']['analyzer_cache'] = binary.as_posix()
+                if binary.is_file():
+                    stale = analyzer_stale(src, info_path)
+                    if stale is None:
+                        fmt.h(f'Analyser: cached {binary.as_posix()} (Tracy {version})')
+                        return binary, None
+                    # The old binary stays until a new one replaces it, but is not used.
+                    fmt.h(f'Analyser: rebuilding: {stale}')
+                    res['facts']['analyzer_rebuild'] = stale
                 if not src or not src.is_file():
                     return None, f'no analyser source at {src}'
                 if not (profiler / 'server/TracyWorker.cpp').is_file():
                     return None, f'no Tracy server sources at {profiler.as_posix()} (TRACY_PROFILER_PATH)'
-                tools_dir = log_root / 'tools'
-                exe_name = 'trace_analyzer.exe' if os.name == 'nt' else 'trace_analyzer'
-                binary = tools_dir / exe_name
-                stamp_path = tools_dir / 'trace_analyzer.stamp'
-                stamp = hashlib.sha256(src.read_bytes()).hexdigest() + ' tracy ' + str(tracy_version_at(profiler))
-                if binary.is_file() and stamp_path.is_file() and stamp_path.read_text().strip() == stamp:
-                    return binary, None
                 if dry:
-                    print(f'  (build {binary.as_posix()} from {src.as_posix()})')
+                    print(f'  (build {binary.as_posix()} from {src.as_posix()} in a temporary folder)')
                     return None, 'dry'
-                tools_dir.mkdir(parents=True, exist_ok=True)
+                work = Path(tempfile.mkdtemp(prefix='ta-'))
+                fmt.h(f'Analyser: building for Tracy {version} in {work.as_posix()}')
+                res['facts']['analyzer_build_dir'] = work.as_posix()
+                built = None
+                used_cmake = False
                 tries = []
-                csv_dir = Path(tt.get('tools_path') or '') / 'csvexport'
-                libs = [csv_dir / 'libTracyServer.a', csv_dir / '_deps/capstone-build/libcapstone.a',
-                        csv_dir / '_deps/zstd-build/lib/libzstd.a']
-                cxx = shutil.which('g++')
-                if cxx and all(p.is_file() for p in libs):
-                    # Reuse the include paths CMake gave csvexport, so the headers match the library.
-                    includes = []
-                    try:
-                        ninja = (csv_dir / 'build.ninja').read_text(encoding='utf-8')
-                        m = re.search(r'csvexport\.cpp\.o:.*?\n(?:  .*\n)*?  INCLUDES = (.*)\n', ninja)
-                        includes = m.group(1).split() if m else []
-                    except OSError:
-                        pass
-                    if not includes:
-                        includes = [f'-I{profiler / "public/common"}', f'-I{profiler / "server"}']
-                    partial = binary.with_name(binary.name + '.partial')
-                    cmd = [cxx, '-O2', '-std=gnu++20', '-flto=auto', *includes, '-o', partial, src,
-                           *libs, '-lpthread']
-                    out = run(res, 'analyzer-build', cmd, 900, echo=10)
-                    if out['rc'] == 0 and partial.is_file():
+                try:
+                    csv_dir = Path(tt.get('tools_path') or '') / 'csvexport'
+                    libs = [csv_dir / 'libTracyServer.a', csv_dir / '_deps/capstone-build/libcapstone.a',
+                            csv_dir / '_deps/zstd-build/lib/libzstd.a']
+                    cxx = shutil.which('g++')
+                    if cxx and all(p.is_file() for p in libs):
+                        # Reuse the include paths CMake gave csvexport, so the headers match the library.
+                        includes = []
+                        try:
+                            ninja = (csv_dir / 'build.ninja').read_text(encoding='utf-8')
+                            m = re.search(r'csvexport\.cpp\.o:.*?\n(?:  .*\n)*?  INCLUDES = (.*)\n', ninja)
+                            includes = m.group(1).split() if m else []
+                        except OSError:
+                            pass
+                        if not includes:
+                            includes = [f'-I{profiler / "public/common"}', f'-I{profiler / "server"}']
+                        out_exe = work / exe_name
+                        cmd = [cxx, '-O2', '-std=gnu++20', '-flto=auto', *includes, '-o', out_exe, src,
+                               *libs, '-lpthread']
+                        out = run(res, 'analyzer-build', cmd, 900, echo=10)
+                        if out['rc'] == 0 and out_exe.is_file():
+                            built = out_exe
+                        else:
+                            tries.append(f'g++ exited {out["rc"]}')
+                    else:
+                        tries.append(f'no g++ build (g++={cxx}, needs {csv_dir.as_posix()}/libTracyServer.a)')
+                    cmake = shutil.which(tt.get('cmake') or 'cmake')
+                    if built is None and cmake:
+                        cmake_dir = work / 'b'
+                        out = run(res, 'analyzer-cmake-configure',
+                                  [cmake, '-S', src.parent, '-B', cmake_dir,
+                                   f'-DTRACY_SOURCE_DIR={profiler.as_posix()}', '-DCMAKE_BUILD_TYPE=Release'],
+                                  900, echo=10)
+                        if out['rc'] == 0:
+                            out = run(res, 'analyzer-cmake-build',
+                                      [cmake, '--build', cmake_dir, '--target', 'trace_analyzer',
+                                       '--config', 'Release'], 1800, echo=10)
+                        found = [p for p in (cmake_dir / exe_name, cmake_dir / 'Release' / exe_name) if p.is_file()]
+                        if out['rc'] == 0 and found:
+                            built = found[0]
+                            used_cmake = True
+                        else:
+                            tries.append(f'cmake exited {out["rc"]}')
+                    elif built is None:
+                        tries.append('no cmake (TRACY_CMAKE or PATH)')
+                    if built is not None:
+                        # Copy beside the cache entry, then rename, so a half-copied file is never used.
+                        cache_dir.mkdir(parents=True, exist_ok=True)
+                        partial = cache_dir / (exe_name + '.partial')
+                        shutil.copy2(built, partial)
                         partial.replace(binary)
-                        stamp_path.write_text(stamp + '\n')
-                        return binary, None
-                    tries.append(f'g++ exited {out["rc"]}')
-                else:
-                    tries.append(f'no g++ build (g++={cxx}, needs {csv_dir.as_posix()}/libTracyServer.a)')
-                cmake = shutil.which(tt.get('cmake') or 'cmake')
-                if cmake:
-                    cmake_dir = tools_dir / 'trace_analyzer-build'
-                    out = run(res, 'analyzer-cmake-configure',
-                              [cmake, '-S', src.parent, '-B', cmake_dir, f'-DTRACY_SOURCE_DIR={profiler.as_posix()}',
-                               '-DCMAKE_BUILD_TYPE=Release'], 900, echo=10)
-                    if out['rc'] == 0:
-                        out = run(res, 'analyzer-cmake-build',
-                                  [cmake, '--build', cmake_dir, '--target', 'trace_analyzer', '--config', 'Release'],
-                                  1800, echo=10)
-                    built = [p for p in (cmake_dir / exe_name, cmake_dir / 'Release' / exe_name) if p.is_file()]
-                    if out['rc'] == 0 and built:
-                        shutil.copy2(built[0], binary)
-                        stamp_path.write_text(stamp + '\n')
-                        return binary, None
-                    tries.append(f'cmake exited {out["rc"]}')
-                else:
-                    tries.append('no cmake (TRACY_CMAKE or PATH)')
-                return None, 'cannot build the analyser: ' + '; '.join(tries)
+                        cmakelists = src.parent / 'CMakeLists.txt'
+                        info_path.write_text(
+                            f'tracy_version {version}\ntracy_path {profiler.as_posix()}\n'
+                            f'source {src.as_posix()}\nsource_commit {head}\n'
+                            f'source_sha256 {sha256_of(src)}\n'
+                            + (f'cmakelists_sha256 {sha256_of(cmakelists)}\n'
+                               if used_cmake and cmakelists.is_file() else '')
+                            + f'built {datetime.now().astimezone().isoformat(timespec="seconds")}\n',
+                            encoding='utf-8')
+                        fmt.h(f'Analyser: cached {binary.as_posix()}')
+                finally:
+                    shutil.rmtree(work, ignore_errors=True)
+                if built is None:
+                    return None, 'cannot build the analyser: ' + '; '.join(tries)
+                return binary, None
 
             def analyse(res, name, trace):
                 binary, why = ensure_analyzer(res)
