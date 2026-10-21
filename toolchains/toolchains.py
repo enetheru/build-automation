@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import toolchains.android as android
 import toolchains.appleclang as appleclang
 import toolchains.emscripten as emscripten
+import toolchains.gcc as gcc
 import toolchains.llvm as llvm
 import toolchains.llvm_mingw as llvm_mingw
 import toolchains.mingw64 as mingw64
@@ -43,6 +44,10 @@ def generate(opts: SimpleNamespace) -> dict:
             if android_toolchain is not None:
                 entries.append(android_toolchain)
             entries.append(emscripten.win32_emscripten_toolchain())
+        case 'linux':
+            entries = [
+                gcc.gcc_toolchain(),
+            ]
         case 'darwin':
             entries = [
                 appleclang.appleclang_toolchain(),
