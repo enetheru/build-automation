@@ -68,6 +68,10 @@ TRACY_TEST_GPU_QUIT_AFTER = 320     # --quit-after; late_gpu.gd quits at frame 3
 # on-demand server drops the earliest indexes), so the floor is well under 90.
 TRACY_TEST_FRAME_IMAGE_FEATURES = 'frames,frame_images'
 TRACY_TEST_FRAME_IMAGE_MIN = 20
+# Headless log stage. log.gd waits a second, then prints. The on run lists only log.
+# The off run lists messages and not log, so those lines must not be messages.
+TRACY_TEST_LOG_FEATURES = 'log'
+TRACY_TEST_LOG_OFF_FEATURES = 'messages'
 # Regression checks against the best previous run (logs-test/<build-name>/best.json).
 # Counts that depend on timing may fall this far below the best before failing.
 TRACY_TEST_BEST_TOLERANCE = 0.10
@@ -77,9 +81,9 @@ TRACY_TEST_REQUIRED = {
     'default': ['version', 'doctest'],
     'minimum': ['version', 'doctest'],
     'tracy': ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
-              'silenced', 'toggle', 'frame_images', 'gpu_late_start'],
+              'silenced', 'toggle', 'log', 'frame_images', 'gpu_late_start'],
     'libtracy': ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
-                 'silenced', 'toggle', 'frame_images', 'gpu_late_start'],
+                 'silenced', 'toggle', 'log', 'frame_images', 'gpu_late_start'],
 }
 
 # The test harness lives in the Godot fork. Relative paths are resolved against
@@ -88,6 +92,7 @@ TRACY_TEST_REQUIRED = {
 TRACY_FIBERS_GD = 'tests/tracy_harness/fibers.gd'
 TRACY_TOGGLE_GD = 'tests/tracy_harness/toggle.gd'
 TRACY_FRAME_IMAGES_GD = 'tests/tracy_harness/frame_images.gd'
+TRACY_LOG_GD = 'tests/tracy_harness/log.gd'
 TRACY_LATE_GPU_PROJECT = 'tests/tracy_harness/late_gpu'
 TRACY_ANALYZER_SRC = 'misc/scripts/tracy/trace_analyzer/trace_analyzer.cpp'
 
@@ -123,11 +128,13 @@ TRACY_XVFB = 'Xvfb'
 _LOCAL_OVERRIDES = (
     'TRACY_SOURCE_PATH', 'TRACY_REF', 'TRACY_PROFILER_PATH', 'TRACY_TOOLS_PATH',
     'TRACY_CAPTURE', 'TRACY_CSVEXPORT', 'TRACY_ANALYZER_SRC', 'TRACY_ANALYZER', 'TRACY_CMAKE',
-    'TRACY_FIBERS_GD', 'TRACY_TOGGLE_GD', 'TRACY_FRAME_IMAGES_GD', 'TRACY_LATE_GPU_PROJECT',
+    'TRACY_FIBERS_GD', 'TRACY_TOGGLE_GD', 'TRACY_FRAME_IMAGES_GD', 'TRACY_LOG_GD',
+    'TRACY_LATE_GPU_PROJECT',
     'TRACY_VERSION', 'TRACY_CAPTURE_ADDR', 'TRACY_CAPTURE_PORT',
     'TRACY_TEST_FEATURES', 'TRACY_TEST_TIMEOUT', 'TRACY_TEST_MASK', 'TRACY_TEST_DOCTEST',
     'TRACY_TEST_GPU_FEATURES', 'TRACY_TEST_GPU_QUIT_AFTER',
     'TRACY_TEST_FRAME_IMAGE_FEATURES', 'TRACY_TEST_FRAME_IMAGE_MIN',
+    'TRACY_TEST_LOG_FEATURES', 'TRACY_TEST_LOG_OFF_FEATURES',
     'TRACY_TEST_BEST_TOLERANCE',
     'TRACY_TEST_REQUIRED', 'TRACY_TEST_DISPLAY', 'TRACY_XVFB',
 )
@@ -172,6 +179,7 @@ TRACY_TEST = {
     'fibers_gd': TRACY_FIBERS_GD,
     'toggle_gd': TRACY_TOGGLE_GD,
     'frame_images_gd': TRACY_FRAME_IMAGES_GD,
+    'log_gd': TRACY_LOG_GD,
     'late_gpu_project': TRACY_LATE_GPU_PROJECT,
     'address': TRACY_CAPTURE_ADDR,
     'port': TRACY_CAPTURE_PORT,
@@ -182,6 +190,8 @@ TRACY_TEST = {
     'gpu_quit_after': TRACY_TEST_GPU_QUIT_AFTER,
     'frame_image_features': TRACY_TEST_FRAME_IMAGE_FEATURES,
     'frame_image_min': TRACY_TEST_FRAME_IMAGE_MIN,
+    'log_features': TRACY_TEST_LOG_FEATURES,
+    'log_off_features': TRACY_TEST_LOG_OFF_FEATURES,
     'best_tolerance': TRACY_TEST_BEST_TOLERANCE,
     'required': TRACY_TEST_REQUIRED,
     'display': TRACY_TEST_DISPLAY,
@@ -606,7 +616,8 @@ def test_scons():
     """
     Test a tests=yes binary the way godot-build tests it by hand, in stages:
     version, tracy_defines, doctest, then on profiler=tracy builds
-    fibers_capture, counts, silenced, toggle and gpu_late_start. The harness
+    fibers_capture, counts, silenced, toggle, log, frame_images and
+    gpu_late_start. The harness
     comes from the Godot source under test (tests/tracy_harness). Logs,
     summary.json, report.txt and one .cmd per command go to
     <project>/logs-test/<build-name>/<short-commit>/, next to logs-raw and
@@ -655,7 +666,7 @@ def test_scons():
             tolerance = float(tt.get('best_tolerance') or 0)
             runtime_case = '[Profiling] Report the runtime state'
             stage_names = ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
-                           'silenced', 'toggle', 'frame_images', 'gpu_late_start']
+                           'silenced', 'toggle', 'log', 'frame_images', 'gpu_late_start']
 
             # MARK: Helpers
             def scons_opt(name):
@@ -1099,6 +1110,45 @@ def test_scons():
                     return None, 'cannot build the analyser: ' + '; '.join(tries)
                 return binary, None
 
+            def tracy_message_rows(text):
+                # One MSG row can hold newlines. An error is "ERROR: ..." then "   at: ...".
+                # The closing quote is the last character of the row's last line.
+                # color is the value the analyser prints (0xFFBBGGRR, or 0xFFFFFFFF
+                # when the client sent no color).
+                found = []
+                current = None
+                header = re.compile(
+                    r"^  MSG ([\d.]+) thread=(.*?) color=([0-9a-fA-F]+) src=(\d+) sev=(\d+) '(.*)$")
+                for line in text.splitlines():
+                    m = header.match(line)
+                    if m:
+                        if current is not None:
+                            found.append(current)
+                        body = m.group(6)
+                        closed = body.endswith("'")
+                        current = {
+                            'time': float(m.group(1)),
+                            'color': int(m.group(3), 16),
+                            'src': int(m.group(4)),
+                            'sev': int(m.group(5)),
+                            'text': body[:-1] if closed else body,
+                        }
+                        if closed:
+                            found.append(current)
+                            current = None
+                        continue
+                    if current is None:
+                        continue
+                    if line.endswith("'"):
+                        current['text'] += '\n' + line[:-1]
+                        found.append(current)
+                        current = None
+                    else:
+                        current['text'] += '\n' + line
+                if current is not None:
+                    found.append(current)
+                return found
+
             def analyse(res, name, trace):
                 binary, why = ensure_analyzer(res)
                 if binary is None:
@@ -1125,6 +1175,7 @@ def test_scons():
                 info['last_zone'] = float(m.group(3)) if m and m.group(3) else None
                 info['message_list'] = [(float(t), int(srcid), msg) for t, srcid, msg in
                                         re.findall(r"^  MSG ([\d.]+) .*? src=(\d+) sev=\d+ '(.*)'$", text, re.M)]
+                info['tracy_msgs'] = tracy_message_rows(text)
                 m = re.search(r'^messages: (\d+)', text, re.M)
                 info['messages'] = int(m.group(1)) if m else None
                 plots = [(ptype, pname, float(last) if last else None) for ptype, pname, last in
@@ -1156,7 +1207,8 @@ def test_scons():
                 return info, None
 
             def trace_facts(res, info):
-                res['facts'].update({k: v for k, v in info.items() if k not in ('message_list', 'plot_list')})
+                res['facts'].update({k: v for k, v in info.items()
+                                     if k not in ('message_list', 'plot_list', 'tracy_msgs')})
 
             def metric(stage_name, key, value, exact):
                 # Compared with best.json after all stages; exact counts may not drop at all.
@@ -1560,6 +1612,106 @@ def test_scons():
                         fail(sub, f"{info['messages']} messages while silenced")
                 return sub
 
+            def stage_log():
+                # Headless. On lists only log: the harness lines are coloured messages.
+                # Off lists messages and not log: those lines must stay out of the trace.
+                # tests/tracy_harness/README.md, Log.
+                # The analyser stores color as 0xFFBBGGRR. No color is 0xFFFFFFFF.
+                res = result()
+                facts = res['facts']
+                gate = capture_gate(res, needs_project=True)
+                if gate:
+                    return gate
+                defines = ctx.get('defines')
+                log_built = ('TRACY_LOG_ENABLED' in defines) if defines else scons_opt('tracy_log') != 'no'
+                if not log_built:
+                    return not_applicable(res, 'build has no log bridge (no TRACY_LOG_ENABLED)')
+                script = harness('log_gd')
+                if not script or not script.is_file():
+                    return skip(res, f'no log harness at {script}')
+
+                def stored_color(rrggbb):
+                    if not rrggbb:
+                        return 0xFFFFFFFF
+                    red, green, blue = (rrggbb >> 16) & 0xFF, (rrggbb >> 8) & 0xFF, rrggbb & 0xFF
+                    return 0xFF000000 | (blue << 16) | (green << 8) | red
+
+                # Info 2, Warning 3, Error 4. Colors are the Godot 0xRRGGBB values.
+                expect = (
+                    ('log harness plain', stored_color(0), 2, False),
+                    ('log harness printerr', stored_color(0xE08040), 3, False),
+                    ('log harness rich', stored_color(0), 2, True),
+                    ('WARNING: log harness warning', stored_color(0xE0C040), 3, False),
+                    ('ERROR: log harness error', stored_color(0xE05050), 4, False),
+                )
+                runs = {}
+                facts['runs'] = runs
+                modes = (
+                    ('on', tt.get('log_features') or 'log', True),
+                    ('off', tt.get('log_off_features') or 'messages', False),
+                )
+                for mode, features, want in modes:
+                    fmt.h(f'Log {mode}')
+                    sub = result()
+                    runs[mode] = sub
+                    eng_cmd = [str(exe), '--headless']
+                    if is_template():
+                        eng_cmd += ['--path', str(stub_project())]
+                    if ctx['silent_client'] is not False:
+                        eng_cmd.append('--tracy')
+                    eng_cmd += ['--script', str(Path(script).resolve()), '--tracy-features', features]
+                    if tt.get('mask') is not None:
+                        eng_cmd += ['--tracy-mask', tt['mask']]
+                    trace, eng = capture_run(sub, f'log_{mode}', eng_cmd)
+                    res['logs'] += sub['logs']
+                    if dry:
+                        fmt.h(f'log {mode}: dry')
+                        continue
+                    if eng is not None:
+                        out = plain(eng['out'] + eng['err'])
+                        if 'LOG_HARNESS action=quit' not in out:
+                            fail(sub, "log.gd never printed 'LOG_HARNESS action=quit'")
+                    if trace is not None:
+                        info, why = analyse(sub, f'log_{mode}', trace)
+                        if info is None:
+                            skip(sub, f'cannot inspect the trace: {why}')
+                        else:
+                            trace_facts(sub, info)
+                            msgs = info.get('tracy_msgs') or []
+                            if want:
+                                matched = 0
+                                for needle, color, sev, reject_ansi in expect:
+                                    hits = [m for m in msgs if needle in m['text']]
+                                    if not hits:
+                                        fail(sub, f'missing log message containing {needle!r}')
+                                        continue
+                                    ok = [m for m in hits if m['color'] == color and m['sev'] == sev]
+                                    if not ok:
+                                        shown = hits[0]
+                                        fail(sub, f'{needle!r} has color={shown["color"]:08x} sev={shown["sev"]}, '
+                                                  f'expected color={color:08x} sev={sev}')
+                                    elif reject_ansi and any('\x1b' in m['text'] or '[38;' in m['text'] for m in ok):
+                                        fail(sub, 'rich log message still has ANSI color codes')
+                                    else:
+                                        matched += 1
+                                sub['facts']['log_hits'] = matched
+                            else:
+                                analysis = info.get('analysis')
+                                raw = ''
+                                if analysis:
+                                    raw = Path(analysis).read_text(encoding='utf-8', errors='replace')
+                                if 'log harness' in raw or 'LOG_HARNESS' in raw:
+                                    fail(sub, 'log is off but the trace still has a harness line')
+                    fmt.h(f"log {mode}: {sub['status']}, hits {sub['facts'].get('log_hits')}")
+                for mode, sub in runs.items():
+                    for why in sub['failures']:
+                        res['failures'].append(f'{mode}: {why}')
+                    if sub['status'] == 'fail':
+                        res['status'] = 'fail'
+                    elif sub['status'] == 'skip' and res['status'] == 'pass':
+                        skip(res, sub['reason'])
+                return as_dry(res) if dry else res
+
             def stage_frame_images():
                 # Windowed run must send 320x180 thumbnails. The headless run of the
                 # same script must send none. tests/tracy_harness/README.md, Frame images.
@@ -1773,6 +1925,8 @@ def test_scons():
                 sources += [(f'gpu{mode}', sub, None) for mode, sub in runs.items()]
                 frame_runs = ((stages.get('frame_images') or {}).get('facts') or {}).get('runs') or {}
                 sources += [(f'frame_{mode}', sub, None) for mode, sub in frame_runs.items()]
+                log_runs = ((stages.get('log') or {}).get('facts') or {}).get('runs') or {}
+                sources += [(f'log_{mode}', sub, None) for mode, sub in log_runs.items()]
                 rows = []
                 for name, cap, more in sources:
                     if not cap or 'engine_cmd' not in cap['facts']:
@@ -1875,6 +2029,7 @@ def test_scons():
                     stage_funcs = {'version': stage_version, 'tracy_defines': stage_tracy_defines,
                                    'doctest': stage_doctest, 'fibers_capture': stage_fibers_capture,
                                    'counts': stage_counts, 'silenced': stage_silenced, 'toggle': stage_toggle,
+                                   'log': stage_log,
                                    'frame_images': stage_frame_images,
                                    'gpu_late_start': stage_gpu_late_start}
                     stages = ctx['stages']
@@ -2152,8 +2307,9 @@ def config_minim( cfg:SimpleNamespace ) -> bool:
 # profiler_track_memory=yes also defines TRACY_MEMORY_ENABLED.
 # Automatic GDScript zones stay on: the coroutine fiber path is compiled
 # only with them, and --tracy-features cannot add code the build left out.
-# Frame images stay on for the same reason. They stay silent until
-# --tracy-features lists frame_images.
+# Frame images and the log bridge stay on for the same reason. They stay
+# silent until --tracy-features lists them. log is not part of
+# TRACY_TEST_FEATURES, so the other captures do not forward every engine print.
 _TRACY_FEATURES = (
     ("tracy_zones", "yes"),
     ("tracy_plots", "yes"),
@@ -2164,6 +2320,7 @@ _TRACY_FEATURES = (
     ("tracy_gdscript_zones_auto", "yes"),
     ("tracy_frames", "yes"),
     ("tracy_frame_images", "yes"),
+    ("tracy_log", "yes"),
 )
 
 
