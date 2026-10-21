@@ -1,4 +1,7 @@
+import os
 from types import SimpleNamespace
+
+from src.config import git_base
 
 # MARK: Generate
 # ╭────────────────────────────────────────────────────────────────────────────╮
@@ -30,6 +33,8 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         'name':'gdflatbuffers',
         'sources':{
             'git': git_source,
+            # Only the libtracy configs use it. See LIBTRACY_SOURCE.
+            'tracy': LIBTRACY_SOURCE,
         },
         'buildtools':{
             'cmake':SimpleNamespace(**{
@@ -112,7 +117,8 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
             getattr(build, 'variant', None),
         ]
         build.name = '.'.join(filter(None, name_parts))
-        build.source_dir = f'{build.host}.main'
+        # libtracy configs check out the tracy source into their own worktree.
+        build.source_dir = f'{build.host}.{getattr(build, "source_dir_suffix", "main")}'
         cmake.build_dir = build.name
         build.script_parts.append( show_stats )
 
@@ -133,16 +139,21 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
 # bin, its header and its client library are found when the build script runs,
 # because a Godot rebuild changes the defines hash and may change the version.
 
-# CMake interface of the extension. Every option name the variant passes is
-# here and nowhere else.
-# TODO(extension): names confirmed final on 2026-10-21. Update them here only,
-#   if the extension's CMake changes them.
+# CMake interface of the extension (godot-flatbuffers cmake/tracy.cmake, tracy branch
+# e58aad9). Every option name the variant passes is here and nowhere else.
 LIBTRACY_CMAKE = {
     'enable':         'GDFB_ENABLE_TRACY',       # BOOL, ON for libtracy only. Default folders leave it unset.
     'header_dir':     'GODOT_TRACY_HEADER_DIR',  # dir of godot_profiling.gen.h (that target's Godot bin)
     'include_dir':    'TRACY_INCLUDE_DIR',       # Tracy public headers (<tracy/Tracy.hpp>)
     'client_library': 'TRACY_CLIENT_LIBRARY',    # what the extension links: MinGW import lib, or the .so
+    # Windows only, all optional. The runner's libtracy Place step already copies
+    # the client, so the variant leaves these off unless LIBTRACY_CMAKE_COPY_CLIENT.
+    'copy_client':    'GDFB_TRACY_COPY_CLIENT',  # BOOL: post-build copy of the TracyClient DLL
+    'client_dll':     'GDFB_TRACY_CLIENT_DLL',   # FILEPATH: that DLL (empty: derived from the import lib)
+    'copy_dirs':      'GDFB_TRACY_COPY_DIRS',    # STRING ;-list: more dirs to copy the DLL into
 }
+# Windows: pass GDFB_TRACY_COPY_CLIENT=ON (the extension copies the DLL itself).
+LIBTRACY_CMAKE_COPY_CLIENT = False
 
 # Per-target override of the Godot bin, read by the build script. Set it to
 # point a configure at a bin the runner did not build, for example on Linux.
@@ -150,6 +161,15 @@ LIBTRACY_CMAKE = {
 # GDFB_GODOT_TRACY_BIN applies to every target. A bin without that target's
 # client library still fails, so a shared value cannot link the wrong target.
 LIBTRACY_BIN_ENV = 'GDFB_GODOT_TRACY_BIN'
+
+# The engine binary the libtracy launch uses. It must be a shared-client build:
+# its dynamic section names the TracyClient library (readelf -d on Linux,
+# objdump -p on Windows). A static-Tracy exe in the same bin is rejected.
+# Pick one explicitly with $GDFB_GODOT_TRACY_EXE_<TARGET> or $GDFB_GODOT_TRACY_EXE:
+# a file name in the Godot bin, or an absolute path. Without it, the platform's
+# 'engine' globs are tried in order and the newest shared-client match wins.
+LIBTRACY_EXE_ENV = 'GDFB_GODOT_TRACY_EXE'
+LIBTRACY_EXE_CLIENT_RE = r'TracyClient\.'
 
 # Header the engine installs in its bin. The variant reads the defines hash and
 # GODOT_TRACY_SHARED_CLIENT from it.
@@ -161,14 +181,18 @@ LIBTRACY_HEADER = 'godot_profiling.gen.h'
 # build, any version. The newest version wins.
 # 'link' is what TRACY_CLIENT_LIBRARY gets. 'runtime' is the client the
 # extension loads, placed next to the extension and in the Godot bin.
-# 'extension' is the built extension, in the project's addon bin.
+# 'extension' is every built extension of that target, in the project's addon
+# bin; LIBTRACY_OUTPUT_TAG picks the tracy ones. 'engine' is the Tracy engine
+# binary in the Godot bin (the test step runs it).
 LIBTRACY_PLATFORMS = {
     'win32': {
         'toolchains': ['mingw64'],     # the import library is MinGW
         'godot_glob': '{host}.mingw64.x86_64.windows.{target}.libtracy.*',
         'link':       ['obj/core/profiling/libTracyClient.windows.{target}.x86_64.tracy.a'],
         'runtime':    ['TracyClient.windows.{target}.x86_64.tracy.dll'],
-        'extension':  'flatbuffers.windows.{target}.x86_64*.dll',
+        'extension':  'flatbuffers.windows.{target}.*.dll',
+        # The real exe. The .console.exe wrapper is a second process.
+        'engine':     ['godot.windows.{target}*.x86_64.tracy.exe'],
     },
     'linux': {
         'toolchains': ['gcc'],
@@ -178,13 +202,97 @@ LIBTRACY_PLATFORMS = {
         'link':       ['libTracyClient.linuxbsd.{target}*.x86_64*.so',
                        'obj/core/profiling/libTracyClient.linuxbsd.{target}*.x86_64*.so'],
         'runtime':    ['libTracyClient.linuxbsd.{target}*.x86_64*.so'],
-        'extension':  'flatbuffers.linux.{target}*.so',
+        'extension':  'flatbuffers.linux.{target}.*.so',
+        'engine':     ['godot.linuxbsd.{target}*.x86_64.tracy'],
     },
 }
 
 # CMake writes the extension into the Godot project inside the source tree
-# (godot-flatbuffers CMakeLists.txt: GDE_INSTALL_PATH/bin).
-LIBTRACY_EXTENSION_BIN = 'project/addons/enetheru.flatbuffers-extension/bin'
+# (godot-flatbuffers CMakeLists.txt: GDE_INSTALL_PATH/bin):
+#   bin/flatbuffers.<platform>.<target>.<arch>.tracy[.<config>].<so|dll>
+# beside the default bin/flatbuffers.<platform>.<target>.<arch>[.<config>].<so|dll>.
+LIBTRACY_EXTENSION_ADDON = 'project/addons/enetheru.flatbuffers-extension'
+LIBTRACY_EXTENSION_BIN = f'{LIBTRACY_EXTENSION_ADDON}/bin'
+
+# With GDFB_ENABLE_TRACY=ON the extension's outputs carry a `tracy` name part,
+# e.g. flatbuffers.linux.editor.x86_64.tracy.so and a matching .gdextension, so
+# they sit beside the default outputs. A file is a tracy output when one of its
+# dot-separated name parts is this tag. This is the only place that knows it.
+LIBTRACY_OUTPUT_TAG = 'tracy'
+
+# A Tracy configure writes its descriptor into the CMake build dir and leaves the
+# addon's own descriptor alone. A Tracy launch puts this file in the project copy
+# IN PLACE OF the addon's descriptor; both side by side register the classes twice.
+LIBTRACY_GDEXTENSION = 'flatbuffers.tracy.gdextension'        # in <build dir>
+LIBTRACY_ADDON_GDEXTENSION = 'flatbuffers.gdextension'        # in LIBTRACY_EXTENSION_ADDON, replaced
+
+# What the extension prints at SCENE init (src/profiling.cpp), verbatim shape:
+#   godot-flatbuffers tracy: godot_tracy_client_matches()=true client_version=0x000e01
+#   client_defines_hash=0x... header_version=0x000e01 header_defines_hash=0x...
+# (one line). A mismatch prints =false and pushes LIBTRACY_MISMATCH_WARNING.
+LIBTRACY_MATCH_LINE_RE = (r'godot-flatbuffers tracy: godot_tracy_client_matches\(\)=(true|false)'
+                          r' client_version=(0x[0-9a-f]+) client_defines_hash=(0x[0-9a-f]+)'
+                          r' header_version=(0x[0-9a-f]+) header_defines_hash=(0x[0-9a-f]+)')
+LIBTRACY_MISMATCH_WARNING = "godot-flatbuffers: the engine's TracyClient does not match"
+
+# Extension zones as tracy-csvexport names them, and the sources they live in.
+LIBTRACY_ZONES = (
+    'FlatBuffer.get_root',
+    'FlatBufferBuilder.finish',
+    'FlatBufferBuilder.get_buffer',
+    'FlatBufferBuilder allocate',
+    'FlatBufferBuilder grow',
+    'FlatBufferVerifier.set_buffer',
+    'FlatBuffer.verify_vector_of_variant',
+    'FlatBuffer.decode_variant packed',
+)
+LIBTRACY_ZONE_SOURCES = (
+    'src/flatbuffer.cpp',
+    'src/flatbufferbuilder.hpp', 'src/flatbufferbuilder.cpp',
+    'src/flatbufferverifier.hpp',
+    'src/profiling.hpp', 'src/profiling.cpp',
+)
+# Not wired into libtracy_test_headless yet (test work is on hold); its
+# LIBTRACY_TEST patterns are still the earlier placeholders.
+
+# The source the libtracy configs build. The default configs keep `git` above.
+# GDFB_TRACY_SOURCE_URL / GDFB_TRACY_SOURCE_REF override it when the runner
+# generates (for example a local bare). The runner fetches it into its own bare
+# (gdflatbuffers/git) as remote `gitlab`; the repo is private, so the fetch needs a
+# GitLab credential in the environment.
+LIBTRACY_SOURCE = SimpleNamespace({**vars(git_base), **{
+    'name': 'tracy',
+    'remote': 'gitlab',
+    'url': os.environ.get('GDFB_TRACY_SOURCE_URL') or 'https://gitlab.com/enetheru/godot-flatbuffers.git',
+    'ref': os.environ.get('GDFB_TRACY_SOURCE_REF') or 'tracy',
+}})
+
+# Headless test on the editor Tracy engine (libtracy_test_headless).
+# Env overrides, read by the build script:
+#   GDFB_TRACY_PROJECT       Godot project to test. Default: <source>/project.
+#                            It is copied per run, never written to.
+#   GDFB_TRACY_TEST_SCRIPT   script to run, relative to the project or absolute.
+#   GDFB_TRACY_RUNS          parent of the per-run folders.
+LIBTRACY_TEST = {
+    'targets': ['editor'],
+    'script': 'addons/enetheru.test-runner/run_headless.gd',
+    'project_env': 'GDFB_TRACY_PROJECT',
+    'script_env': 'GDFB_TRACY_TEST_SCRIPT',
+    'runs_env': 'GDFB_TRACY_RUNS',
+    # The engine's on-demand client drops zones until a server is connected.
+    # tracy-capture starts first; the engine starts this many seconds later.
+    'settle_secs': 3,
+    # Engine flags besides the script. One capture server per process.
+    'engine_args': ['--headless', '--tracy'],
+    # godot_tracy_client_matches() true: searched in the engine output and the
+    # capture's messages (tracy-csvexport -m).
+    # TODO(extension): replace with the exact line the extension prints or sends.
+    'client_matches_pattern': r'godot_tracy_client_matches\(\)\W*(?:is\W*)?true',
+    # An extension zone: a zone whose source file is under the extension's
+    # src/ dir, or whose name matches this pattern.
+    # TODO(extension): exact zone names (builder, verify, read) still to come.
+    'zone_name_pattern': r'(?i)flatbuffer',
+}
 
 
 def _tracy_include_dir() -> str | None:
@@ -218,11 +326,17 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
     if include_dir is None:
         return None
 
+    from godot.config import TRACY_TEST as GODOT_TRACY_TEST
+
     tracy = copy.deepcopy(cfg)
     tracy.variant = 'libtracy'
+    tracy.source_def = copy.deepcopy(LIBTRACY_SOURCE)
+    tracy.source_dir_suffix = LIBTRACY_SOURCE.ref.replace('/', '-')
     target = tracy.godotcpp_target
     tracy.buildtool.config_vars.append(f'-D{LIBTRACY_CMAKE["enable"]}=ON')
     tracy.buildtool.config_vars.append(f'-D{LIBTRACY_CMAKE["include_dir"]}={include_dir}')
+    if cfg.platform == 'win32' and LIBTRACY_CMAKE_COPY_CLIENT:
+        tracy.buildtool.config_vars.append(f'-D{LIBTRACY_CMAKE["copy_client"]}=ON')
     tracy.libtracy = {
         'target': target,
         'cmake': dict(LIBTRACY_CMAKE),
@@ -234,14 +348,30 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
         'link': [g.format(target=target) for g in spec['link']],
         'runtime': [g.format(target=target) for g in spec['runtime']],
         'extension': spec['extension'].format(target=target),
+        'extension_addon': LIBTRACY_EXTENSION_ADDON,
         'extension_bin': LIBTRACY_EXTENSION_BIN,
+        'output_tag': LIBTRACY_OUTPUT_TAG,
+        'engine': [g.format(target=target) for g in spec['engine']],
+        'exe_env': [f'{LIBTRACY_EXE_ENV}_{target.upper()}', LIBTRACY_EXE_ENV],
+        'exe_client_re': LIBTRACY_EXE_CLIENT_RE,
+        'gdextension': LIBTRACY_GDEXTENSION,
+        'test': {
+            **LIBTRACY_TEST,
+            'runs_default': (gopts.path / 'gdflatbuffers' / 'tracy-runs').as_posix(),
+            # Capture tools and timeouts come from godot's Tracy settings (paths.local.py).
+            'capture': GODOT_TRACY_TEST.get('capture'),
+            'csvexport': GODOT_TRACY_TEST.get('csvexport'),
+            'address': GODOT_TRACY_TEST.get('address'),
+            'port': GODOT_TRACY_TEST.get('port'),
+            'timeout': GODOT_TRACY_TEST.get('timeout'),
+        },
     }
 
     # Insert the resolve step before configure, the placement after build.
     parts = tracy.script_parts
     parts.insert(parts.index(cmake_configure_part()), libtracy_resolve)
     parts.append(libtracy_place)
-    # Test action hooks. Stubs until the capture and bench steps are written.
+    # Test action hooks: the headless test (editor); the bench is still a stub.
     tracy.verbs.append('test')
     parts += [libtracy_test_headless, libtracy_bench]
     return tracy
@@ -362,6 +492,63 @@ def libtracy_resolve():
             tt['bin_dir'] = bin_dir
             tt['runtime_path'] = runtime
 
+            # 4. The engine exe: a shared-client build (it NEEDs the TracyClient).
+            import subprocess as _sp
+
+            def _client_needed(exe):
+                # Names in the exe's dynamic section that match the TracyClient,
+                # or None when no tool could read it.
+                for cmd, line_re in ((['readelf', '-d', str(exe)], r'\(NEEDED\).*\[(.+)\]'),
+                                     (['objdump', '-p', str(exe)], r'DLL Name:\s*(\S+)')):
+                    try:
+                        out = _sp.run(cmd, capture_output=True, text=True, timeout=60)
+                    except (OSError, _sp.SubprocessError):
+                        continue
+                    if out.returncode != 0:
+                        continue
+                    names = _re.findall(line_re, out.stdout)
+                    return [n for n in names if _re.search(tt['exe_client_re'], n)]
+                return None
+
+            chosen = None
+            for name in tt['exe_env']:
+                if os.environ.get(name):
+                    p = Path(os.environ[name])
+                    chosen = p if p.is_absolute() else bin_dir / p
+                    fmt.h(f'engine from ${name}: {chosen.as_posix()}')
+                    break
+            if chosen is not None:
+                candidates = [chosen]
+                if not chosen.is_file():
+                    _missing('engine exe not found', [chosen.as_posix()])
+            else:
+                candidates = []
+                for g in tt['engine']:
+                    candidates += sorted((p for p in bin_dir.glob(g) if p.is_file()),
+                                         key=lambda p: p.stat().st_mtime, reverse=True)
+                if not candidates:
+                    _missing('no engine exe', [f'looked for {bin_dir.as_posix()}/{g}' for g in tt['engine']]
+                             + [f'or set ${tt["exe_env"][0]}'])
+            rejected = []
+            engine = None
+            for exe in candidates:
+                needed = _client_needed(exe)
+                if needed is None:
+                    fmt.hu(f'WARNING: no readelf/objdump to check {exe.name}; accepted unchecked')
+                    engine = exe
+                    break
+                if needed:
+                    fmt.hu(f'engine NEEDED: {", ".join(needed)}')
+                    if runtime.name not in needed:
+                        fmt.hu(f'WARNING: {exe.name} needs {needed}, the resolved client is {runtime.name}')
+                    engine = exe
+                    break
+                rejected.append(f'{exe.as_posix()}: no NEEDED TracyClient (static Tracy, or no Tracy)')
+            if engine is None:
+                _missing('no shared-client engine exe', rejected + [f'pick one with ${tt["exe_env"][0]}'])
+            fmt.hu(f'engine:  {engine.as_posix()}')
+            tt['engine_path'] = engine
+
 
 def libtracy_place():
     config:dict = {}
@@ -371,10 +558,10 @@ def libtracy_place():
 
     # MARK: libtracy-Place
     #[============================[ libtracy Place ]============================]
-    # Put the engine's Tracy client next to the built extension, and make sure it
-    # is in the Godot bin the extension linked. Windows loads a GDExtension's
-    # dependency from the engine exe's directory. An existing file in the Godot
-    # bin is left alone: that bin belongs to the Godot build.
+    # Put the engine's Tracy client next to the built tracy extension, and make
+    # sure it is in the Godot bin the extension linked. Windows loads a
+    # GDExtension's dependency from the engine exe's directory. An existing file
+    # in the Godot bin is left alone: that bin belongs to the Godot build.
     import shutil as _shutil
     import filecmp as _filecmp
 
@@ -383,9 +570,12 @@ def libtracy_place():
         with fmt.Section('libtracy Place'):
             runtime = Path(tt['runtime_path'])
             ext_bin = Path(build['source_path']) / tt['extension_bin']
-            built = sorted(ext_bin.glob(tt['extension']))
+            # Default and tracy outputs share the bin; the tag part tells them apart.
+            built = sorted(p for p in ext_bin.glob(tt['extension'])
+                           if tt['output_tag'] in p.name.split('.'))
             if not built and not opts['dry']:
-                fmt.h(f'ERROR: no extension built for {tt["target"]}: {(ext_bin / tt["extension"]).as_posix()}')
+                fmt.h(f'ERROR: no tracy extension built for {tt["target"]}: '
+                      f'{(ext_bin / tt["extension"]).as_posix()} with a ".{tt["output_tag"]}." name part')
                 config['ok'] = False
             else:
                 for ext in built:
@@ -394,8 +584,9 @@ def libtracy_place():
                     dest = dest_dir / runtime.name
                     if dest.exists() and _filecmp.cmp(dest, runtime, shallow=False):
                         fmt.h(f'present: {dest.as_posix()}')
-                    elif dest_dir == Path(tt['bin_dir']) and dest.exists():
-                        fmt.h(f'ERROR: {dest.as_posix()} differs from {runtime.as_posix()}; not overwriting the Godot bin')
+                    elif dest_dir == Path(tt['bin_dir']):
+                        fmt.h(f'ERROR: {dest.as_posix()} is missing or differs from {runtime.as_posix()}; '
+                              'not writing into the Godot bin')
                         config['ok'] = False
                     elif opts['dry']:
                         fmt.h(f'dry-run: copy {runtime.as_posix()} -> {dest.as_posix()}')
@@ -408,22 +599,231 @@ def libtracy_test_headless():
     config:dict = {}
     opts:dict = {}
     build:dict = {}
+    stats:dict = {}
     # start_script
 
     # MARK: libtracy-Test
     #[============================[ libtracy Test ]=============================]
-    # TODO(libtracy test): not implemented. Hook: the `test` build action.
-    # Editor target only. One headless suite on the editor Tracy exe of the
-    # resolved bin (godot.windows.editor.x86_64.tracy.exe, not .console.exe;
-    # godot.linuxbsd.editor*.x86_64.tracy on Linux), with
-    #   --headless --tracy -s res://addons/enetheru.test-runner/run_headless.gd
-    # in the project folder. tracy-capture v0.14.1 (godot TRACY_CAPTURE) listens
-    # first: on-demand keeps only zones that begin and end while it is
-    # connected, and the client takes one server per process. Check
-    # godot_tracy_client_matches() and an extension zone in the capture.
-    if config['ok'] and 'test' in opts['build_actions']:
-        if build['libtracy']['target'] == 'editor':
-            fmt.h('libtracy headless test: not implemented yet (TODO stub)')
+    # One headless run of the test-runner on the editor Tracy engine, captured.
+    # Per run, under <runs>/<build name>/<timestamp>/:
+    #   project/   a copy of the Godot project, the tracy extension in its addon,
+    #              .godot/extension_list.cfg naming the tracy .gdextension
+    #   xdg/       XDG_CONFIG/DATA/CACHE/STATE_HOME for the engine
+    #   capture.tracy, *.log, *.cmd, zones.csv, messages.csv, result.json
+    # tracy-capture listens first, the engine starts settle_secs later. Pass:
+    # engine exit 0, capture saved, godot_tracy_client_matches() true, and at
+    # least one extension zone in the capture.
+    import csv as _csv
+    import json as _json
+    import re as _re
+    import shutil as _shutil
+    import socket as _socket
+    import subprocess as _sp
+    import time as _time
+
+    tt = build['libtracy']
+    tst = tt['test']
+    if config['ok'] and 'test' in opts['build_actions'] and tt['target'] in tst['targets']:
+        dry = opts['dry']
+        with fmt.Section('libtracy Test'), Timer(name='test') as timer:
+            res = {'status': None, 'failures': [], 'logs': [], 'facts': {}}
+
+            def fail(why):
+                res['failures'].append(why)
+                fmt.h(f'FAIL: {why}')
+
+            def need(path, what):
+                if path is None or not Path(path).exists():
+                    fail(f'{what} not found: {path}')
+                    return False
+                return True
+
+            def cmdline(args, env=None):
+                prefix = ''.join(f'{k}={v} ' for k, v in (env or {}).items())
+                return prefix + _sp.list2cmdline([str(a) for a in args])
+
+            def find_one(directory, globs):
+                for g in globs:
+                    hits = [p for p in Path(directory).glob(g) if p.is_file()]
+                    if hits:
+                        return max(hits, key=lambda p: p.stat().st_mtime)
+                return None
+
+            def tagged(paths):
+                return sorted(p for p in paths if tt['output_tag'] in p.name.split('.'))
+
+            source = Path(build['source_path'])
+            bin_dir = Path(tt['bin_dir']) if 'bin_dir' in tt else None
+            engine = find_one(bin_dir, tt['engine']) if bin_dir else None
+            project_src = Path(os.environ.get(tst['project_env']) or (source / 'project'))
+            script_rel = os.environ.get(tst['script_env']) or tst['script']
+            capture_tool = tst.get('capture')
+            csvexport_tool = tst.get('csvexport')
+            addon_src = source / tt['extension_addon']
+
+            ok = all([
+                need(bin_dir, 'Godot bin (libtracy Resolve did not run?)'),
+                need(engine, f'editor Tracy engine {tt["engine"]} in {bin_dir}'),
+                need(project_src, f'Godot project (set ${tst["project_env"]})'),
+                need(capture_tool, 'tracy-capture (godot TRACY_CAPTURE)'),
+                need(csvexport_tool, 'tracy-csvexport (godot TRACY_CSVEXPORT)'),
+            ])
+            gdext = tagged(addon_src.glob('*.gdextension')) if addon_src.is_dir() else []
+            ext_libs = tagged(Path(source / tt['extension_bin']).glob(tt['extension']))
+            if not gdext:
+                fail(f'no tracy .gdextension in {addon_src.as_posix()} (a name part ".{tt["output_tag"]}.")')
+                ok = False
+            if not ext_libs and not dry:
+                fail(f'no tracy extension library in {(source / tt["extension_bin"]).as_posix()}')
+                ok = False
+            script_path = Path(script_rel) if Path(script_rel).is_absolute() else project_src / script_rel
+            if not script_path.is_file():
+                fail(f'test script not found: {script_path.as_posix()} (set ${tst["script_env"]})')
+                ok = False
+
+            runs = Path(os.environ.get(tst['runs_env']) or tst['runs_default'])
+            run_dir = runs / build['name'] / _time.strftime('%Y%m%d-%H%M%S')
+            project_dir = run_dir / 'project'
+            xdg = run_dir / 'xdg'
+            trace = run_dir / 'capture.tracy'
+            fmt.h(f'run dir: {run_dir.as_posix()}')
+
+            if ok:
+                # The project copy: everything but .godot and .git, then the tracy
+                # extension addon only (a default .gdextension would load a second
+                # copy of the same classes), then extension_list.cfg.
+                addon_rel = Path(tt['extension_addon']).relative_to('project')
+                if dry:
+                    fmt.hu(f'dry-run: copy {project_src.as_posix()} -> {project_dir.as_posix()}')
+                    fmt.hu(f'dry-run: tracy addon {[p.name for p in gdext]} + {[p.name for p in ext_libs]}')
+                else:
+                    run_dir.mkdir(parents=True, exist_ok=True)
+                    _shutil.copytree(project_src, project_dir, symlinks=False,
+                                     ignore=_shutil.ignore_patterns('.godot', '.git'))
+                    addon_dst = project_dir / addon_rel
+                    if addon_dst.exists():
+                        _shutil.rmtree(addon_dst)
+                    (addon_dst / 'bin').mkdir(parents=True)
+                    for f in gdext:
+                        _shutil.copy2(f, addon_dst / f.name)
+                    # The tracy extension libraries, and the engine's Tracy client beside them.
+                    for f in [*ext_libs, Path(tt['runtime_path'])]:
+                        _shutil.copy2(f, addon_dst / 'bin' / f.name)
+                ext_list = project_dir / '.godot' / 'extension_list.cfg'
+                lines = [f'res://{(addon_rel / f.name).as_posix()}' for f in gdext]
+                if dry:
+                    fmt.hu(f'dry-run: write {ext_list.as_posix()}: {lines}')
+                elif not ext_list.exists():
+                    ext_list.parent.mkdir(parents=True, exist_ok=True)
+                    ext_list.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+                    res['logs'].append(ext_list.as_posix())
+
+                env = {f'XDG_{k}_HOME': (xdg / k.lower()).as_posix() for k in ('CONFIG', 'DATA', 'CACHE', 'STATE')}
+                # Inside the project it is passed as res://, like the editor would.
+                script_arg = f'res://{script_path.relative_to(project_src).as_posix()}' \
+                    if script_path.is_relative_to(project_src) else script_path.as_posix()
+                eng_cmd = [engine.as_posix(), *tst['engine_args'], '--path', project_dir.as_posix(), '-s', script_arg]
+                cap_cmd = [str(capture_tool), '-o', trace.as_posix(), '-a', tst['address'], '-p', str(tst['port']), '-f']
+                res['facts'].update({'engine': engine.as_posix(), 'engine_cmd': cmdline(eng_cmd, env),
+                                     'capture_cmd': cmdline(cap_cmd), 'project': project_src.as_posix()})
+                fmt.hu(f'$ {cmdline(cap_cmd)} &')
+                fmt.hu(f'(wait {tst["settle_secs"]} s)')
+                fmt.hu(f'$ {cmdline(eng_cmd, env)}')
+
+                if not dry:
+                    def port_busy():
+                        try:
+                            with _socket.create_connection((tst['address'], int(tst['port'])), timeout=1):
+                                return True
+                        except OSError:
+                            return False
+
+                    if port_busy():
+                        fail(f'{tst["address"]}:{tst["port"]} already has a Tracy client; another engine is running')
+                    else:
+                        for d in env.values():
+                            Path(d).mkdir(parents=True, exist_ok=True)
+                        (run_dir / 'capture.cmd').write_text(cmdline(cap_cmd) + '\n', encoding='utf-8')
+                        (run_dir / 'engine.cmd').write_text(cmdline(eng_cmd, env) + '\n', encoding='utf-8')
+                        cap_log = run_dir / 'capture.log'
+                        eng_log = run_dir / 'engine.log'
+                        res['logs'] += [cap_log.as_posix(), eng_log.as_posix()]
+                        with open(cap_log, 'w', encoding='utf-8') as cl:
+                            cap = _sp.Popen(cap_cmd, stdout=cl, stderr=_sp.STDOUT, stdin=_sp.DEVNULL)
+                            _time.sleep(tst['settle_secs'])
+                            with open(eng_log, 'w', encoding='utf-8') as el:
+                                try:
+                                    eng_rc = _sp.run(eng_cmd, stdout=el, stderr=_sp.STDOUT, stdin=_sp.DEVNULL,
+                                                     env={**os.environ, **env}, cwd=project_dir,
+                                                     timeout=tst.get('timeout') or 300).returncode
+                                except _sp.TimeoutExpired:
+                                    eng_rc = 'timeout'
+                            try:
+                                cap_rc = cap.wait(timeout=60)
+                            except _sp.TimeoutExpired:
+                                cap.terminate()   # a hard stop skips the write; terminate first
+                                try:
+                                    cap_rc = cap.wait(timeout=10)
+                                except _sp.TimeoutExpired:
+                                    cap.kill()
+                                    cap_rc = 'killed'
+                        res['facts'].update({'engine_rc': eng_rc, 'capture_rc': cap_rc})
+                        if eng_rc != 0:
+                            fail(f'engine exited {eng_rc} (log: {eng_log.as_posix()})')
+                        if cap_rc != 0:
+                            fail(f'tracy-capture exited {cap_rc} (log: {cap_log.as_posix()})')
+                        eng_text = eng_log.read_text(encoding='utf-8', errors='replace')
+
+                        if not trace.is_file() or not trace.stat().st_size:
+                            fail(f'capture missing or empty: {trace.as_posix()}')
+                        else:
+                            res['facts']['trace'] = trace.as_posix()
+                            res['facts']['trace_bytes'] = trace.stat().st_size
+                            zones_csv = run_dir / 'zones.csv'
+                            msgs_csv = run_dir / 'messages.csv'
+                            z = _sp.run([str(csvexport_tool), trace.as_posix()], capture_output=True, text=True,
+                                        errors='replace', timeout=300)
+                            m = _sp.run([str(csvexport_tool), '-m', trace.as_posix()], capture_output=True,
+                                        text=True, errors='replace', timeout=300)
+                            zones_csv.write_text(z.stdout, encoding='utf-8')
+                            msgs_csv.write_text(m.stdout, encoding='utf-8')
+                            res['logs'] += [zones_csv.as_posix(), msgs_csv.as_posix()]
+
+                            # tracy-csvexport: name,src_file,src_line,total_ns,total_perc,counts,mean,min,max,std
+                            ext_src = (source / 'src').resolve().as_posix()
+                            name_re = _re.compile(tst['zone_name_pattern'])
+                            ext_zones = []
+                            for row in list(_csv.reader(z.stdout.splitlines()))[1:]:
+                                if len(row) < 10:
+                                    continue
+                                zname, zfile = ','.join(row[:-9]), row[-9]
+                                if Path(zfile).as_posix().startswith(ext_src) or name_re.search(zname):
+                                    ext_zones.append(f'{zname} ({zfile}:{row[-8]}) x{row[-5]}')
+                            res['facts']['extension_zones'] = ext_zones
+                            fmt.h(f'extension zones: {len(ext_zones)}')
+                            for line in ext_zones[:10]:
+                                fmt.hu(line)
+                            if not ext_zones:
+                                fail(f'no extension zone in {zones_csv.as_posix()}')
+
+                        match_re = _re.compile(tst['client_matches_pattern'])
+                        msgs = msgs_csv.read_text(encoding='utf-8') if msgs_csv.is_file() else ''
+                        matched = bool(match_re.search(eng_text) or match_re.search(msgs))
+                        res['facts']['client_matches'] = matched
+                        fmt.h(f'godot_tracy_client_matches() true: {"yes" if matched else "not seen"}')
+                        if not matched:
+                            fail(f'godot_tracy_client_matches() true not seen in {eng_log.as_posix()} '
+                                 f'or the capture messages (pattern {tst["client_matches_pattern"]})')
+
+                        res['status'] = 'fail' if res['failures'] else 'pass'
+                        (run_dir / 'result.json').write_text(_json.dumps(res, indent=2, default=str), encoding='utf-8')
+                        fmt.h(f'result: {res["status"]}  ({(run_dir / "result.json").as_posix()})')
+            if dry:
+                res['status'] = 'dry'
+            if res['failures']:
+                timer.status = TaskStatus.FAILED
+        stats['test'] = timer.get_dict()
+        config['ok'] = timer.ok() and not res['failures']
 
 
 def libtracy_bench():
