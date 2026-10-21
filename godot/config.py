@@ -63,6 +63,11 @@ TRACY_TEST_DOCTEST = '*[Profiling]*'
 # or no Vulkan device.
 TRACY_TEST_GPU_FEATURES = 'zones,messages,gpu,frames'
 TRACY_TEST_GPU_QUIT_AFTER = 320     # --quit-after; late_gpu.gd quits at frame 300
+# Windowed frame-image stage. frame_images.gd runs 90 frames. The first
+# thumbnails are not sent (the draw is deferred, the offset is 2, and an
+# on-demand server drops the earliest indexes), so the floor is well under 90.
+TRACY_TEST_FRAME_IMAGE_FEATURES = 'frames,frame_images'
+TRACY_TEST_FRAME_IMAGE_MIN = 20
 # Regression checks against the best previous run (logs-test/<build-name>/best.json).
 # Counts that depend on timing may fall this far below the best before failing.
 TRACY_TEST_BEST_TOLERANCE = 0.10
@@ -72,9 +77,9 @@ TRACY_TEST_REQUIRED = {
     'default': ['version', 'doctest'],
     'minimum': ['version', 'doctest'],
     'tracy': ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
-              'silenced', 'toggle', 'gpu_late_start'],
+              'silenced', 'toggle', 'frame_images', 'gpu_late_start'],
     'libtracy': ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
-                 'silenced', 'toggle', 'gpu_late_start'],
+                 'silenced', 'toggle', 'frame_images', 'gpu_late_start'],
 }
 
 # The test harness lives in the Godot fork. Relative paths are resolved against
@@ -82,6 +87,7 @@ TRACY_TEST_REQUIRED = {
 # commit under test. paths.local.py may point them elsewhere (absolute paths).
 TRACY_FIBERS_GD = 'tests/tracy_harness/fibers.gd'
 TRACY_TOGGLE_GD = 'tests/tracy_harness/toggle.gd'
+TRACY_FRAME_IMAGES_GD = 'tests/tracy_harness/frame_images.gd'
 TRACY_LATE_GPU_PROJECT = 'tests/tracy_harness/late_gpu'
 TRACY_ANALYZER_SRC = 'misc/scripts/tracy/trace_analyzer/trace_analyzer.cpp'
 
@@ -117,10 +123,12 @@ TRACY_XVFB = 'Xvfb'
 _LOCAL_OVERRIDES = (
     'TRACY_SOURCE_PATH', 'TRACY_REF', 'TRACY_PROFILER_PATH', 'TRACY_TOOLS_PATH',
     'TRACY_CAPTURE', 'TRACY_CSVEXPORT', 'TRACY_ANALYZER_SRC', 'TRACY_ANALYZER', 'TRACY_CMAKE',
-    'TRACY_FIBERS_GD', 'TRACY_TOGGLE_GD', 'TRACY_LATE_GPU_PROJECT',
+    'TRACY_FIBERS_GD', 'TRACY_TOGGLE_GD', 'TRACY_FRAME_IMAGES_GD', 'TRACY_LATE_GPU_PROJECT',
     'TRACY_VERSION', 'TRACY_CAPTURE_ADDR', 'TRACY_CAPTURE_PORT',
     'TRACY_TEST_FEATURES', 'TRACY_TEST_TIMEOUT', 'TRACY_TEST_MASK', 'TRACY_TEST_DOCTEST',
-    'TRACY_TEST_GPU_FEATURES', 'TRACY_TEST_GPU_QUIT_AFTER', 'TRACY_TEST_BEST_TOLERANCE',
+    'TRACY_TEST_GPU_FEATURES', 'TRACY_TEST_GPU_QUIT_AFTER',
+    'TRACY_TEST_FRAME_IMAGE_FEATURES', 'TRACY_TEST_FRAME_IMAGE_MIN',
+    'TRACY_TEST_BEST_TOLERANCE',
     'TRACY_TEST_REQUIRED', 'TRACY_TEST_DISPLAY', 'TRACY_XVFB',
 )
 
@@ -163,6 +171,7 @@ TRACY_TEST = {
     'cmake': TRACY_CMAKE,
     'fibers_gd': TRACY_FIBERS_GD,
     'toggle_gd': TRACY_TOGGLE_GD,
+    'frame_images_gd': TRACY_FRAME_IMAGES_GD,
     'late_gpu_project': TRACY_LATE_GPU_PROJECT,
     'address': TRACY_CAPTURE_ADDR,
     'port': TRACY_CAPTURE_PORT,
@@ -171,6 +180,8 @@ TRACY_TEST = {
     'doctest': TRACY_TEST_DOCTEST,
     'gpu_features': TRACY_TEST_GPU_FEATURES,
     'gpu_quit_after': TRACY_TEST_GPU_QUIT_AFTER,
+    'frame_image_features': TRACY_TEST_FRAME_IMAGE_FEATURES,
+    'frame_image_min': TRACY_TEST_FRAME_IMAGE_MIN,
     'best_tolerance': TRACY_TEST_BEST_TOLERANCE,
     'required': TRACY_TEST_REQUIRED,
     'display': TRACY_TEST_DISPLAY,
@@ -644,7 +655,7 @@ def test_scons():
             tolerance = float(tt.get('best_tolerance') or 0)
             runtime_case = '[Profiling] Report the runtime state'
             stage_names = ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
-                           'silenced', 'toggle', 'gpu_late_start']
+                           'silenced', 'toggle', 'frame_images', 'gpu_late_start']
 
             # MARK: Helpers
             def scons_opt(name):
@@ -1136,6 +1147,12 @@ def test_scons():
                                               if msg == 'Godot Tracy capture started']
                 info['capture_stopped_at'] = [t for t, _, msg in info['message_list']
                                               if msg == 'Godot Tracy capture stopped']
+                m = re.search(r'frameimages=(\d+)', text)
+                info['frame_images'] = int(m.group(1)) if m else None
+                info['frame_image_sizes'] = [
+                    {'w': int(w), 'h': int(h), 'flip': int(flip), 'count': int(count)}
+                    for w, h, flip, count in re.findall(
+                        r'^  FRAMEIMAGE (\d+)x(\d+) flip=(\d+) count=(\d+)', text, re.M)]
                 return info, None
 
             def trace_facts(res, info):
@@ -1543,6 +1560,97 @@ def test_scons():
                         fail(sub, f"{info['messages']} messages while silenced")
                 return sub
 
+            def stage_frame_images():
+                # Windowed run must send 320x180 thumbnails. The headless run of the
+                # same script must send none. tests/tracy_harness/README.md, Frame images.
+                res = result()
+                facts = res['facts']
+                gate = capture_gate(res, needs_project=True)
+                if gate:
+                    return gate
+                defines = ctx.get('defines')
+                images_built = ('TRACY_FRAME_IMAGES_ENABLED' in defines) if defines else scons_opt('tracy_frame_images') != 'no'
+                frames_built = ('TRACY_FRAMES_ENABLED' in defines) if defines else scons_opt('tracy_frames') != 'no'
+                if not images_built:
+                    return not_applicable(res, 'build has no frame images (no TRACY_FRAME_IMAGES_ENABLED)')
+                if not frames_built:
+                    return not_applicable(res, 'build has no frame marks (no TRACY_FRAMES_ENABLED)')
+                script = harness('frame_images_gd')
+                if not script or not script.is_file():
+                    return skip(res, f'no frame image harness at {script}')
+                display_env, why = ensure_display()
+                if display_env is None:
+                    return skip(res, why)
+                facts['display'] = display_env.get('DISPLAY') or '(desktop)'
+                facts['xvfb_cmd'] = ctx.get('xvfb_cmd')
+                features = tt.get('frame_image_features') or 'frames,frame_images'
+                minimum = int(tt.get('frame_image_min') or 20)
+                runs = {}
+                facts['runs'] = runs
+                for mode, headless in (('window', False), ('headless', True)):
+                    fmt.h(f'Frame images {mode}')
+                    sub = result()
+                    runs[mode] = sub
+                    eng_cmd = [str(exe)]
+                    if headless:
+                        eng_cmd.append('--headless')
+                    if is_template():
+                        eng_cmd += ['--path', str(stub_project())]
+                    # --tracy unsilences an on-demand build. A from-launch build has no such flag.
+                    if ctx['silent_client'] is not False:
+                        eng_cmd.append('--tracy')
+                    eng_cmd += ['--script', str(Path(script).resolve()), '--tracy-features', features]
+                    if tt.get('mask') is not None:
+                        eng_cmd += ['--tracy-mask', tt['mask']]
+                    trace, eng = capture_run(sub, f'frame_{mode}', eng_cmd, env=display_env)
+                    res['logs'] += sub['logs']
+                    if dry:
+                        fmt.h(f'frame images {mode}: dry')
+                        continue
+                    if eng is not None:
+                        out = plain(eng['out'] + eng['err'])
+                        if 'action=quit' not in out:
+                            fail(sub, "frame_images.gd never printed 'action=quit'")
+                    if trace is not None:
+                        info, why = analyse(sub, f'frame_{mode}', trace)
+                        if info is None:
+                            skip(sub, f'cannot inspect the trace: {why}')
+                        else:
+                            trace_facts(sub, info)
+                            count = info.get('frame_images')
+                            if count is None:
+                                fail(sub, 'analyser printed no frameimages= count')
+                            elif mode == 'headless':
+                                if count:
+                                    fail(sub, f'headless capture has {count} frame images')
+                            else:
+                                if not info.get('frames'):
+                                    fail(sub, 'window capture has no frames')
+                                sizes = info.get('frame_image_sizes') or []
+                                if not sizes:
+                                    fail(sub, 'analyser printed no FRAMEIMAGE lines')
+                                sized = 0
+                                for size in sizes:
+                                    sized += size['count']
+                                    if (size['w'], size['h'], size['flip']) != (320, 180, 0):
+                                        fail(sub, f"frame image {size['w']}x{size['h']} flip={size['flip']}, "
+                                                  f'expected 320x180 flip=0')
+                                if sizes and sized != count:
+                                    fail(sub, f'FRAMEIMAGE counts sum to {sized}, frameimages={count}')
+                                if count < minimum:
+                                    fail(sub, f'{count} frame images, expected at least {minimum}')
+                                if sub['status'] == 'pass':
+                                    metric('frame_images', 'frame_images', count, exact=False)
+                    fmt.h(f"frame images {mode}: {sub['status']}, images {sub['facts'].get('frame_images')}")
+                for mode, sub in runs.items():
+                    for why in sub['failures']:
+                        res['failures'].append(f'{mode}: {why}')
+                    if sub['status'] == 'fail':
+                        res['status'] = 'fail'
+                    elif sub['status'] == 'skip' and res['status'] == 'pass':
+                        skip(res, sub['reason'])
+                return as_dry(res) if dry else res
+
             def stage_gpu_late_start():
                 # The late_gpu project, runs A to D. On whenever the build has the GPU
                 # feature; skips only without a display or a Vulkan device.
@@ -1663,6 +1771,8 @@ def test_scons():
                            ('toggle', stages.get('toggle'), None)]
                 runs = ((stages.get('gpu_late_start') or {}).get('facts') or {}).get('runs') or {}
                 sources += [(f'gpu{mode}', sub, None) for mode, sub in runs.items()]
+                frame_runs = ((stages.get('frame_images') or {}).get('facts') or {}).get('runs') or {}
+                sources += [(f'frame_{mode}', sub, None) for mode, sub in frame_runs.items()]
                 rows = []
                 for name, cap, more in sources:
                     if not cap or 'engine_cmd' not in cap['facts']:
@@ -1671,7 +1781,8 @@ def test_scons():
                     row = {'name': name, 'status': cap['status']}
                     for key in ('engine_cmd', 'tracy_flag', 'tracy_features', 'tracy_mask', 'vulkan_device',
                                 'gpu_contexts', 'gpu_context_names', 'zones', 'gpu_zones', 'messages',
-                                'plots', 'frames', 'capture_started_msg', 'capture_stopped_msg'):
+                                'plots', 'frames', 'frame_images', 'frame_image_sizes',
+                                'capture_started_msg', 'capture_stopped_msg'):
                         row[key] = facts.get(key)
                     rows.append(row)
                 return rows
@@ -1700,8 +1811,13 @@ def test_scons():
                         lines.append(f"    {row['vulkan_device']}")
                     lines.append(f"    gpu contexts {row['gpu_contexts']}{': ' + ', '.join(names) if names else ''}; "
                                  f"zones {row['zones']}, gpu zones {row['gpu_zones']}, messages {row['messages']}, "
-                                 f"plots {row['plots']}, frames {row['frames']}, capture started/stopped msgs "
+                                 f"plots {row['plots']}, frames {row['frames']}, frame images {row['frame_images']}, "
+                                 f"capture started/stopped msgs "
                                  f"{yes_no(row['capture_started_msg'])}/{yes_no(row['capture_stopped_msg'])}")
+                    sizes = row.get('frame_image_sizes') or []
+                    if sizes:
+                        lines.append('    ' + ', '.join(
+                            f"{s['count']} x {s['w']}x{s['h']} flip={s['flip']}" for s in sizes))
                 lines.append('stages:')
                 for name in stage_names:
                     res = summary['stages'][name]
@@ -1759,6 +1875,7 @@ def test_scons():
                     stage_funcs = {'version': stage_version, 'tracy_defines': stage_tracy_defines,
                                    'doctest': stage_doctest, 'fibers_capture': stage_fibers_capture,
                                    'counts': stage_counts, 'silenced': stage_silenced, 'toggle': stage_toggle,
+                                   'frame_images': stage_frame_images,
                                    'gpu_late_start': stage_gpu_late_start}
                     stages = ctx['stages']
                     try:
@@ -2035,6 +2152,8 @@ def config_minim( cfg:SimpleNamespace ) -> bool:
 # profiler_track_memory=yes also defines TRACY_MEMORY_ENABLED.
 # Automatic GDScript zones stay on: the coroutine fiber path is compiled
 # only with them, and --tracy-features cannot add code the build left out.
+# Frame images stay on for the same reason. They stay silent until
+# --tracy-features lists frame_images.
 _TRACY_FEATURES = (
     ("tracy_zones", "yes"),
     ("tracy_plots", "yes"),
