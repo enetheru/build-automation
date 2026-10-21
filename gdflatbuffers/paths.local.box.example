@@ -1,0 +1,13 @@
+# Per-machine gdflatbuffers paths for the Linux box.
+# Copy to gdflatbuffers/paths.local.py (gitignored) and adjust; gdflatbuffers/config.py
+# loads it when present. Any name left out keeps its default from config.py.
+
+# Install prefix of the libtracy builds (cmake --install --prefix). A relative
+# path is under the source worktree; the default 'install' is <source>/install.
+#
+# Never point this at a shared Godot project. The install merges a line into
+# flatbuffers.gdextension and its merge key drops `.tracy`, so a Tracy install
+# replaces the default build's slot for that platform and target (the last
+# install wins). libtracy Install refuses a prefix that holds project.godot.
+# Use the default, or a scratch folder the runner owns.
+# GDFB_INSTALL_PREFIX = '/workspace/gdflatbuffers-install'
