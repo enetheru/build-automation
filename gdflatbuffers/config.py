@@ -146,14 +146,13 @@ LIBTRACY_CMAKE = {
     'header_dir':     'GODOT_TRACY_HEADER_DIR',  # dir of godot_profiling.gen.h (that target's Godot bin)
     'include_dir':    'TRACY_INCLUDE_DIR',       # Tracy public headers (<tracy/Tracy.hpp>)
     'client_library': 'TRACY_CLIENT_LIBRARY',    # what the extension links: MinGW import lib, or the .so
-    # Windows only, all optional. The runner's libtracy Place step already copies
-    # the client, so the variant leaves these off unless LIBTRACY_CMAKE_COPY_CLIENT.
+    # Windows only, all optional. The variant never passes them: the Tracy client
+    # comes only from the engine's bin, so GDFB_TRACY_COPY_CLIENT stays unset (OFF)
+    # and no client is copied next to the extension.
     'copy_client':    'GDFB_TRACY_COPY_CLIENT',  # BOOL: post-build copy of the TracyClient DLL
     'client_dll':     'GDFB_TRACY_CLIENT_DLL',   # FILEPATH: that DLL (empty: derived from the import lib)
     'copy_dirs':      'GDFB_TRACY_COPY_DIRS',    # STRING ;-list: more dirs to copy the DLL into
 }
-# Windows: pass GDFB_TRACY_COPY_CLIENT=ON (the extension copies the DLL itself).
-LIBTRACY_CMAKE_COPY_CLIENT = False
 
 # Per-target override of the Godot bin, read by the build script. Set it to
 # point a configure at a bin the runner did not build, for example on Linux.
@@ -179,8 +178,9 @@ LIBTRACY_HEADER = 'godot_profiling.gen.h'
 # GODOTCPP_TARGET, {host} is short_host(). 'godot_glob' is a folder under the
 # runner's godot project (<runner root>/godot): that target's plain libtracy
 # build, any version. The newest version wins.
-# 'link' is what TRACY_CLIENT_LIBRARY gets. 'runtime' is the client the
-# extension loads, placed next to the extension and in the Godot bin.
+# 'link' is what TRACY_CLIENT_LIBRARY gets. 'runtime' is the client the engine
+# loads and the extension shares; it stays in the Godot bin and is never copied
+# next to the extension (a second copy risks two clients in one process).
 # 'extension' is every built extension of that target, in the project's addon
 # bin; LIBTRACY_OUTPUT_TAG picks the tracy ones. 'engine' is the Tracy engine
 # binary in the Godot bin (the test step runs it).
@@ -188,11 +188,11 @@ LIBTRACY_PLATFORMS = {
     'win32': {
         'toolchains': ['mingw64'],     # the import library is MinGW
         'godot_glob': '{host}.mingw64.x86_64.windows.{target}.libtracy.*',
-        'link':       ['obj/core/profiling/libTracyClient.windows.{target}.x86_64.tracy.a'],
-        'runtime':    ['TracyClient.windows.{target}.x86_64.tracy.dll'],
+        'link':       ['obj/core/profiling/libTracyClient.windows.{target}.x86_64.*tracy.a'],
+        'runtime':    ['TracyClient.windows.{target}.x86_64.*tracy.dll'],
         'extension':  'flatbuffers.windows.{target}.*.dll',
         # The real exe. The .console.exe wrapper is a second process.
-        'engine':     ['godot.windows.{target}*.x86_64.tracy.exe'],
+        'engine':     ['godot.windows.{target}*.x86_64.*tracy.exe'],   # .tracy or .libtracy
     },
     'linux': {
         'toolchains': ['gcc'],
@@ -203,7 +203,7 @@ LIBTRACY_PLATFORMS = {
                        'obj/core/profiling/libTracyClient.linuxbsd.{target}*.x86_64*.so'],
         'runtime':    ['libTracyClient.linuxbsd.{target}*.x86_64*.so'],
         'extension':  'flatbuffers.linux.{target}.*.so',
-        'engine':     ['godot.linuxbsd.{target}*.x86_64.tracy'],
+        'engine':     ['godot.linuxbsd.{target}*.x86_64.*tracy'],      # .tracy or .libtracy
     },
 }
 
@@ -335,8 +335,6 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
     target = tracy.godotcpp_target
     tracy.buildtool.config_vars.append(f'-D{LIBTRACY_CMAKE["enable"]}=ON')
     tracy.buildtool.config_vars.append(f'-D{LIBTRACY_CMAKE["include_dir"]}={include_dir}')
-    if cfg.platform == 'win32' and LIBTRACY_CMAKE_COPY_CLIENT:
-        tracy.buildtool.config_vars.append(f'-D{LIBTRACY_CMAKE["copy_client"]}=ON')
     tracy.libtracy = {
         'target': target,
         'cmake': dict(LIBTRACY_CMAKE),
@@ -367,10 +365,10 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
         },
     }
 
-    # Insert the resolve step before configure, the placement after build.
+    # Insert the resolve step before configure, the read-only check after build.
     parts = tracy.script_parts
     parts.insert(parts.index(cmake_configure_part()), libtracy_resolve)
-    parts.append(libtracy_place)
+    parts.append(libtracy_check)
     # Test action hooks: the headless test (editor); the bench is still a stub.
     tracy.verbs.append('test')
     parts += [libtracy_test_headless, libtracy_bench]
@@ -484,14 +482,6 @@ def libtracy_resolve():
             fmt.hu(f'link:    {link.as_posix()}')
             fmt.hu(f'runtime: {runtime.as_posix()}')
 
-            cmake_names = tt['cmake']
-            buildtool['config_vars'] += [
-                f'-D{cmake_names["header_dir"]}={bin_dir.as_posix()}',
-                f'-D{cmake_names["client_library"]}={link.as_posix()}',
-            ]
-            tt['bin_dir'] = bin_dir
-            tt['runtime_path'] = runtime
-
             # 4. The engine exe: a shared-client build (it NEEDs the TracyClient).
             import subprocess as _sp
 
@@ -540,7 +530,16 @@ def libtracy_resolve():
                 if needed:
                     fmt.hu(f'engine NEEDED: {", ".join(needed)}')
                     if runtime.name not in needed:
-                        fmt.hu(f'WARNING: {exe.name} needs {needed}, the resolved client is {runtime.name}')
+                        # A bin can hold clients of several builds. Take the one this
+                        # engine loads, when the linked file is that same library (Linux).
+                        paired = [bin_dir / n for n in needed if (bin_dir / n).is_file()]
+                        if paired and link == runtime:
+                            fmt.hu(f'client {runtime.name} is not the one {exe.name} needs; using {paired[0].name}')
+                            link = runtime = paired[0]
+                        else:
+                            _missing('engine and client do not match', [
+                                f'{exe.as_posix()} needs {", ".join(needed)}',
+                                f'resolved client: {runtime.as_posix()}'])
                     engine = exe
                     break
                 rejected.append(f'{exe.as_posix()}: no NEEDED TracyClient (static Tracy, or no Tracy)')
@@ -549,25 +548,32 @@ def libtracy_resolve():
             fmt.hu(f'engine:  {engine.as_posix()}')
             tt['engine_path'] = engine
 
+            cmake_names = tt['cmake']
+            buildtool['config_vars'] += [
+                f'-D{cmake_names["header_dir"]}={bin_dir.as_posix()}',
+                f'-D{cmake_names["client_library"]}={link.as_posix()}',
+            ]
+            tt['bin_dir'] = bin_dir
+            tt['runtime_path'] = runtime
 
-def libtracy_place():
+
+def libtracy_check():
     config:dict = {}
     opts:dict = {}
     build:dict = {}
     # start_script
 
-    # MARK: libtracy-Place
-    #[============================[ libtracy Place ]============================]
-    # Put the engine's Tracy client next to the built tracy extension, and make
-    # sure it is in the Godot bin the extension linked. Windows loads a
-    # GDExtension's dependency from the engine exe's directory. An existing file
-    # in the Godot bin is left alone: that bin belongs to the Godot build.
-    import shutil as _shutil
+    # MARK: libtracy-Check
+    #[============================[ libtracy Check ]============================]
+    # Read-only, writes nothing. The Tracy client comes only from the engine: it
+    # must be in the Godot bin the extension linked, and nothing copies it next
+    # to the extension. A client found in the extension bin (for example a
+    # leftover of a GDFB_TRACY_COPY_CLIENT=ON build) is reported, not removed.
     import filecmp as _filecmp
 
     tt = build['libtracy']
     if config['ok'] and 'build' in opts['build_actions'] and 'runtime_path' in tt:
-        with fmt.Section('libtracy Place'):
+        with fmt.Section('libtracy Check'):
             runtime = Path(tt['runtime_path'])
             ext_bin = Path(build['source_path']) / tt['extension_bin']
             # Default and tracy outputs share the bin; the tag part tells them apart.
@@ -577,22 +583,18 @@ def libtracy_place():
                 fmt.h(f'ERROR: no tracy extension built for {tt["target"]}: '
                       f'{(ext_bin / tt["extension"]).as_posix()} with a ".{tt["output_tag"]}." name part')
                 config['ok'] = False
+            for ext in built:
+                fmt.hu(f'extension: {ext.as_posix()}')
+            engine_client = Path(tt['bin_dir']) / runtime.name
+            if engine_client.is_file() and _filecmp.cmp(engine_client, runtime, shallow=False):
+                fmt.h(f'engine client: {engine_client.as_posix()}')
             else:
-                for ext in built:
-                    fmt.hu(f'extension: {ext.as_posix()}')
-                for dest_dir in [ext_bin, Path(tt['bin_dir'])]:
-                    dest = dest_dir / runtime.name
-                    if dest.exists() and _filecmp.cmp(dest, runtime, shallow=False):
-                        fmt.h(f'present: {dest.as_posix()}')
-                    elif dest_dir == Path(tt['bin_dir']):
-                        fmt.h(f'ERROR: {dest.as_posix()} is missing or differs from {runtime.as_posix()}; '
-                              'not writing into the Godot bin')
-                        config['ok'] = False
-                    elif opts['dry']:
-                        fmt.h(f'dry-run: copy {runtime.as_posix()} -> {dest.as_posix()}')
-                    else:
-                        _shutil.copy2(runtime, dest)
-                        fmt.h(f'copied: {dest.as_posix()}')
+                fmt.h(f'ERROR: {engine_client.as_posix()} is missing or differs from {runtime.as_posix()}')
+                config['ok'] = False
+            strays = sorted({p for g in tt['runtime'] for p in ext_bin.glob(g) if p.is_file()})
+            for stray in strays:
+                fmt.h(f'WARNING: Tracy client next to the extension: {stray.as_posix()}; '
+                      'the client must come only from the engine, delete this copy')
 
 
 def libtracy_test_headless():
@@ -706,6 +708,7 @@ def libtracy_test_headless():
                     (addon_dst / 'bin').mkdir(parents=True)
                     for f in gdext:
                         _shutil.copy2(f, addon_dst / f.name)
+                    # TODO(libtracy test): stop copying the engine's client here before testing resumes; the client comes only from the engine.
                     # The tracy extension libraries, and the engine's Tracy client beside them.
                     for f in [*ext_libs, Path(tt['runtime_path'])]:
                         _shutil.copy2(f, addon_dst / 'bin' / f.name)
