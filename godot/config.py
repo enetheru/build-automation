@@ -123,6 +123,10 @@ TRACY_CMAKE: str | None = None
 # (TRACY_XVFB) when $DISPLAY is unset.
 TRACY_TEST_DISPLAY: str | None = None
 TRACY_XVFB = 'Xvfb'
+# Every Godot build. The install verb copies that build's launch files into
+# GODOT_INSTALL_PATH after the earlier steps have succeeded. Builds share
+# this one directory. None leaves the verb with nothing to copy.
+GODOT_INSTALL_PATH: str | None = None
 
 # Names paths.local.py may set. The shared settings above may be overridden too.
 _LOCAL_OVERRIDES = (
@@ -137,6 +141,7 @@ _LOCAL_OVERRIDES = (
     'TRACY_TEST_LOG_FEATURES', 'TRACY_TEST_LOG_OFF_FEATURES',
     'TRACY_TEST_BEST_TOLERANCE',
     'TRACY_TEST_REQUIRED', 'TRACY_TEST_DISPLAY', 'TRACY_XVFB',
+    'GODOT_INSTALL_PATH',
 )
 
 
@@ -1544,11 +1549,21 @@ def test_scons():
                     return 1e-3
                 return max(gaps[len(gaps) // 2] * 20.0, 1e-4)
 
+            def gpu_frame_period(times, split_gap):
+                # The median gap that separates frames. split_gap is the smaller
+                # gap between zones inside one frame, so those are left out.
+                xs = sorted(times)
+                gaps = sorted(b - a for a, b in zip(xs, xs[1:]) if b - a > split_gap)
+                if not gaps:
+                    return 1e-3
+                return gaps[len(gaps) // 2]
+
             def split_gpu_silence(times, stop_t, start_t, eps):
-                # godot_tracy_flush_frame_requests writes the stop message at
-                # the frame mark, after that frame's GPU work was submitted,
-                # and only then turns capture off. That frame's GPU timestamps
-                # fall after the message, in one burst. A later burst was
+                # The stop message is written and capture turns off before the
+                # frame mark. These times are when the GPU started the pass, so
+                # a frame the CPU already submitted can start after the message.
+                # frame_queue_size is 2 or 3 with a surface, so that many frames
+                # can still start. A burst after that queue has drained was
                 # submitted while silenced.
                 before = [t for t in times if t <= stop_t + eps]
                 mid = sorted(t for t in times if stop_t + eps < t < start_t - eps)
@@ -1556,12 +1571,24 @@ def test_scons():
                 if len(mid) < 2:
                     return before, mid, [], after
                 gap = gpu_frame_gap(before or mid)
-                cut = len(mid)
-                for i in range(len(mid) - 1):
-                    if mid[i + 1] - mid[i] > gap:
-                        cut = i + 1
+                frame = gpu_frame_period(before or mid, gap)
+                max_bursts = 3
+                drain = max(frame * 3.0, 5e-3)
+                bursts = [[mid[0]]]
+                for t in mid[1:]:
+                    if t - bursts[-1][-1] > gap:
+                        bursts.append([t])
+                    else:
+                        bursts[-1].append(t)
+                kept = []
+                prev_end = stop_t
+                for burst in bursts:
+                    if len(kept) >= max_bursts or burst[0] - prev_end > drain:
                         break
-                return before, mid[:cut], mid[cut:], after
+                    kept.append(burst)
+                    prev_end = burst[-1]
+                in_flight = [t for burst in kept for t in burst]
+                return before, in_flight, mid[len(in_flight):], after
 
             def gpu_run_checks(sub, mode, info, times):
                 # tests/tracy_harness/README.md, "Late GPU start, runs A to D".
@@ -2098,6 +2125,142 @@ def test_scons():
             print(test_summary['line'])
         config['ok'] = timer.ok() and config['ok']
 
+def install_scons():
+    """
+    Copy a build's launch files into GODOT_INSTALL_PATH.
+    Last step. Runs when install was requested and every earlier step succeeded.
+    """
+    config:dict = {}
+    opts:dict = {}
+    build:dict = {}
+    stats:dict = {}
+    buildtool:dict = {}
+    project:dict = {}
+    # start_script
+
+    # MARK: Install
+    #[================================[ Install ]================================]
+    # Launch files only: the engine binary, its console twin, matching symbol
+    # files, shared libraries next to them, and godot_profiling.gen.h when the
+    # build produced it. Import libraries stay in the build tree.
+    if 'install' not in opts['build_actions']:
+        pass
+    else:
+        test_result = ((stats.get('test') or {}).get('summary') or {}).get('result')
+        if not config['ok'] or test_result not in (None, 'pass', 'dry'):
+            why = f'test {test_result}' if test_result not in (None, 'pass', 'dry') else 'an earlier step failed'
+            fmt.h(f'Skip install: {why}')
+        else:
+            console.set_window_title(f'Install - {build["name"]}')
+
+            with Timer(name='install') as timer, fmt.Section('Install'):
+                import shutil
+
+                def scons_opt(name):
+                    value = None
+                    for item in buildtool.get('build_vars', []):
+                        key, sep, val = str(item).partition('=')
+                        if sep and key == name:
+                            value = val
+                    return value
+
+                def engine_stem():
+                    # Same suffix SConstruct builds, including detect.py's .llvm prefix.
+                    platform_name = scons_opt('platform') or ''
+                    if platform_name in ('linux', 'bsd'):
+                        platform_name = 'linuxbsd'
+                    parts = ['godot', platform_name, scons_opt('target') or build.get('target', '')]
+                    if scons_opt('dev_build') == 'yes':
+                        parts.append('dev')
+                    if scons_opt('precision') == 'double':
+                        parts.append('double')
+                    parts.append(scons_opt('arch') or '')
+                    if scons_opt('threads') == 'no':
+                        parts.append('nothreads')
+                    extra = scons_opt('extra_suffix') or ''
+                    if scons_opt('use_llvm') == 'yes':
+                        extra = f'llvm.{extra}' if extra else 'llvm'
+                    if extra:
+                        parts.append(extra)
+                    stem = '.'.join(part for part in parts if part)
+                    return platform_name, stem
+
+                dest_root = build.get('godot_install')
+                if not dest_root:
+                    fmt.h('ERROR: GODOT_INSTALL_PATH is unset (godot/paths.local.py)')
+                    timer.status = TaskStatus.FAILED
+                else:
+                    dest = Path(dest_root).expanduser()
+                    if not dest.is_absolute():
+                        dest = Path(project['path']) / dest
+                    dest = dest.resolve()
+                    build_dir = Path(buildtool.get('build_dir') or (Path(project['path']) / build['source_dir'])).resolve()
+                    bin_dir = build_dir / 'bin'
+                    fmt.h(f'Destination: {dest.as_posix()}')
+                    if dest == build_dir or build_dir in dest.parents or dest in build_dir.parents:
+                        fmt.h(f'ERROR: install path {dest.as_posix()} overlaps the build tree')
+                        timer.status = TaskStatus.FAILED
+                    elif not bin_dir.is_dir():
+                        fmt.h(f'ERROR: missing {bin_dir.as_posix()}')
+                        timer.status = TaskStatus.FAILED
+                    else:
+                        platform_name, stem = engine_stem()
+                        files = []
+                        apps = []
+                        if platform_name == 'windows':
+                            for path in bin_dir.iterdir():
+                                if path.is_file() and (path.name == stem or path.name.startswith(stem + '.')):
+                                    if path.suffix.lower() in ('.exe', '.pdb') or path.name.endswith('.debugsymbols'):
+                                        files.append(path)
+                        else:
+                            binary = bin_dir / stem
+                            if binary.is_file():
+                                files.append(binary)
+                            for path in bin_dir.iterdir():
+                                if path.is_file() and path.name.startswith(stem + '.') and path.name.endswith('.debugsymbols'):
+                                    files.append(path)
+                            app = bin_dir / f'{stem}.app'
+                            if app.is_dir():
+                                apps.append(app)
+                            if not apps:
+                                apps = [path for path in bin_dir.iterdir() if path.is_dir() and path.suffix == '.app']
+                        for path in bin_dir.iterdir():
+                            if not path.is_file():
+                                continue
+                            name = path.name
+                            if path.suffix.lower() == '.dll' or name.endswith('.dylib') or '.so' in name:
+                                files.append(path)
+                        header = bin_dir / 'godot_profiling.gen.h'
+                        if header.is_file():
+                            files.append(header)
+                        files = sorted(set(files))
+                        has_engine = bool(apps) or any(
+                            path.suffix.lower() == '.exe' or path.name == stem for path in files)
+                        if not has_engine:
+                            fmt.h(f'ERROR: no engine binary named {stem} in {bin_dir.as_posix()}')
+                            timer.status = TaskStatus.FAILED
+                        elif opts['dry']:
+                            fmt.h(f'dry-run: {len(files)} files, {len(apps)} app bundles')
+                            for path in files:
+                                fmt.hu(path.name)
+                            for path in apps:
+                                fmt.hu(path.name)
+                        else:
+                            dest.mkdir(parents=True, exist_ok=True)
+                            for path in files:
+                                shutil.copy2(path, dest / path.name)
+                                fmt.hu((dest / path.name).as_posix())
+                            for path in apps:
+                                target = dest / path.name
+                                if target.exists():
+                                    shutil.rmtree(target)
+                                shutil.copytree(path, target)
+                                fmt.hu(target.as_posix())
+                            fmt.h(f'Installed {len(files)} files to {dest.as_posix()}')
+
+            stats['install'] = timer.get_dict()
+            config['ok'] = timer.ok() and config['ok']
+
 # MARK: ToolChains
 # ╭────────────────────────────────────────────────────────────────────────────╮
 # │ _____         _  ___ _         _                                           │
@@ -2273,6 +2436,12 @@ def configure_scons( config:SimpleNamespace ) -> bool:
         config.verbs.append('test')
         config.tracy_test = dict(TRACY_TEST)
         config.script_parts.append(test_scons)
+
+    # After build and test. show_stats is appended later and exits when this failed.
+    config.verbs.append('install')
+    if GODOT_INSTALL_PATH:
+        setattr(config, 'godot_install', GODOT_INSTALL_PATH)
+    config.script_parts.append(install_scons)
 
     return True
 

@@ -11,3 +11,8 @@
 # install wins). libtracy Install refuses a prefix that holds project.godot.
 # Use the default, or a scratch folder the runner owns.
 # GDFB_INSTALL_PREFIX = '/workspace/gdflatbuffers-install'
+
+# Godot project the libtracy test and bench use in place. The runner worktree
+# gitignores `project`, so the default <source>/project has no project.godot.
+# The install verb does not use this path.
+# GDFB_TRACY_PROJECT = '/path/to/Enetheru.flatbuffers-project'

@@ -13,3 +13,6 @@ TRACY_TOOLS_PATH = "/home/box/shared/godot/tracy-0.14.1-tools"
 TRACY_CAPTURE = f"{TRACY_TOOLS_PATH}/capture/tracy-capture"
 TRACY_CSVEXPORT = f"{TRACY_TOOLS_PATH}/csvexport/tracy-csvexport"
 # The GPU stage starts Xvfb when $DISPLAY is unset (Mesa llvmpipe gives Vulkan).
+# Each successful build copies its launch files into this directory.
+# The install verb runs last and only after the earlier steps succeeded.
+# GODOT_INSTALL_PATH = "/home/box/godot/install"

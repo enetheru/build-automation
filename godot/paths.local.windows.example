@@ -16,3 +16,6 @@ TRACY_CSVEXPORT = f"{TRACY_TOOLS_PATH}/tracy-csvexport.exe"
 # per Tracy version, and cached in godot/trace_analyzer/<version>/. If that does
 # not work here, build it once by hand and point at it instead:
 # TRACY_ANALYZER = "C:/build/godot/tools/trace_analyzer.exe"
+# Each successful build copies its launch files into this directory.
+# The install verb runs last and only after the earlier steps succeeded.
+# GODOT_INSTALL_PATH = "D:/godot/install"
