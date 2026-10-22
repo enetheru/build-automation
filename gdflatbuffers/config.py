@@ -347,11 +347,16 @@ LIBTRACY_SOURCE = SimpleNamespace({**vars(git_base), **{
 #                            --install puts the extension there. The engine is
 #                            the godot runner's install of this target. Unset:
 #                            the path baked below, else <source>/project.
-#   GDFB_TRACY_TEST_SCRIPT   script to run, relative to the project or absolute.
+#   GDFB_TRACY_TEST_SCRIPT   kept for older callers. The launch no longer
+#                            passes -s: run_headless.gd extends EditorScript,
+#                            and -s only accepts a SceneTree or MainLoop.
 #   GDFB_TRACY_RUNS          parent of the per-run folders.
+#   GDFB_HEADLESS_TESTS=1    set on the editor process. The test-runner plugin
+#                            runs res://tests and quits. Unset everywhere else.
 LIBTRACY_TEST = {
     'targets': ['editor'],
-    'script': 'addons/enetheru.test-runner/run_headless.gd',
+    'script': 'addons/enetheru.test-runner/plugin.gd',
+    'headless_env': 'GDFB_HEADLESS_TESTS',
     'project_env': 'GDFB_TRACY_PROJECT',
     # Baked at generate time. None is omitted from the script.
     'project': GDFB_TRACY_PROJECT,
@@ -360,8 +365,9 @@ LIBTRACY_TEST = {
     # The engine's on-demand client drops zones until a server is connected.
     # tracy-capture starts first; the engine starts this many seconds later.
     'settle_secs': 3,
-    # Engine flags besides the script. One capture server per process.
-    'engine_args': ['--headless', '--tracy'],
+    # --editor so EditorScript and the test-runner plugin can run. -s is not
+    # used: that path replaces the main loop and rejects EditorScript.
+    'engine_args': ['--headless', '--editor', '--tracy'],
     # godot_tracy_client_matches() true: searched in the engine output and the
     # capture's messages (tracy-csvexport -m).
     # TODO(extension): replace with the exact line the extension prints or sends.
@@ -384,13 +390,14 @@ LIBTRACY_BENCH = {
     'editor_env': 'GDFB_BENCH_EDITOR',
     'config': 'Release',
     'timeout': 600,
-    # Zones the scenario suite reaches. grow, verify, and packed decode stay
-    # off this list: that suite does not promise them.
+    # Zones the scenario suite reaches. The read path builds the root with
+    # FBFooBarContainer.new, so FlatBuffer.get_root is not on this list.
+    # grow, verify, and packed decode stay off it too: that suite does not
+    # promise them.
     'required_zones': [
         'FlatBufferBuilder allocate',
         'FlatBufferBuilder.finish',
         'FlatBufferBuilder.get_buffer',
-        'FlatBuffer.get_root',
     ],
 }
 
@@ -426,7 +433,7 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
     if include_dir is None:
         return None
 
-    from godot.config import TRACY_TEST as GODOT_TRACY_TEST, GODOT_INSTALL_PATH
+    from godot.config import TRACY_TEST as GODOT_TRACY_TEST
 
     tracy = copy.deepcopy(cfg)
     tracy.variant = 'libtracy'
@@ -466,9 +473,6 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
             'address': GODOT_TRACY_TEST.get('address'),
             'port': GODOT_TRACY_TEST.get('port'),
             'timeout': GODOT_TRACY_TEST.get('timeout'),
-            # Godot runner install of the launch files. None is omitted; the
-            # test then launches the resolved build-tree exe in place.
-            'godot_install': GODOT_INSTALL_PATH,
         },
         'bench': {
             **LIBTRACY_BENCH,
@@ -903,9 +907,10 @@ def libtracy_test_headless():
     # ($GDFB_TRACY_PROJECT, else the baked path, else <source>/project):
     #   addons/<addon>/ from cmake --install --prefix that project
     #   .godot/extension_list.cfg gains flatbuffers.gdextension when missing
-    # The exe and TracyClient are the godot runner's install (GODOT_INSTALL_PATH).
-    # This step does not copy them. With no install path, it launches the
-    # resolved build-tree exe, whose client is already beside it.
+    # The exe is the resolved libtracy build, launched in place. The godot
+    # runner's install can be a newer editor, and a defines-hash mismatch
+    # turns every extension zone off. This step does not copy engine binaries.
+    # The TracyClient that exe loads is already beside it.
     # Per run, under <runs>/<build name>/<timestamp>/: xdg/ for XDG_*_HOME,
     # capture.tracy, *.log, *.cmd, zones.csv, messages.csv, result.json.
     # tracy-capture listens first, the engine starts settle_secs later. Pass:
@@ -946,7 +951,7 @@ def libtracy_test_headless():
             engine_src = Path(tt['engine_path']) if tt.get('engine_path') else None
             runtime_src = Path(tt['runtime_path']) if tt.get('runtime_path') else None
             project_src = Path(os.environ.get(tst['project_env']) or tst.get('project') or (source / 'project'))
-            script_rel = os.environ.get(tst['script_env']) or tst['script']
+            runner_rel = tst['script']
             capture_tool = tst.get('capture')
             csvexport_tool = tst.get('csvexport')
 
@@ -961,9 +966,9 @@ def libtracy_test_headless():
             if ok and not (project_src / 'project.godot').is_file():
                 fail(f'{project_src.as_posix()} has no project.godot')
                 ok = False
-            script_path = Path(script_rel) if Path(script_rel).is_absolute() else project_src / script_rel
-            if not script_path.is_file():
-                fail(f'test script not found: {script_path.as_posix()} (set ${tst["script_env"]})')
+            runner_path = project_src / runner_rel
+            if not runner_path.is_file():
+                fail(f'test runner not found: {runner_path.as_posix()}')
                 ok = False
             from src.select import chosen_config_types
             cmake = buildtool
@@ -995,18 +1000,10 @@ def libtracy_test_headless():
             addon_rel = Path('addons') / tt['addon_name']
             addon_dst = project_dir / addon_rel
             gdext = addon_dst / tt['install_gdextension']
-            installed_root = Path(tst['godot_install']) if tst.get('godot_install') else None
-            if installed_root and engine_src and runtime_src:
-                engine_run = installed_root / engine_src.name
-                client_run = installed_root / runtime_src.name
-            else:
-                engine_run = engine_src
-                client_run = runtime_src
-            if ok and installed_root:
-                ok = all([
-                    need(engine_run, 'installed Godot exe (godot runner install)'),
-                    need(client_run, 'installed TracyClient (godot runner install)'),
-                ])
+            # Launch the build this extension was compiled against. An installed
+            # editor with the same file name can carry a different defines hash.
+            engine_run = engine_src
+            client_run = runtime_src
             xdg = run_dir / 'xdg'
             trace = run_dir / 'capture.tracy'
 
@@ -1054,10 +1051,8 @@ def libtracy_test_headless():
                     res['logs'].append(ext_list.as_posix())
 
                 env = {f'XDG_{k}_HOME': (xdg / k.lower()).as_posix() for k in ('CONFIG', 'DATA', 'CACHE', 'STATE')}
-                # Inside the project it is passed as res://, like the editor would.
-                script_arg = f'res://{script_path.relative_to(project_src).as_posix()}' \
-                    if script_path.is_relative_to(project_src) else script_path.as_posix()
-                eng_cmd = [engine_run.as_posix(), *tst['engine_args'], '--path', project_dir.as_posix(), '-s', script_arg]
+                env[tst['headless_env']] = '1'
+                eng_cmd = [engine_run.as_posix(), *tst['engine_args'], '--path', project_dir.as_posix()]
                 cap_cmd = [str(capture_tool), '-o', trace.as_posix(), '-a', tst['address'], '-p', str(tst['port']), '-f']
                 res['facts'].update({'engine': engine_run.as_posix(), 'engine_cmd': cmdline(eng_cmd, env),
                                      'capture_cmd': cmdline(cap_cmd), 'project': project_dir.as_posix()})
@@ -1172,10 +1167,13 @@ def libtracy_bench():
     #   template_release.pck   --export-pack of the bench preset
     #   the Tracy extension library, under the filename the gdextension names
     #   the TracyClient the exe NEEDs
-    # tracy-capture listens first. The engine is --headless --tracy, then
+    # The packed template is started first and binds the Tracy port. Capture
+    # starts only after that listen, so it cannot attach to the export editor
+    # (that editor is also a Tracy client, and it exits before this step).
+    # The engine is --headless --tracy, then
     #   -- scenario template_release <history>
     # Pass: engine exit 0, capture saved, client match true, and the scenario
-    # zones present (allocate, finish, get_buffer, get_root).
+    # zones present (allocate, finish, get_buffer).
     # The export editor is the newest editor.libtracy bin, TracyClient beside
     # that exe. A default editor cannot load the tracy library.
     # A Tracy client already on the port skips this capture. The build stays
@@ -1408,13 +1406,20 @@ def libtracy_bench():
                 res['facts'].update({'engine': engine_run.as_posix(), 'engine_cmd': cmdline(eng_cmd, env),
                                      'capture_cmd': cmdline(cap_cmd), 'project': project_dir.as_posix(),
                                      'suite': bench['suite']})
-                fmt.hu(f'$ {cmdline(cap_cmd)} &')
-                fmt.hu(f'(wait {tst["settle_secs"]} s)')
                 fmt.hu(f'$ {cmdline(eng_cmd, env)}')
+                fmt.hu(f'$ {cmdline(cap_cmd)} &   (once {tst["address"]}:{tst["port"]} is open)')
 
                 if not dry:
+                    # Export has returned. Its editor can still be exiting and
+                    # still be the process listening on this port. Wait that out
+                    # before the template binds it.
                     if port_busy():
-                        fail(f'{tst["address"]}:{tst["port"]} already has a Tracy client; another engine is running')
+                        fmt.h(f'waiting for {tst["address"]}:{tst["port"]} to close after export')
+                        deadline = _time.time() + 30
+                        while port_busy() and _time.time() < deadline:
+                            _time.sleep(0.2)
+                    if port_busy():
+                        fail(f'{tst["address"]}:{tst["port"]} still open after export; refusing to capture that client')
                     else:
                         for d in env.values():
                             Path(d).mkdir(parents=True, exist_ok=True)
@@ -1423,34 +1428,55 @@ def libtracy_bench():
                         cap_log = run_dir / 'capture.log'
                         eng_log = run_dir / 'engine.log'
                         res['logs'] += [cap_log.as_posix(), eng_log.as_posix()]
-                        with open(cap_log, 'w', encoding='utf-8') as cl:
-                            cap = _sp.Popen(cap_cmd, stdout=cl, stderr=_sp.STDOUT, stdin=_sp.DEVNULL)
-                            _time.sleep(tst['settle_secs'])
-                            with open(eng_log, 'w', encoding='utf-8') as el:
+                        eng_rc = None
+                        cap_rc = None
+                        with open(eng_log, 'w', encoding='utf-8') as el:
+                            eng = _sp.Popen(eng_cmd, stdout=el, stderr=_sp.STDOUT, stdin=_sp.DEVNULL,
+                                            env={**os.environ, **env}, cwd=pack_dir)
+                            deadline = _time.time() + 30
+                            while eng.poll() is None and not port_busy() and _time.time() < deadline:
+                                _time.sleep(0.05)
+                            if eng.poll() is not None:
+                                eng_rc = eng.returncode
+                                fail(f'engine exited {eng_rc} before its Tracy client listened (log: {eng_log.as_posix()})')
+                            elif not port_busy():
+                                eng.kill()
+                                eng_rc = 'no-listen'
+                                fail(f'engine did not open {tst["address"]}:{tst["port"]} (log: {eng_log.as_posix()})')
+                            else:
+                                with open(cap_log, 'w', encoding='utf-8') as cl:
+                                    cap = _sp.Popen(cap_cmd, stdout=cl, stderr=_sp.STDOUT, stdin=_sp.DEVNULL)
                                 try:
-                                    eng_rc = _sp.run(eng_cmd, stdout=el, stderr=_sp.STDOUT, stdin=_sp.DEVNULL,
-                                                     env={**os.environ, **env}, cwd=pack_dir,
-                                                     timeout=bench['timeout']).returncode
+                                    eng_rc = eng.wait(timeout=bench['timeout'])
                                 except _sp.TimeoutExpired:
+                                    eng.kill()
                                     eng_rc = 'timeout'
-                            try:
-                                cap_rc = cap.wait(timeout=60)
-                            except _sp.TimeoutExpired:
-                                cap.terminate()
                                 try:
-                                    cap_rc = cap.wait(timeout=10)
+                                    cap_rc = cap.wait(timeout=60)
                                 except _sp.TimeoutExpired:
-                                    cap.kill()
-                                    cap_rc = 'killed'
-                        res['facts'].update({'engine_rc': eng_rc, 'capture_rc': cap_rc})
-                        if eng_rc != 0:
-                            fail(f'engine exited {eng_rc} (log: {eng_log.as_posix()})')
-                        if cap_rc != 0:
-                            fail(f'tracy-capture exited {cap_rc} (log: {cap_log.as_posix()})')
-                        eng_text = eng_log.read_text(encoding='utf-8', errors='replace')
+                                    cap.terminate()
+                                    try:
+                                        cap_rc = cap.wait(timeout=10)
+                                    except _sp.TimeoutExpired:
+                                        cap.kill()
+                                        cap_rc = 'killed'
+                        if eng_rc is not None:
+                            res['facts']['engine_rc'] = eng_rc
+                        if cap_rc is not None:
+                            res['facts']['capture_rc'] = cap_rc
+                        if cap_rc is None:
+                            eng_text = ''
+                        else:
+                            if eng_rc != 0:
+                                fail(f'engine exited {eng_rc} (log: {eng_log.as_posix()})')
+                            if cap_rc != 0:
+                                fail(f'tracy-capture exited {cap_rc} (log: {cap_log.as_posix()})')
+                            eng_text = eng_log.read_text(encoding='utf-8', errors='replace')
                         msgs_csv = run_dir / 'messages.csv'
 
-                        if not trace.is_file() or not trace.stat().st_size:
+                        if cap_rc is None:
+                            pass
+                        elif not trace.is_file() or not trace.stat().st_size:
                             fail(f'capture missing or empty: {trace.as_posix()}')
                         else:
                             res['facts']['trace'] = trace.as_posix()
@@ -1479,14 +1505,15 @@ def libtracy_bench():
                             if missing:
                                 fail(f'missing zones in {zones_csv.as_posix()}: {", ".join(missing)}')
 
-                        match_re = _re.compile(tst['client_matches_pattern'])
-                        msgs = msgs_csv.read_text(encoding='utf-8') if msgs_csv.is_file() else ''
-                        matched = bool(match_re.search(eng_text) or match_re.search(msgs))
-                        res['facts']['client_matches'] = matched
-                        fmt.h(f'godot_tracy_client_matches() true: {"yes" if matched else "not seen"}')
-                        if not matched:
-                            fail(f'godot_tracy_client_matches() true not seen in {eng_log.as_posix()} '
-                                 f'or the capture messages')
+                        if cap_rc is not None:
+                            match_re = _re.compile(tst['client_matches_pattern'])
+                            msgs = msgs_csv.read_text(encoding='utf-8') if msgs_csv.is_file() else ''
+                            matched = bool(match_re.search(eng_text) or match_re.search(msgs))
+                            res['facts']['client_matches'] = matched
+                            fmt.h(f'godot_tracy_client_matches() true: {"yes" if matched else "not seen"}')
+                            if not matched:
+                                fail(f'godot_tracy_client_matches() true not seen in {eng_log.as_posix()} '
+                                     f'or the capture messages')
 
                         res['status'] = 'fail' if res['failures'] else 'pass'
                         (run_dir / 'result.json').write_text(_json.dumps(res, indent=2, default=str), encoding='utf-8')
