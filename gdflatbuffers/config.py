@@ -15,7 +15,7 @@ from src.config import git_base
 def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     import copy
     from src.expand_config import expand_host_env, expand_cmake, expand_func
-    from share.snippets import source_git, show_stats
+    from share.snippets import source_git, show_stats, cmake_build
 
     from godot.config import godot_platforms, godot_arch
 
@@ -120,6 +120,18 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         # libtracy configs check out the tracy source into their own worktree.
         build.source_dir = f'{build.host}.{getattr(build, "source_dir_suffix", "main")}'
         cmake.build_dir = build.name
+        # Same install verb on main and libtracy. The prefix is this build's
+        # source worktree plus GDFB_INSTALL_PREFIX.
+        build.gdfb_install = {
+            'prefix': GDFB_INSTALL_PREFIX,
+            'addon_name': LIBTRACY_ADDON_NAME,
+            'flatc_glob': LIBTRACY_FLATC_GLOB,
+        }
+        if install_cmake not in build.script_parts:
+            build.script_parts.insert(build.script_parts.index(cmake_build) + 1, install_cmake)
+        if 'install' not in build.verbs:
+            at = build.verbs.index('build') + 1 if 'build' in build.verbs else len(build.verbs)
+            build.verbs.insert(at, 'install')
         build.script_parts.append( show_stats )
 
     project.build_configs = {v.name: v for v in builds }
@@ -132,13 +144,15 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
 # to gdflatbuffers/paths.local.py and edit it. Without that file the defaults
 # below apply.
 #
-# GDFB_INSTALL_PREFIX: the `cmake --install --prefix` of the libtracy builds.
-#   Relative paths resolve against the source worktree; the default 'install'
-#   is <source>/install. A Tracy install takes the default build's slot in
-#   flatbuffers.gdextension, so the install verb refuses a prefix that holds
-#   project.godot, and the source worktree itself or a folder above it.
-#   The test step installs into GDFB_TRACY_PROJECT. That project also receives
-#   this target's engine exe and TracyClient. The install verb does not.
+# GDFB_INSTALL_PREFIX: the `cmake --install --prefix` of every build, main
+#   and libtracy. Relative paths resolve against that build's source
+#   worktree; the default 'install' is <source>/install. The merge key drops
+#   `.tracy`, so a libtracy install takes the main build's slot and the last
+#   install wins. The verb refuses a prefix that holds project.godot, and the
+#   source worktree itself or a folder above it.
+#   The libtracy test installs the extension into GDFB_TRACY_PROJECT. The
+#   Godot exe and TracyClient come from the godot runner's install. The
+#   install verb does not use the project.
 #
 # GDFB_TRACY_PROJECT: Godot project the libtracy test and bench use in place.
 #   The runner worktree gitignores `project`, so <source>/project is not a
@@ -232,12 +246,11 @@ LIBTRACY_HEADER = 'godot_profiling.gen.h'
 # runner's godot project (<runner root>/godot): that target's plain libtracy
 # build, any version. The newest version wins.
 # 'link' is what TRACY_CLIENT_LIBRARY gets. 'runtime' is the client the engine
-# loads and the extension shares. It stays beside the engine exe. The test
-# copies that pair into the Godot project. A second copy next to the
-# extension is a stray.
+# loads and the extension shares. It stays beside the engine exe, where the
+# godot runner install put it. A second copy next to the extension is a stray.
 # 'extension' is every built extension of that target, in <build dir>/bin and in
 # the installed addon bin; LIBTRACY_OUTPUT_TAG picks the tracy ones. 'engine' is
-# the Tracy engine binary. The test launches the copy in the project folder.
+# the Tracy engine binary. The test launches the godot runner's install of it.
 LIBTRACY_PLATFORMS = {
     'win32': {
         'toolchains': ['mingw64'],     # the import library is MinGW
@@ -272,9 +285,10 @@ LIBTRACY_BUILD_BIN = 'bin'
 # prefix holds project.godot, else the prefix itself.
 # The merge key drops `.tracy` and the config suffix, so a Tracy install takes
 # the default build's slot for that platform and target; the last install wins.
-# So the install verb passes --prefix GDFB_INSTALL_PREFIX and refuses a prefix
-# that holds project.godot. The test step installs into GDFB_TRACY_PROJECT,
-# where this target's engine and client also go. Every build uses that project.
+# Every build's install verb passes --prefix GDFB_INSTALL_PREFIX and refuses
+# a prefix that holds project.godot. The libtracy test installs the extension
+# into GDFB_TRACY_PROJECT. The exe and TracyClient stay in the godot runner's
+# install. Every libtracy build uses that project.
 LIBTRACY_ADDON_NAME = 'enetheru.flatbuffers-extension'
 LIBTRACY_INSTALL_GDEXTENSION = 'flatbuffers.gdextension'
 LIBTRACY_FLATC_GLOB = 'flatc*'                         # in <dest>/bin; installed 644, made executable
@@ -329,10 +343,10 @@ LIBTRACY_SOURCE = SimpleNamespace({**vars(git_base), **{
 
 # Headless test on the editor Tracy engine (libtracy_test_headless).
 # Env overrides, read by the build script:
-#   GDFB_TRACY_PROJECT       Godot project to test, used in place. It receives
-#                            this target's engine exe, its TracyClient, and
-#                            cmake --install. Unset: the path baked below,
-#                            else <source>/project.
+#   GDFB_TRACY_PROJECT       Godot project to test, used in place. cmake
+#                            --install puts the extension there. The engine is
+#                            the godot runner's install of this target. Unset:
+#                            the path baked below, else <source>/project.
 #   GDFB_TRACY_TEST_SCRIPT   script to run, relative to the project or absolute.
 #   GDFB_TRACY_RUNS          parent of the per-run folders.
 LIBTRACY_TEST = {
@@ -412,7 +426,7 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
     if include_dir is None:
         return None
 
-    from godot.config import TRACY_TEST as GODOT_TRACY_TEST
+    from godot.config import TRACY_TEST as GODOT_TRACY_TEST, GODOT_INSTALL_PATH
 
     tracy = copy.deepcopy(cfg)
     tracy.variant = 'libtracy'
@@ -452,6 +466,9 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
             'address': GODOT_TRACY_TEST.get('address'),
             'port': GODOT_TRACY_TEST.get('port'),
             'timeout': GODOT_TRACY_TEST.get('timeout'),
+            # Godot runner install of the launch files. None is omitted; the
+            # test then launches the resolved build-tree exe in place.
+            'godot_install': GODOT_INSTALL_PATH,
         },
         'bench': {
             **LIBTRACY_BENCH,
@@ -459,15 +476,13 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
         },
     }
 
-    # Submodules after the checkout, resolve before configure, install after
-    # build, then the read-only check.
-    from share.snippets import source_git, cmake_build
+    # Submodules after the checkout, resolve before configure, then the
+    # read-only check. install_cmake is added for every build in generate().
+    from share.snippets import source_git
     parts = tracy.script_parts
     parts.insert(parts.index(source_git) + 1, libtracy_submodules)
     parts.insert(parts.index(cmake_configure_part()), libtracy_resolve)
-    parts.insert(parts.index(cmake_build) + 1, libtracy_install)
     parts.append(libtracy_check)
-    tracy.verbs.append('install')
     # Test action hooks: the headless test (editor), then the scenario bench.
     tracy.verbs.append('test')
     parts += [libtracy_test_headless, libtracy_bench]
@@ -686,7 +701,7 @@ def libtracy_submodules():
         config['ok'] = timer.ok()
 
 
-def libtracy_install():
+def install_cmake():
     config:dict = {}
     opts:dict = {}
     build:dict = {}
@@ -694,29 +709,28 @@ def libtracy_install():
     buildtool:dict = {}
     # start_script
 
-    # MARK: libtracy-Install
-    #[===========================[ libtracy Install ]===========================]
-    # cmake --install into the runner's own prefix, <source>/install. The merge
-    # key drops .tracy, so this replaces the default build's slot there. A
-    # prefix that holds project.godot is refused here. The test step installs
-    # into GDFB_TRACY_PROJECT instead. Configurations install in recorded
-    # order and the last one wins the slot (narrow with --config-regex).
+    # MARK: Install
+    #[================================[ Install ]================================]
+    # cmake --install for this build, main or libtracy. The prefix is
+    # <source>/<GDFB_INSTALL_PREFIX>. The merge key drops .tracy, so the two
+    # variants share one library line and the last install wins. A prefix
+    # that holds project.godot is refused. The libtracy test installs into
+    # GDFB_TRACY_PROJECT on its own. Configurations install in recorded order
+    # and the last one wins the slot (narrow with --config-regex).
     from src.select import chosen_config_types
 
-    tt = build['libtracy']
+    spec = build['gdfb_install']
     cmake = buildtool
     if config['ok'] and 'install' in opts['build_actions']:
-        with fmt.Section('libtracy Install'), Timer(name='install') as timer:
-            # GDFB_INSTALL_PREFIX (gdflatbuffers/paths.local.py); relative to the source.
+        with fmt.Section('Install'), Timer(name='install') as timer:
             source = Path(build['source_path']).resolve()
-            prefix = (source / Path(tt['install_prefix']).expanduser()).resolve()
+            prefix = (source / Path(spec['prefix']).expanduser()).resolve()
             fmt.h(f'prefix: {prefix.as_posix()}')
             if prefix == source or prefix in source.parents:
                 fmt.h(f'ERROR: install prefix {prefix.as_posix()} is the source worktree or above it')
                 timer.status = TaskStatus.FAILED
             elif (prefix / 'project.godot').exists():
-                fmt.h(f'ERROR: install prefix {prefix.as_posix()} is a Godot project; a Tracy install '
-                      'replaces its default slot, so it never targets a shared project')
+                fmt.h(f'ERROR: install prefix {prefix.as_posix()} is a Godot project')
                 timer.status = TaskStatus.FAILED
             if cmake.get('configuration_types'):
                 configurations = chosen_config_types(cmake, opts.get('config_regex') or '.*')
@@ -733,16 +747,18 @@ def libtracy_install():
                             '--prefix', prefix.as_posix()]
                     stream_command(args, dry=opts['dry'])
                 # cmake --install leaves flatc at mode 644; make it executable.
-                dest = prefix / 'addons' / tt['addon_name'] if (prefix / 'project.godot').is_file() else prefix
-                for flatc in sorted((dest / 'bin').glob(tt['flatc_glob'])):
+                dest = prefix / 'addons' / spec['addon_name'] if (prefix / 'project.godot').is_file() else prefix
+                for flatc in sorted((dest / 'bin').glob(spec['flatc_glob'])):
                     if flatc.is_file() and not flatc.name.endswith(('.pdb', '.ilk')):
                         if opts['dry']:
                             fmt.hu(f'dry-run: chmod +x {flatc.as_posix()}')
                         else:
                             flatc.chmod(flatc.stat().st_mode | 0o111)
                             fmt.hu(f'chmod +x {flatc.as_posix()}')
-                tt['install_root'] = prefix
-                tt['installed_config'] = configurations[-1]
+                spec['root'] = prefix.as_posix()
+                if 'libtracy' in build:
+                    build['libtracy']['install_root'] = prefix.as_posix()
+                    build['libtracy']['installed_config'] = configurations[-1]
         stats['install'] = timer.get_dict()
         config['ok'] = timer.ok()
 
@@ -758,9 +774,8 @@ def libtracy_check():
     #[============================[ libtracy Check ]============================]
     # Read-only, writes nothing. The Tracy client is the one beside the engine
     # exe. Each tracy library must NEED that client. A client next to the
-    # extension is a stray and is reported, not removed. The test copies the
-    # client into the Godot project, beside the exe, and leaves the addon
-    # bin without one.
+    # extension is a stray and is reported, not removed. The addon bin is
+    # left without one.
     # After a build: <build dir>/bin. After an install: the installed addon bin
     # under the prefix, and the merged flatbuffers.gdextension line for this
     # platform and target pointing at a .tracy library.
@@ -886,9 +901,11 @@ def libtracy_test_headless():
     # One headless run of the test-runner on the editor Tracy engine, captured.
     # The Godot project is used in place, for every build
     # ($GDFB_TRACY_PROJECT, else the baked path, else <source>/project):
-    #   the engine exe and its TracyClient beside project.godot
     #   addons/<addon>/ from cmake --install --prefix that project
     #   .godot/extension_list.cfg gains flatbuffers.gdextension when missing
+    # The exe and TracyClient are the godot runner's install (GODOT_INSTALL_PATH).
+    # This step does not copy them. With no install path, it launches the
+    # resolved build-tree exe, whose client is already beside it.
     # Per run, under <runs>/<build name>/<timestamp>/: xdg/ for XDG_*_HOME,
     # capture.tracy, *.log, *.cmd, zones.csv, messages.csv, result.json.
     # tracy-capture listens first, the engine starts settle_secs later. Pass:
@@ -897,7 +914,6 @@ def libtracy_test_headless():
     import csv as _csv
     import json as _json
     import re as _re
-    import shutil as _shutil
     import socket as _socket
     import subprocess as _sp
     import time as _time
@@ -963,25 +979,26 @@ def libtracy_test_headless():
             addon_rel = Path('addons') / tt['addon_name']
             addon_dst = project_dir / addon_rel
             gdext = addon_dst / tt['install_gdextension']
-            engine_run = project_dir / engine_src.name if engine_src else None
-            client_run = project_dir / runtime_src.name if runtime_src else None
+            installed_root = Path(tst['godot_install']) if tst.get('godot_install') else None
+            if installed_root and engine_src and runtime_src:
+                engine_run = installed_root / engine_src.name
+                client_run = installed_root / runtime_src.name
+            else:
+                engine_run = engine_src
+                client_run = runtime_src
+            if installed_root:
+                ok = all([
+                    ok,
+                    need(engine_run, 'installed Godot exe (godot runner install)'),
+                    need(client_run, 'installed TracyClient (godot runner install)'),
+                ])
             xdg = run_dir / 'xdg'
             trace = run_dir / 'capture.tracy'
             fmt.h(f'project: {project_dir.as_posix()}')
             fmt.h(f'run dir: {run_dir.as_posix()}')
 
             if ok:
-                # One project for every build. The exe and its client sit beside
-                # project.godot. Install merges this target's library line.
-                if dry:
-                    fmt.hu(f'dry-run: copy {engine_src.as_posix()} -> {engine_run.as_posix()}')
-                    fmt.hu(f'dry-run: copy {runtime_src.as_posix()} -> {client_run.as_posix()}')
-                else:
-                    run_dir.mkdir(parents=True, exist_ok=True)
-                    if engine_src.resolve() != engine_run.resolve():
-                        _shutil.copy2(engine_src, engine_run)
-                    if runtime_src.resolve() != client_run.resolve():
-                        _shutil.copy2(runtime_src, client_run)
+                # The extension install merges this target's library line.
                 fmt.h(f'engine: {engine_run.as_posix()}')
                 fmt.h(f'client: {client_run.as_posix()}')
 
