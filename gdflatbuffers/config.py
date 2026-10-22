@@ -911,6 +911,8 @@ def libtracy_test_headless():
     # tracy-capture listens first, the engine starts settle_secs later. Pass:
     # engine exit 0, capture saved, godot_tracy_client_matches() true, and at
     # least one extension zone in the capture.
+    # A Tracy client already on the port skips this capture. The build stays
+    # successful and the project is left alone.
     import csv as _csv
     import json as _json
     import re as _re
@@ -973,6 +975,20 @@ def libtracy_test_headless():
                 fail(f'No configuration matches /{opts.get("config_regex")}/')
                 ok = False
 
+            def port_busy():
+                try:
+                    with _socket.create_connection((tst['address'], int(tst['port'])), timeout=1):
+                        return True
+                except OSError:
+                    return False
+
+            if ok and not dry and port_busy():
+                fmt.h(f'SKIP: {tst["address"]}:{tst["port"]} already has a Tracy client; another engine is running')
+                fmt.hu('the capture needs that port. This build stays successful and the project is left alone.')
+                res['status'] = 'skip'
+                res['facts']['skip'] = f'{tst["address"]}:{tst["port"]}'
+                ok = False
+
             runs = Path(os.environ.get(tst['runs_env']) or tst['runs_default'])
             run_dir = runs / build['name'] / _time.strftime('%Y%m%d-%H%M%S')
             project_dir = project_src
@@ -986,18 +1002,17 @@ def libtracy_test_headless():
             else:
                 engine_run = engine_src
                 client_run = runtime_src
-            if installed_root:
+            if ok and installed_root:
                 ok = all([
-                    ok,
                     need(engine_run, 'installed Godot exe (godot runner install)'),
                     need(client_run, 'installed TracyClient (godot runner install)'),
                 ])
             xdg = run_dir / 'xdg'
             trace = run_dir / 'capture.tracy'
-            fmt.h(f'project: {project_dir.as_posix()}')
-            fmt.h(f'run dir: {run_dir.as_posix()}')
 
             if ok:
+                fmt.h(f'project: {project_dir.as_posix()}')
+                fmt.h(f'run dir: {run_dir.as_posix()}')
                 # The extension install merges this target's library line.
                 fmt.h(f'engine: {engine_run.as_posix()}')
                 fmt.h(f'client: {client_run.as_posix()}')
@@ -1051,13 +1066,6 @@ def libtracy_test_headless():
                 fmt.hu(f'$ {cmdline(eng_cmd, env)}')
 
                 if not dry:
-                    def port_busy():
-                        try:
-                            with _socket.create_connection((tst['address'], int(tst['port'])), timeout=1):
-                                return True
-                        except OSError:
-                            return False
-
                     if port_busy():
                         fail(f'{tst["address"]}:{tst["port"]} already has a Tracy client; another engine is running')
                     else:
@@ -1168,6 +1176,10 @@ def libtracy_bench():
     #   -- scenario template_release <history>
     # Pass: engine exit 0, capture saved, client match true, and the scenario
     # zones present (allocate, finish, get_buffer, get_root).
+    # The export editor is the newest editor.libtracy bin, TracyClient beside
+    # that exe. A default editor cannot load the tracy library.
+    # A Tracy client already on the port skips this capture. The build stays
+    # successful and the project is left alone.
     import csv as _csv
     import json as _json
     import re as _re
@@ -1219,32 +1231,66 @@ def libtracy_bench():
                 fail(f'export preset "{bench["preset"]}" not found in {(project_dir / "export_presets.cfg").as_posix()}')
                 ok = False
 
-            editor = None
-            editor_env = os.environ.get(bench['editor_env'])
-            if editor_env:
-                editor = Path(editor_env)
-                fmt.h(f'export editor from ${bench["editor_env"]}: {editor.as_posix()}')
-            else:
-                root = Path(tt['godot_root'])
-                pattern = tt['godot_glob'].replace(tt['target'] + '.libtracy', 'editor.default')
-                folders = [f for f in root.glob(pattern) if f.is_dir()]
+            def port_busy():
+                try:
+                    with _socket.create_connection((tst['address'], int(tst['port'])), timeout=1):
+                        return True
+                except OSError:
+                    return False
 
-                def _editor_key(folder):
-                    suffix = folder.name.split('.editor.default.', 1)[-1]
-                    m = _re.fullmatch(r'(\d+(?:\.\d+)*)(~?)', suffix)
-                    if not m:
-                        return ((0,), 0, folder.stat().st_mtime)
-                    return (tuple(int(n) for n in m.group(1).split('.')), 1 if m.group(2) else 0, folder.stat().st_mtime)
-
-                if folders:
-                    bin_dir = max(folders, key=_editor_key) / 'bin'
-                    exes = [p for p in bin_dir.iterdir() if p.is_file() and p.name.startswith('godot.')
-                            and 'editor' in p.name and '.console.' not in p.name
-                            and (p.suffix == '.exe' or p.suffix == '')] if bin_dir.is_dir() else []
-                    plain = [p for p in exes if '.tracy.' not in p.name]
-                    editor = max(plain or exes, key=lambda p: p.stat().st_mtime) if exes else None
-            if not need(editor, f'export editor (set ${bench["editor_env"]})'):
+            skipped = False
+            if ok and not dry and port_busy():
+                fmt.h(f'SKIP: {tst["address"]}:{tst["port"]} already has a Tracy client; another engine is running')
+                fmt.hu('the capture needs that port. This build stays successful and the project is left alone.')
+                res['status'] = 'skip'
+                res['facts']['skip'] = f'{tst["address"]}:{tst["port"]}'
+                skipped = True
                 ok = False
+
+            editor = None
+            if not skipped:
+                # A default editor has no TracyClient beside it, so LoadLibrary of
+                # the tracy editor library fails with Windows error 126. The
+                # libtracy editor bin has that client. The .console twin is a
+                # second process.
+                editor_env = os.environ.get(bench['editor_env'])
+                if editor_env:
+                    editor = Path(editor_env)
+                    fmt.h(f'export editor from ${bench["editor_env"]}: {editor.as_posix()}')
+                else:
+                    root = Path(tt['godot_root'])
+                    pattern = tt['godot_glob'].replace(tt['target'] + '.libtracy', 'editor.libtracy')
+                    exe_glob = tt['engine'][0].replace(tt['target'], 'editor')
+                    client_glob = tt['runtime'][0].replace(tt['target'], 'editor')
+                    folders = []
+                    for folder in root.glob(pattern):
+                        if not folder.is_dir() or '.libtracy.' not in folder.name:
+                            continue
+                        suffix = folder.name.split('.libtracy.', 1)[1]
+                        if _re.fullmatch(r'\d+(?:\.\d+)*~?', suffix):
+                            folders.append(folder)
+
+                    def _editor_key(folder):
+                        suffix = folder.name.split('.libtracy.', 1)[1]
+                        m = _re.fullmatch(r'(\d+(?:\.\d+)*)(~?)', suffix)
+                        return (tuple(int(n) for n in m.group(1).split('.')),
+                                1 if m.group(2) else 0, folder.stat().st_mtime)
+
+                    def _editor_in(bin_dir):
+                        if not bin_dir.is_dir():
+                            return None
+                        exes = [p for p in bin_dir.glob(exe_glob)
+                                if p.is_file() and '.console.' not in p.name]
+                        if not exes or not any(bin_dir.glob(client_glob)):
+                            return None
+                        return max(exes, key=lambda p: p.stat().st_mtime)
+
+                    if folders:
+                        editor = _editor_in(max(folders, key=_editor_key) / 'bin')
+                        if editor is not None:
+                            fmt.h(f'export editor: {editor.as_posix()}')
+                if not need(editor, f'export editor (set ${bench["editor_env"]})'):
+                    ok = False
 
             from src.select import chosen_config_types
             cmake = buildtool
@@ -1254,7 +1300,7 @@ def libtracy_bench():
                 configurations = [None]
             else:
                 configurations = []
-            if not configurations:
+            if not skipped and not configurations:
                 fail(f'{bench["config"]} is not a configuration of this build')
                 ok = False
 
@@ -1269,11 +1315,11 @@ def libtracy_bench():
             trace = run_dir / 'capture.tracy'
             addon_dst = project_dir / 'addons' / tt['addon_name']
             gdext = addon_dst / tt['install_gdextension']
-            fmt.h(f'project: {project_dir.as_posix()}')
-            fmt.h(f'run dir: {run_dir.as_posix()}')
 
             lib_src = None
             if ok:
+                fmt.h(f'project: {project_dir.as_posix()}')
+                fmt.h(f'run dir: {run_dir.as_posix()}')
                 # Release only. A later Debug or RelWithDebInfo line would be
                 # the library the scenario times.
                 for config_name in configurations:
@@ -1367,13 +1413,6 @@ def libtracy_bench():
                 fmt.hu(f'$ {cmdline(eng_cmd, env)}')
 
                 if not dry:
-                    def port_busy():
-                        try:
-                            with _socket.create_connection((tst['address'], int(tst['port'])), timeout=1):
-                                return True
-                        except OSError:
-                            return False
-
                     if port_busy():
                         fail(f'{tst["address"]}:{tst["port"]} already has a Tracy client; another engine is running')
                     else:
