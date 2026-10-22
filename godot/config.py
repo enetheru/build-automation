@@ -52,7 +52,7 @@ origin = SimpleNamespace({**vars(git_base), **{
 TRACY_VERSION = '0.14.1'
 TRACY_CAPTURE_ADDR = '127.0.0.1'
 TRACY_CAPTURE_PORT = '8086'
-TRACY_TEST_FEATURES = 'zones,plots,messages,frames,gdscript_zones_auto,gdscript_zones_manual'
+TRACY_TEST_FEATURES = 'zones,plots,messages,frames,gdscript_auto,gdscript_zones_manual'
 TRACY_TEST_TIMEOUT = 300    # seconds for one engine run
 # --tracy-mask for the capture runs; None passes no --tracy-mask (build default).
 TRACY_TEST_MASK: str | None = None
@@ -1640,8 +1640,9 @@ def test_scons():
                 return sub
 
             def stage_log():
-                # Headless. On lists only log: the harness lines are coloured messages.
-                # Off lists messages and not log: those lines must stay out of the trace.
+                # Headless. On lists only log: the harness lines are coloured log messages.
+                # Off lists messages and not log: prints stay out. A warning or an error
+                # still arrives as a Tracy message, with the log color and Info severity.
                 # tests/tracy_harness/README.md, Log.
                 # The analyser stores color as 0xFFBBGGRR. No color is 0xFFFFFFFF.
                 res = result()
@@ -1723,12 +1724,38 @@ def test_scons():
                                         matched += 1
                                 sub['facts']['log_hits'] = matched
                             else:
-                                analysis = info.get('analysis')
+                                # Prints stay on the log feature. Warnings and errors also
+                                # go out as Tracy messages when messages is on, so a normal
+                                # capture still shows them. Tracy messages have no log
+                                # level, so the analyser keeps severity at Info (2).
                                 raw = ''
+                                analysis = info.get('analysis')
                                 if analysis:
                                     raw = Path(analysis).read_text(encoding='utf-8', errors='replace')
-                                if 'log harness' in raw or 'LOG_HARNESS' in raw:
-                                    fail(sub, 'log is off but the trace still has a harness line')
+                                for needle in (
+                                        'LOG_HARNESS',
+                                        'log harness plain',
+                                        'log harness printerr',
+                                        'log harness rich',
+                                ):
+                                    if needle in raw:
+                                        fail(sub, f'log is off but the trace still has {needle!r}')
+                                matched = 0
+                                for needle, color, _sev, _reject_ansi in expect:
+                                    if not (needle.startswith('WARNING:') or needle.startswith('ERROR:')):
+                                        continue
+                                    hits = [m for m in msgs if needle in m['text']]
+                                    if not hits:
+                                        fail(sub, f'missing Tracy message containing {needle!r}')
+                                        continue
+                                    ok = [m for m in hits if m['color'] == color and m['sev'] == 2]
+                                    if not ok:
+                                        shown = hits[0]
+                                        fail(sub, f'{needle!r} has color={shown["color"]:08x} sev={shown["sev"]}, '
+                                                  f'expected color={color:08x} sev=2')
+                                    else:
+                                        matched += 1
+                                sub['facts']['log_hits'] = matched
                     fmt.h(f"log {mode}: {sub['status']}, hits {sub['facts'].get('log_hits')}")
                 for mode, sub in runs.items():
                     for why in sub['failures']:
@@ -2486,7 +2513,7 @@ _TRACY_FEATURES = (
     ("tracy_memory", "yes"),
     ("tracy_locks", "yes"),
     ("tracy_gpu", "yes"),
-    ("tracy_gdscript_zones_auto", "yes"),
+    ("tracy_gdscript_auto", "yes"),
     ("tracy_frames", "yes"),
     ("tracy_frame_images", "yes"),
     ("tracy_log", "yes"),

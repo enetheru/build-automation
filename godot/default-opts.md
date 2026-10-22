@@ -31,7 +31,7 @@ short_sha = repo.git.rev_parse(sha, short=4)
 	tracy_memory                  = "no"      # Also on when profiler_track_memory is on
 	tracy_locks                   = "yes"
 	tracy_gpu                     = "yes"
-	tracy_gdscript_zones_auto     = "no"
+	tracy_gdscript_auto           = "yes"     # Runtime token gdscript_auto is silent until listed
 	tracy_frames                  = "yes"
 	tracy_frame_images            = "no"
 
