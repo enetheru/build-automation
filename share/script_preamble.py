@@ -24,9 +24,13 @@ from rich.pretty import pprint
 from rich.panel import Panel
 
 sys.stdout.reconfigure(encoding='utf-8')
-rich._console = console = Console()
-
-print( f'\\nPATH={os.environ['PATH'][:100]} ...' )
+# The parent captures this script through a pipe. Rich then wraps at 79
+# columns and folds paths in the middle. A terminal keeps the normal console.
+if sys.stdout.isatty():
+    rich._console = console = Console()
+else:
+    rich._console = console = Console(color_system=None, soft_wrap=True)
+    print( f'PATH={os.environ['PATH']}' )
 
 stats:dict = {}
 config:dict = { 'ok': True }
