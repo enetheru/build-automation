@@ -21,11 +21,36 @@ from concurrent.futures import ThreadPoolExecutor
 from subprocess import PIPE, CalledProcessError, CompletedProcess, Popen
 from functools import partial
 
+import rich
+from rich.panel import Panel
+from rich.text import Text
+
+# The parent closes a command panel when it sees this line.
+ENDCMD = '\x1eENDCMD'
+
 def _write_out(line: str) -> None:
     """Write a child stdout line and flush. A pipe is block-buffered, so an
     unflushed compiler diagnostic is gone when the build then raises."""
     sys.stdout.write(line + '\n')
     sys.stdout.flush()
+
+def _end_marker() -> None:
+    print(ENDCMD)
+    sys.stdout.flush()
+
+
+def _print_tty_panel(cmd: str, title: str, lines: list[str]) -> None:
+    body = cmd if not lines else cmd + '\n' + '\n'.join(lines)
+    longest = max([len(cmd), len(title) + 2, *(len(line) for line in lines)], default=0)
+    rich.print(Panel(
+        Text(body, no_wrap=True, overflow='ignore'),
+        title=Text(title, no_wrap=True, overflow='ignore'),
+        title_align='left',
+        expand=True,
+        width=max(80, longest + 4),
+        padding=(0, 1),
+    ))
+
 
 def _write_err(line: str) -> None:
     """Keep child stderr on stderr. rich.print would send it to stdout and
@@ -73,30 +98,67 @@ def stream_command(
         CalledProcessError: If check is True and the command exits with a non-zero code.
     """
 
-    if not quiet:
-        for l in [f'CWD {os.getcwd()}',f'  $ {args}']: print(l)
+    shown = args if isinstance(args, str) else str(args)
+    cwd = os.getcwd()
+    piped = not sys.stdout.isatty()
+    # A pipe prints two plain lines and an end marker. The parent puts the
+    # command and the lines that follow into one panel. A terminal draws
+    # that panel here, after the command, because nothing else is reading.
+    if not quiet and piped:
+        print(f'CWD {cwd}')
+        print(f'  $ {shown}')
+        sys.stdout.flush()
 
     if isinstance(args, str): # If the command is a string Split into a list
         args = shlex.split( args )
 
     if dry: # pretend the command executed successfully
+        if not quiet and not piped:
+            _print_tty_panel(shown, cwd, [])
+        elif not quiet:
+            _end_marker()
         return CompletedProcess( args, 0 )
 
-    with (
-        # errors: 'strict', 'replace', 'ignore', 'backslashreplace'
-        Popen(args, bufsize=1, stdout=stdout, stderr=stderr, env=env, **kwargs, text=text, encoding='utf-8', errors='backslashreplace') as process,
-        ThreadPoolExecutor(2) as pool,  # two threads to handle the (live) streams separately
-    ):
-        exhaust = partial(deque, maxlen=0)  # collections recipe: exhaust an iterable at C-speed
-        exhaust_async = partial(pool.submit, exhaust)  # exhaust non-blocking in a background thread
-        # NOTE: The use of cast here is to shit up pycharm warnings which cant discern that the process.stdout/err
-        #   can be iterated over, with error: "Expected type 'collections.Iterable', got 'int' instead"
-        exhaust_async(stdout_handler(line.rstrip()) for line in cast(TextIO if text else BinaryIO, process.stdout))
-        exhaust_async(stderr_handler(line.rstrip()) for line in cast(TextIO if text else BinaryIO, process.stderr))
-    retcode = process.poll()  # block until both iterables are exhausted (process finished)
-    if check and retcode:
-        raise CalledProcessError(
-            retcode,
-            process.args
-        )
-    return CompletedProcess( process.args, retcode )
+    tty_panel = not quiet and not piped
+    captured: list[str] = []
+
+    def out_handler(line: str) -> None:
+        if tty_panel:
+            captured.append(line)
+            if stdout_handler is not _write_out:
+                stdout_handler(line)
+            return
+        stdout_handler(line)
+
+    def err_handler(line: str) -> None:
+        if tty_panel:
+            captured.append(line)
+            if stderr_handler is not _write_err:
+                stderr_handler(line)
+            return
+        stderr_handler(line)
+
+    try:
+        with (
+            # errors: 'strict', 'replace', 'ignore', 'backslashreplace'
+            Popen(args, bufsize=1, stdout=stdout, stderr=stderr, env=env, **kwargs, text=text, encoding='utf-8', errors='backslashreplace') as process,
+            ThreadPoolExecutor(2) as pool,  # two threads to handle the (live) streams separately
+        ):
+            exhaust = partial(deque, maxlen=0)  # collections recipe: exhaust an iterable at C-speed
+            exhaust_async = partial(pool.submit, exhaust)  # exhaust non-blocking in a background thread
+            # NOTE: The use of cast here is to shit up pycharm warnings which cant discern that the process.stdout/err
+            #   can be iterated over, with error: "Expected type 'collections.Iterable', got 'int' instead"
+            exhaust_async(out_handler(line.rstrip()) for line in cast(TextIO if text else BinaryIO, process.stdout))
+            exhaust_async(err_handler(line.rstrip()) for line in cast(TextIO if text else BinaryIO, process.stderr))
+        retcode = process.poll()  # block until both iterables are exhausted (process finished)
+        if check and retcode:
+            raise CalledProcessError(
+                retcode,
+                process.args
+            )
+        return CompletedProcess( process.args, retcode )
+    finally:
+        if tty_panel:
+            _print_tty_panel(shown, cwd, captured)
+        elif not quiet:
+            _end_marker()

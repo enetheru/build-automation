@@ -49,7 +49,8 @@ class Padding:
     def __init__(self):
         self.padchar = ' '
         self._level = 1
-        self.indent = 2
+        # Numbering shows the depth. Indent on top of that only crowded the log.
+        self.indent = 0
         self.bullets = ['', '--', '*', '-']
 
     def __add__(self, other) -> str:
@@ -284,7 +285,12 @@ class Section:
         else:
             style_func = style.get(mode, Section._style_fallback[mode])
 
-        print( style_func(self) )
+        text = style_func(self)
+        if text:
+            # One blank line before each numbered heading.
+            if mode == 'start':
+                print()
+            print(text)
 
     @staticmethod
     def last() -> 'Section':
@@ -352,7 +358,10 @@ def h(msg:str = 'Heading', level:int=None ):
         bullet = pad.bullets[level]
     else:
         bullet = pad.bullets[-1]
-    print(  f'{padding}{bullet} {msg}' )
+    prefix = f'{padding}{bullet}'
+    if prefix:
+        prefix += ' '
+    print(f'{prefix}{msg}')
 
 def p( msg:typing.Any = 'Heading', level:int=None, pretty:bool=False ):
     from rich.pretty import pretty_repr

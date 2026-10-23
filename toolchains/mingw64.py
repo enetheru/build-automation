@@ -19,7 +19,9 @@ def configure_mingw(self: SimpleNamespace, config: SimpleNamespace) -> bool:
 def mingw64_toolchain() -> SimpleNamespace:
     """niXman mingw-builds at C:/mingw64."""
     toolchain_env = {k: v for k, v in os.environ.items()}
-    toolchain_env['PATH'] = f'C:/mingw64/bin;{os.environ['PATH']}'
+    bin_dir = 'C:/mingw64/bin'
+    toolchain_env['PATH'] = f'{bin_dir};{os.environ['PATH']}'
+    toolchain_env['AUTOBUILD_PATH_PREPEND'] = bin_dir
 
     toolchain = SimpleNamespace({**vars(toolchain_base), **{
         'name': "mingw64",

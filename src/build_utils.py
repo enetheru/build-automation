@@ -2,7 +2,8 @@
 """Build processing utilities: fetch, process builds/projects, stats."""
 import json
 import os
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from time import sleep
 from types import SimpleNamespace
 
@@ -16,7 +17,7 @@ from src import format as fmt
 from src.ConsoleMultiplex import ConsoleMultiplex, TeeOutput
 from src.error import handle_error
 from src.generate import write_namespace
-from src.run import stream_command
+from src.run import ENDCMD, stream_command
 from src.utils import get_interior_dict, process_log_null
 
 console = ConsoleMultiplex()
@@ -38,6 +39,234 @@ def print_full_table(table: Table) -> None:
         console._width, console._height = saved
 
 
+# Child section headings. Their numbers restart at 1; the text is not
+# output of the command that ran inside the previous section.
+_HEADING = re.compile(r'^\s*\d+(?:\.\d+)* - ')
+# CMake repeats the build directory and the tool command before ninja runs.
+_SKIP_LINE = re.compile(r'^(?:Change Dir:|Run Build Command\(s\):)')
+# A drive path ending at the first segment, e.g. C:\Program or "C:\Program.
+# The next token (Files\...) belongs on the same line, quote included.
+_PATH_TAIL = re.compile(r'"?[A-Za-z]:\\[^\\"\s]*$')
+_PATH_HEAD = re.compile(r'^(.*?)("?[A-Za-z]:\\[^\\"\s]*)$')
+# Widest command box. The live box follows the terminal, and build_log.log
+# gets that same box. A pipe reports 80. File consoles still use this so a
+# dumb terminal does not fall back to 80 for tables.
+LOG_WIDTH = 240
+
+
+def _screen_width() -> int:
+    """Columns for the command box on screen and in build_log.log.
+
+    A wider line is wrapped by the terminal, which pulls the right border
+    into the middle of the next row. Legacy mode already reports one
+    column less. A modern terminal needs that column left spare, or the
+    newline after a full-width row opens a blank line.
+    """
+    spare = 0 if console.legacy_windows or console.is_dumb_terminal else 1
+    width = console.width - spare
+    if width > LOG_WIDTH:
+        width = LOG_WIDTH
+    if width < 20:
+        width = 20
+    return width
+
+
+class CommandFrame:
+    """A command panel that stays open while the command's lines arrive.
+
+    The screen and build_log.log get the same box, wrapped to the terminal.
+    Lines wrap on spaces. A single token longer than the box is split so
+    the border stays aligned. markup is off so paths and ninja counts such
+    as [1/83] are not tags. Blank lines are dropped.
+    """
+
+    def __init__(self, cmd: str, title: str):
+        self.screen_width = _screen_width()
+        self._emit(self._title(title, self.screen_width))
+        self.line(cmd)
+
+    def line(self, text: str) -> None:
+        if not text.strip():
+            return
+        # Per-build logs keep the compiler line whole. The box is only for
+        # the session log and the screen, and those two match.
+        self._plain(text)
+        for part in self._wrap(text, self.screen_width - 4):
+            self._emit(self._row(part, self.screen_width))
+
+    def _wrap(self, text: str, inner: int) -> list[str]:
+        """Wrap on spaces.
+
+        A quoted span stays together, and so does a Windows path such as
+        C:\\Program Files\\.... Cmd quote toggling would otherwise swallow
+        the rest of a link line into one token and slice it mid-path.
+        A span that cannot fit breaks at the previous space.
+        """
+        lines: list[str] = []
+        current = ''
+        for token in self._atoms(text, inner):
+            piece = token
+            while len(piece) > inner:
+                if current:
+                    lines.append(current)
+                    current = ''
+                lines.append(piece[:inner])
+                piece = piece[inner:]
+            if not piece:
+                continue
+            extra = len(piece) if not current else len(piece) + 1
+            if current and len(current) + extra > inner:
+                lines.append(current)
+                current = piece
+            elif current:
+                current = f'{current} {piece}'
+            else:
+                current = piece
+        if current:
+            lines.append(current)
+        return lines
+
+    def _atoms(self, text: str, inner: int) -> list[str]:
+        parts = [part for part in text.split(' ') if part]
+        atoms: list[str] = []
+        buf = ''
+        for part in parts:
+            if not buf:
+                buf = part
+                continue
+            joined = len(buf) + 1 + len(part)
+            keep = self._quote_open(buf) or self._continues_path(buf, part)
+            if keep and joined <= inner:
+                buf = f'{buf} {part}'
+                continue
+            if self._continues_path(buf, part):
+                head, tail = self._split_path_head(buf)
+                if head:
+                    atoms.append(head)
+                buf = f'{tail} {part}' if tail else part
+                continue
+            atoms.append(buf)
+            buf = part
+        if buf:
+            atoms.append(buf)
+        return atoms
+
+    @staticmethod
+    def _quote_open(text: str) -> bool:
+        """True when a double quote is still open. \\\" is not a toggle."""
+        count = 0
+        i = 0
+        while i < len(text):
+            if text[i] == '\\' and i + 1 < len(text) and text[i + 1] == '"':
+                i += 2
+                continue
+            if text[i] == '"':
+                count += 1
+            i += 1
+        return count % 2 == 1
+
+    @staticmethod
+    def _continues_path(left: str, right: str) -> bool:
+        if not right or right[0] in '-/':
+            return False
+        if _PATH_TAIL.search(left) is None:
+            return False
+        return '\\' in right or '/' in right
+
+    @staticmethod
+    def _split_path_head(buf: str) -> tuple[str, str]:
+        match = _PATH_HEAD.match(buf)
+        if match is None:
+            return buf, ''
+        return match.group(1).rstrip(), match.group(2)
+
+    def close(self) -> None:
+        self._emit(self._edge('└', '┘', self.screen_width))
+
+    def _row(self, part: str, width: int) -> str:
+        inner = width - 4
+        gap = inner - len(part)
+        if gap < 0:
+            gap = 0
+        return '│ ' + part + ' ' * gap + ' │'
+
+    def _title(self, title: str, width: int) -> str:
+        label = f' {title} '
+        inner = width - 4
+        if len(label) > inner:
+            label = label[: max(inner, 0)]
+        return '┌─' + label + '─' * (inner - len(label)) + '─┐'
+
+    @staticmethod
+    def _edge(left: str, right: str, width: int) -> str:
+        return left + '─' * (width - 2) + right
+
+    def _emit(self, text: str) -> None:
+        self._screen(text)
+        self._log(text)
+
+    def _screen(self, text: str) -> None:
+        if not console.quiet:
+            Console.print(console, text, markup=False, highlight=False, soft_wrap=True)
+
+    def _log(self, text: str) -> None:
+        dest = console.outputs.get('build_log')
+        if dest is not None:
+            dest.print(text, markup=False, highlight=False, soft_wrap=True)
+
+    def _plain(self, text: str) -> None:
+        for name, dest in console.outputs.items():
+            if name == 'build_log':
+                continue
+            dest.print(text, markup=False, highlight=False, soft_wrap=True)
+
+
+def _parse_duration(value) -> timedelta | None:
+    if isinstance(value, timedelta):
+        return value
+    text = str(value).strip()
+    if text.count(':') != 2:
+        return None
+    try:
+        hours, minutes, seconds = text.split(':')
+        return timedelta(
+            hours=int(hours),
+            minutes=int(minutes),
+            seconds=float(seconds),
+        )
+    except ValueError:
+        return None
+
+
+def _format_duration(delta: timedelta) -> str:
+    text = str(delta)
+    if '.' not in text:
+        return text
+    head, frac = text.split('.', 1)
+    return f'{head}.{frac[:3]}'
+
+
+def _startup(stats: dict) -> str:
+    """Time in the script outside the timed sections.
+
+    Section timers start after import. The row total is the parent's wall
+    clock, so the difference is startup plus the gaps between steps.
+    """
+    total = _parse_duration(stats.get('duration'))
+    if total is None:
+        return 'n/a'
+    spent = timedelta(0)
+    for sub in stats.get('subs', {}).values():
+        part = _parse_duration(sub.get('duration') if isinstance(sub, dict) else None)
+        if part is None:
+            return 'n/a'
+        spent += part
+    gap = total - spent
+    if gap < timedelta(0):
+        gap = timedelta(0)
+    return _format_duration(gap)
+
+
 def log_console(log_file):
     """Plain, wide console for a log file.
 
@@ -52,7 +281,7 @@ def log_console(log_file):
         # Both dimensions are required. A dumb terminal ignores width alone
         # and goes back to 80. Wider than a status row, short of a full-width
         # box of padding. soft_wrap still keeps PATH and compiler lines whole.
-        width=240,
+        width=LOG_WIDTH,
         height=1024,
     )
 
@@ -145,11 +374,56 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
                           width=120 ) )
 
         # ====================[ Run Build Script ]=====================-
-        # Our little output handler which captures the lines and looks for data to
-        # use in the statistics
-        def emit(line: str) -> None:
+        # The child is another process, so its headings restart at 1.
+        # A command panel stays open until that command ends, and the lines
+        # it prints are rows in the same box.
+        current: dict[str, CommandFrame | None] = {'frame': None}
+        step = {'title': 'command'}
+
+        def write_line(line: str) -> None:
             # markup=False: ninja "[1/83]" and g++ notes are not Rich tags.
             console.print(line, markup=False, highlight=False, soft_wrap=True)
+
+        def close_frame() -> None:
+            frame = current['frame']
+            if frame is None:
+                return
+            frame.close()
+            current['frame'] = None
+
+        def emit(line: str) -> None:
+            if line == ENDCMD:
+                close_frame()
+                return
+
+            # The working directory is already in the command text.
+            if line.startswith('CWD ') or _SKIP_LINE.match(line):
+                return
+
+            if _HEADING.match(line):
+                close_frame()
+                shown = line.strip()
+                # The child printed this blank line already. Blank lines are
+                # dropped on the way through, so write it again here.
+                write_line('')
+                write_line(shown)
+                step['title'] = shown.split(' - ', 1)[-1]
+                return
+
+            if line.startswith('  $ ') or line.startswith('$ '):
+                cmd = line.split('$ ', 1)[1]
+                close_frame()
+                current['frame'] = CommandFrame(cmd, step['title'])
+                return
+
+            if current['frame'] is not None:
+                current['frame'].line(line)
+                return
+
+            if not line.strip():
+                return
+
+            write_line(line)
 
         def monitor_output( line ):
             """
@@ -169,23 +443,27 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
 
         cmd = f'python {build.script_path.as_posix()}'
         run_cmd = ' '.join( shell + [f'"{cmd}"']) if shell else cmd
-        fmt.h("RunCmd: " + run_cmd)
+        # The script path is already on the Script line. A shell wrapper is
+        # the invocation that is not shown there.
+        if shell:
+            current['frame'] = CommandFrame(run_cmd, 'RunCmd')
         try:
             stats |= { 'start_time':datetime.now() }
-            proc = stream_command( run_cmd, env=env,
+            # quiet: this invocation is the panel above. The script prints
+            # its own commands, and emit frames those.
+            proc = stream_command( run_cmd, env=env, quiet=True,
                                    stdout_handler=monitor_output,
                                    stderr_handler=capture_error
                                    )
-            print( "Post process")
             end_time = datetime.now()
             stats |= {
                 'status': "Dry-Run" if opts.dry else "Completed",
                 'end_time': end_time,
                 'duration': end_time - stats["start_time"]
             }
-            print( "status updated after process")
             proc.check_returncode()
         except KeyboardInterrupt:
+            close_frame()
             end_time = datetime.now()
             stats |= {
                 "status": "Cancelled",
@@ -207,26 +485,18 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
                 "end_time": end_time,
                 "duration": end_time - stats["start_time"]
             }
+            close_frame()
             handle_error(f"process_build cmd={run_cmd}", e, opts)
             if errors:
                 console.print(Panel(Text('\n'.join(errors)), title='stderr', style="red"))
+        finally:
+            close_frame()
 
         # TODO create a timeout for the processing, something reasonable.
         #   this should be defined in the build config as the largest possible build time that is expected.
         #   that way it can trigger a check of the system if it is failing this test.
 
-        table = Table( highlight=True, min_width=80, show_header=False )
-        table.add_column(overflow="ignore", no_wrap=True)
-        table.add_column(overflow="ignore", no_wrap=True)
-        table.add_column(overflow="ignore", no_wrap=True)
-        table.add_row(
-            build.name, f"{stats['status']}", f"{stats['duration']}",
-            style="red" if stats["status"] == "Failed" else "green", )
-        print_full_table( table )
-
-    # ==================[ Output Log Processing ]==================-
-    fmt.h1( "Post Run Actions" )
-    fmt.hu( "Clean Log" )
+    # The clean copy writes a file and prints nothing.
     cleanlog_path = (project.path / f"logs-clean/{build.name}.txt")
     if 'clean_log' in  get_interior_dict(build).keys():
         clean_log = build.clean_log
@@ -302,10 +572,10 @@ def show_statistics( opts:SimpleNamespace ):
             for key in build.stats['subs'].keys():
                 column_set.add(key)
 
-    table.add_column( "Commit", overflow="ignore", no_wrap=True )
     table.add_column( "Project/Config", style="cyan", overflow="ignore", no_wrap=True )
     table.add_column( "Status", overflow="ignore", no_wrap=True )
     table.add_column( "Total Time", overflow="ignore", no_wrap=True )
+    table.add_column( "Startup", overflow="ignore", no_wrap=True )
 
     sub_columns:list = []
     for action in opts.build_actions:
@@ -317,9 +587,7 @@ def show_statistics( opts:SimpleNamespace ):
         for build in project.build_configs.values():
             if not getattr(build, 'stats', None): continue
 
-            # TODO if gitref is empty when updating the configuration, get latest and update field.
-            # r:list = [getattr(build, 'gitref', '' )[0:7])
-            r:list = ['', f"{project.name}/{build.name}"]
+            r:list = [f"{project.name}/{build.name}"]
 
             colour = "green"
             status = build.stats['status']
@@ -334,6 +602,7 @@ def show_statistics( opts:SimpleNamespace ):
 
             r.append(f"[{colour}]{status}[/{colour}]")
             r.append(str(build.stats['duration']))
+            r.append(_startup(build.stats))
 
             subs = build.stats.get('subs', {})
             for column_name in sub_columns:

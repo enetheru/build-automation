@@ -189,7 +189,7 @@ buildtool_base = SimpleNamespace(
 # MARK: Cmake
 cmake_base = SimpleNamespace({**vars(buildtool_base), **{
     'name'          :'cmake',
-    'verbs'         :['configure','build','clean'],
+    'verbs'         :['reset','configure','clean','build'],
 
     # 'toolchain'     :Path(), # Optional key, I rely on it being missing
     'config_type'   :'Debug',

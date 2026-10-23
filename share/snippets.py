@@ -158,22 +158,11 @@ def source_git():
 
 def show_stats():
     config:dict = {}
-    stats:dict = {}
     # start_script
 
     # MARK: ShowStats
     #[=================================[ Stats ]=================================]
-    from rich.table import Table
-    table = Table(title="Stats", highlight=True, min_width=80)
-
-    table.add_column("Section", style="cyan", no_wrap=True)
-    table.add_column("Status", style="magenta")
-    table.add_column("Duration", style="green")
-
-    for cmd_name, cmd_stats in stats.items():
-        table.add_row( cmd_name, f'{cmd_stats['status']}', f'{cmd_stats['duration']}')
-
-    console.print( table )
+    # The parent prints the one timings table. This only stops a failed script.
     if not config['ok']: exit(1)
 
 # MARK: CMake
@@ -217,6 +206,36 @@ def cmake_check():
         fnf.add_note(f'Missing Folder {build_path}')
         raise fnf
 
+def cmake_reset():
+    config:dict = {}
+    opts:dict = {}
+    stats:dict = {}
+    build:dict = {}
+    buildtool:dict = {}
+    # start_script
+
+    # MARK: CMake-Reset
+    #[=============================[ CMake-Reset ]=============================]
+    cmake = buildtool
+
+    if config['ok'] and 'reset' in opts['build_actions']:
+        with fmt.Section("CMake Reset"):
+            console.set_window_title(f'Reset - {build["name"]}')
+            build_path = Path(cmake['build_path'])
+            # Drop the cache but leave the build directory. cmake_check has
+            # already entered that directory, and configure runs next.
+            with Timer(name='reset') as timer:
+                stream_command(
+                    'cmake -E rm -rf '
+                    f'"{(build_path / "CMakeCache.txt").as_posix()}" '
+                    f'"{(build_path / "CMakeFiles").as_posix()}"',
+                    dry=opts['dry'],
+                )
+
+        stats['reset'] = timer.get_dict()
+        config['ok'] = timer.ok()
+
+
 def cmake_configure():
     config:dict = {}
     opts:dict = {}
@@ -252,10 +271,63 @@ def cmake_configure():
 
             with Timer(name='configure') as timer:
                 stream_command(f'cmake {' '.join(filter(None, config_opts))}', dry=opts['dry'])
-                print('')
 
         stats['configure'] = timer.get_dict()
         config['ok'] = timer.ok()
+
+
+def cmake_clean():
+    config:dict = {}
+    opts:dict = {}
+    stats:dict = {}
+    buildtool:dict = {}
+    # start_script
+
+    # MARK: CMake-Clean
+    #[=============================[ CMake-Clean ]=============================]
+    import copy
+    cmake = buildtool
+
+    if config['ok'] and 'clean' in opts['build_actions']:
+        with fmt.Section("CMake Clean"):
+            console.set_window_title('Clean')
+
+            build_path:Path = cmake['build_path']
+            build_opts = [
+                f'--build {build_path.as_posix()}',
+                "--verbose" if not opts["quiet"] else None,
+                f"-j {opts['jobs']}",
+            ]
+            build_opts += cmake.get("build_vars", [])
+
+            with Timer(name='clean') as timer:
+                from src.select import chosen_config_types
+                pattern_config = opts.get('config_regex') or '.*'
+                recorded_configs = list(cmake.get('configuration_types') or [])
+                if recorded_configs:
+                    configurations = chosen_config_types(cmake, pattern_config)
+                else:
+                    configurations = [None]
+                failed = False
+                if recorded_configs and not configurations:
+                    fmt.h(f'No configuration matches /{pattern_config}/')
+                    failed = True
+                if not failed:
+                    for config_name in configurations:
+                        target_opts = copy.copy(build_opts)
+                        if config_name:
+                            target_opts.append(f'--config {config_name}')
+                        target_opts.append('--target clean')
+                        stream_command(
+                            f'cmake {" ".join(filter(None, target_opts))}',
+                            dry=opts['dry'],
+                        )
+                if failed:
+                    timer.status = TaskStatus.FAILED
+                    config['ok'] = False
+
+            stats['clean'] = timer.get_dict()
+            config['ok'] = timer.ok()
 
 
 def cmake_build():
@@ -313,14 +385,13 @@ def cmake_build():
                         if config_name:
                             target_opts.append(f'--config {config_name}')
                         if targets:
-                            target_opts.append(f" --target {targets}")
+                            target_opts.append(f'--target {targets}')
 
                         if "tool_vars" in cmake:
                             target_opts.append('--')
                             target_opts += cmake["tool_vars"]
 
                         stream_command(f'cmake {' '.join(filter(None, target_opts))}', dry=opts["dry"])
-                        print('')
                 if failed:
                     timer.status = TaskStatus.FAILED
                     config['ok'] = False

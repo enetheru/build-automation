@@ -30,7 +30,11 @@ if sys.stdout.isatty():
     rich._console = console = Console()
 else:
     rich._console = console = Console(color_system=None, soft_wrap=True)
-    print( f'PATH={os.environ['PATH']}' )
+    # Captured logs only need the toolchain directory that was prepended.
+    # The rest of PATH is the machine and is the same on every build.
+    prepend = os.environ.get('AUTOBUILD_PATH_PREPEND', '')
+    if prepend:
+        print(f'PATH+={prepend}')
 
 stats:dict = {}
 config:dict = { 'ok': True }

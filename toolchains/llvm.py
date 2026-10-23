@@ -19,7 +19,9 @@ def configure_llvm(self: SimpleNamespace, config: SimpleNamespace) -> bool:
 def llvm_toolchain() -> SimpleNamespace:
     """Clang-CL from llvm.org, with its bin directory on PATH."""
     env = {k: v for k, v in os.environ.items()}
-    env['PATH'] = f'C:/Program Files/LLVM/bin;{os.environ['PATH']}'
+    bin_dir = 'C:/Program Files/LLVM/bin'
+    env['PATH'] = f'{bin_dir};{os.environ['PATH']}'
+    env['AUTOBUILD_PATH_PREPEND'] = bin_dir
     toolchain = SimpleNamespace({**vars(toolchain_base), **{
         'name': 'llvm',
         'desc': '# Use Clang-Cl from llvm.org',

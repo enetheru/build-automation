@@ -22,7 +22,9 @@ def llvm_mingw_toolchain() -> SimpleNamespace:
     """mstorsjo llvm-mingw. i686, x86_64, armv7, and aarch64."""
     sysroot = Path('C:/opt/llvm-mingw-20250305-ucrt-x86_64')
     toolchain_env = {k: v for k, v in os.environ.items()}
-    toolchain_env['PATH'] = f'{sysroot / 'bin'};{os.environ['PATH']}'
+    bin_dir = sysroot / 'bin'
+    toolchain_env['PATH'] = f'{bin_dir};{os.environ['PATH']}'
+    toolchain_env['AUTOBUILD_PATH_PREPEND'] = str(bin_dir)
 
     toolchain = SimpleNamespace({**vars(toolchain_base), **{
         'name': "llvm-mingw",

@@ -11,7 +11,7 @@ from copy import deepcopy
 from types import SimpleNamespace
 
 from src.config import gopts
-from share.snippets import cmake_build, cmake_check, cmake_configure
+from share.snippets import cmake_build, cmake_check, cmake_clean, cmake_configure, cmake_reset
 
 
 def expand_func( configs_in:list[SimpleNamespace], func, *args ) -> list:
@@ -187,8 +187,11 @@ def expand_cmake( config:SimpleNamespace ) -> list:
         if gopts.debug: raise Exception("Expansion of cmake for non cmake build")
         return [config]
 
-    config.verbs += ['configure', 'build']
-    config.script_parts += [cmake_check, cmake_configure, cmake_build]
+    config.verbs += ['reset', 'configure', 'clean', 'build']
+    # reset before configure, clean before build.
+    config.script_parts += [
+        cmake_check, cmake_reset, cmake_configure, cmake_clean, cmake_build,
+    ]
 
     toolchain = config.toolchain
 

@@ -8,15 +8,13 @@ from io import StringIO
 
 import rich.box
 from rich import print
-from rich.console import Console
 from rich.pretty import pprint
 
 # Local Imports
 from src import format as fmt
-from src.ConsoleMultiplex import ConsoleMultiplex
 from src.config import gopts
 from src.generate import generate_build_scripts
-from src.build_utils import process_project, show_statistics, process_toolchains
+from src.build_utils import console, log_console, process_project, show_statistics, process_toolchains
 from src.git_utils import git_fetch_project
 # Src modules (refactored)
 from src.args import parse_args
@@ -34,7 +32,7 @@ pretendio = PretendIO()
 # ================[ Setup Multiplexed Console ]================-
 # Member 'TextIO' of 'TextIO | Any' does not have attribute 'reconfigure'
 # sys.stdout.reconfigure(encoding='utf-8')
-console = ConsoleMultiplex()
+# Headings use rich.print. The transcript uses this same console.
 rich._console = console
 
 
@@ -76,9 +74,9 @@ def main():
     """
     console.set_window_title( "AutoBuild" )
 
-    # Log everything to a file
-    console.tee( Console( file=open( gopts.path / "build_log.log", "w", encoding='utf-8' ), force_terminal=True ),
-        name="build_log" )
+    # Same plain wide console as the per-build logs. force_terminal wraps at 80.
+    log_file = open(gopts.path / "build_log.log", "w", encoding="utf-8")
+    console.tee(log_console(log_file), name="build_log")
 
     parse_args(gopts)
 
@@ -114,8 +112,13 @@ def main():
         p_verbs = ', '.join(gopts.project_verbs) if gopts.project_verbs else 'none'
         b_verbs = ', '.join(gopts.build_verbs) if gopts.build_verbs else 'none'
         fmt.h(f"Projects ({len(gopts.projects)}) ({total_builds} configurations)")
-        fmt.h(f"  project actions: {p_verbs}")
-        fmt.h(f"  build actions: [{b_verbs}]")
+        project_run = [a for a in gopts.project_actions if a in gopts.project_verbs]
+        project_run = ', '.join(project_run) if project_run else 'none'
+        build_run = ', '.join(gopts.build_actions) if gopts.build_actions else 'none'
+        fmt.h(f"project actions: {project_run}")
+        fmt.h(f"project verbs: {p_verbs}")
+        fmt.h(f"build actions: {build_run}")
+        fmt.h(f"build verbs: {b_verbs}")
 
     # TODO if help in any of the system verbs then display a list of verb help items.
     # List only.
@@ -159,24 +162,20 @@ def main():
         with fmt.Section("Show Statistics"):
             show_statistics( gopts )
 
-    # perform any actions triggered by verbs for toolchains.
-    with fmt.Section("Process Toolchain Actions"):
-        if len(gopts.toolchain_actions) == 0:
-            verbs = ', '.join(gopts.toolchain_verbs) if gopts.toolchain_verbs else 'none'
-            fmt.h(f"No toolchain actions specified. Available: [{verbs}]")
-        else:
+    toolchain_run = [
+        action for action in gopts.toolchain_actions
+        if any(action in getattr(toolchain, 'verbs', []) for toolchain in gopts.toolchains.values())
+    ]
+    if toolchain_run:
+        with fmt.Section("Process Toolchain Actions"):
             process_toolchains( gopts )
 
     # Basically the same thing again for the fetch command in prject, should be re-arranged
-    with fmt.Section("Process Project Actions"):
-        if len(gopts.project_actions) == 0:
-            verbs = ', '.join(gopts.project_verbs) if gopts.project_verbs else 'none'
-            fmt.h(f"No project actions specified. Available: [{verbs}]")
-        else:
-            if 'fetch' in gopts.project_actions:
-                with fmt.Section( 'Fetching Projects' ):
-                    for project in projects.values():
-                        git_fetch_project( gopts, project )
+    if 'fetch' in gopts.project_actions:
+        with fmt.Section("Process Project Actions"):
+            with fmt.Section( 'Fetching Projects' ):
+                for project in projects.values():
+                    git_fetch_project( gopts, project )
 
     # Generate the build scripts
     # This one is the processing script for the build itself, should be renamed.something like
@@ -184,7 +183,7 @@ def main():
     with fmt.Section("Process Builds"):
         if len(gopts.build_actions) == 0:
             verbs = ', '.join(gopts.build_verbs) if gopts.build_verbs else 'none'
-            fmt.h(f"No build actions specified. Available: [{verbs}]")
+            fmt.h(f"No build actions specified. Available: {verbs}")
         else:
             with fmt.Section("Generate Build Scripts"):
                 generate_build_scripts( gopts )
