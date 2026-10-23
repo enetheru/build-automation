@@ -843,18 +843,23 @@ def test_scons():
                 return path if path.is_absolute() else source_dir / path
 
             def port_busy(address, port):
-                # A connect that succeeds means something is listening.
-                # Refused means free. Binding to probe would leave the port
-                # in TIME_WAIT, and the engine listen after that would fail.
-                # Any other error counts as taken so a black-holed port is
-                # not handed to Tracy.
+                # Bind and close. Windows drops a SYN to a closed port, so a
+                # connect probe times out on every port and the walk from
+                # 8086 never finishes. A listen socket that accepted nothing
+                # does not stay in TIME_WAIT, so Tracy can bind the port next.
                 try:
-                    with socket.create_connection((address, int(port)), timeout=1):
-                        return True
-                except ConnectionRefusedError:
-                    return False
+                    infos = socket.getaddrinfo(
+                        address, int(port), type=socket.SOCK_STREAM,
+                        proto=socket.IPPROTO_TCP)
                 except OSError:
                     return True
+                family, socktype, proto, _, sockaddr = infos[0]
+                try:
+                    with socket.socket(family, socktype, proto) as sock:
+                        sock.bind(sockaddr)
+                except OSError:
+                    return True
+                return False
 
             def free_listen_port(address, preferred):
                 # Leave tt['port'] alone. The next stage starts from the
