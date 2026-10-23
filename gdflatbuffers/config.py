@@ -379,7 +379,7 @@ LIBTRACY_TEST = {
 }
 
 # template_release scenario capture (libtracy_bench). One suite. The pack
-# layout matches project/bench-run.ps1: the exe, the pck named after that exe,
+# layout matches project/bench-run.py: the exe, the pck named after that exe,
 # the extension library, and the TracyClient sit in one directory. Template
 # binaries drop --path and --script. A library inside the pck is not a file
 # LoadLibrary can open.
@@ -487,9 +487,11 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
     parts.insert(parts.index(source_git) + 1, libtracy_submodules)
     parts.insert(parts.index(cmake_configure_part()), libtracy_resolve)
     parts.append(libtracy_check)
-    # Test action hooks: the headless test (editor), then the scenario bench.
+    # Test action hooks: shared helpers, the headless test (editor), then the
+    # scenario bench. The helpers are a script part so the generated file
+    # defines them once, before either section calls them.
     tracy.verbs.append('test')
-    parts += [libtracy_test_headless, libtracy_bench]
+    parts += [libtracy_run_helpers, libtracy_test_headless, libtracy_bench]
     return tracy
 
 
@@ -508,6 +510,9 @@ def cmake_configure_part():
 # ╙────────────────────────────────────────────────────────────────────────────────────────╜
 # The functions below run inside the generated build script. Only the body
 # after `# start_script` is copied, so each one imports what it uses.
+# A def in that body is a real function in the generated script. The test
+# and bench sections use that so a phase can return, instead of wrapping
+# the rest of the section in `if ok`.
 
 def libtracy_resolve():
     config:dict = {}
@@ -892,6 +897,54 @@ def libtracy_check():
                 config['ok'] = False
 
 
+def libtracy_run_helpers():
+    # start_script
+
+    # Shared by the headless test and the scenario bench. Defined once, at
+    # module scope in the generated script, and called by both sections.
+    import socket as _socket
+    import subprocess as _sp
+
+    def libtracy_fail(res, why):
+        res['failures'].append(why)
+        fmt.h(f'FAIL: {why}')
+
+    def libtracy_need(res, path, what):
+        if path is None or not Path(path).exists():
+            libtracy_fail(res, f'{what} not found: {path}')
+            return False
+        return True
+
+    def libtracy_cmdline(args, env=None):
+        prefix = ''.join(f'{k}={v} ' for k, v in (env or {}).items())
+        return prefix + _sp.list2cmdline([str(a) for a in args])
+
+    def libtracy_port_busy(address, port):
+        try:
+            with _socket.create_connection((address, int(port)), timeout=1):
+                return True
+        except OSError:
+            return False
+
+    def libtracy_free_listen_port(address, preferred):
+        # --tracy-port pins the engine to one port. A busy 8086 is
+        # another engine; take the next free port instead of skipping.
+        try:
+            start = int(preferred)
+        except (TypeError, ValueError):
+            return None
+        if start < 1 or start > 65535:
+            return None
+        spans = [range(start, 65536)]
+        if start > 1024:
+            spans.append(range(1024, start))
+        for span in spans:
+            for candidate in span:
+                if not libtracy_port_busy(address, candidate):
+                    return str(candidate)
+        return None
+
+
 def libtracy_test_headless():
     config:dict = {}
     opts:dict = {}
@@ -916,237 +969,220 @@ def libtracy_test_headless():
     # tracy-capture listens first, the engine starts settle_secs later. Pass:
     # engine exit 0, capture saved, godot_tracy_client_matches() true, and at
     # least one extension zone in the capture.
-    # A Tracy client already on the port skips this capture. The build stays
-    # successful and the project is left alone.
+    # --tracy-port and tracy-capture -p share the first free port at or after
+    # the configured one, so an engine already on 8086 does not take this capture.
     import csv as _csv
     import json as _json
     import re as _re
-    import socket as _socket
     import subprocess as _sp
     import time as _time
 
-    tt = build['libtracy']
-    tst = tt['test']
-    if config['ok'] and 'test' in opts['build_actions'] and tt['target'] in tst['targets']:
+    def libtracy_run_headless():
+        # The guard used to wrap this whole section. Returning here leaves
+        # stats unset, which is what the wrapped `if` did. The epilogue stays
+        # after the steps so a phase that returns still records the timer.
+        tt = build['libtracy']
+        tst = tt['test']
+        if not (config['ok'] and 'test' in opts['build_actions'] and tt['target'] in tst['targets']):
+            return
         dry = opts['dry']
         with fmt.Section('libtracy Test'), Timer(name='test') as timer:
             res = {'status': None, 'failures': [], 'logs': [], 'facts': {}}
-
-            def fail(why):
-                res['failures'].append(why)
-                fmt.h(f'FAIL: {why}')
-
-            def need(path, what):
-                if path is None or not Path(path).exists():
-                    fail(f'{what} not found: {path}')
-                    return False
-                return True
-
-            def cmdline(args, env=None):
-                prefix = ''.join(f'{k}={v} ' for k, v in (env or {}).items())
-                return prefix + _sp.list2cmdline([str(a) for a in args])
-
-            source = Path(build['source_path'])
-            bin_dir = Path(tt['bin_dir']) if 'bin_dir' in tt else None
-            engine_src = Path(tt['engine_path']) if tt.get('engine_path') else None
-            runtime_src = Path(tt['runtime_path']) if tt.get('runtime_path') else None
-            project_src = Path(os.environ.get(tst['project_env']) or tst.get('project') or (source / 'project'))
-            runner_rel = tst['script']
-            capture_tool = tst.get('capture')
-            csvexport_tool = tst.get('csvexport')
-
-            ok = all([
-                need(bin_dir, 'Godot bin (libtracy Resolve did not run?)'),
-                need(engine_src, 'shared-client engine exe (libtracy Resolve did not run?)'),
-                need(runtime_src, 'TracyClient runtime (libtracy Resolve did not run?)'),
-                need(project_src, f'Godot project (set ${tst["project_env"]})'),
-                need(capture_tool, 'tracy-capture (godot TRACY_CAPTURE)'),
-                need(csvexport_tool, 'tracy-csvexport (godot TRACY_CSVEXPORT)'),
-            ])
-            if ok and not (project_src / 'project.godot').is_file():
-                fail(f'{project_src.as_posix()} has no project.godot')
-                ok = False
-            runner_path = project_src / runner_rel
-            if not runner_path.is_file():
-                fail(f'test runner not found: {runner_path.as_posix()}')
-                ok = False
-            from src.select import chosen_config_types
-            cmake = buildtool
-            if cmake.get('configuration_types'):
-                configurations = chosen_config_types(cmake, opts.get('config_regex') or '.*')
-            else:
-                configurations = [None]
-            if not configurations:
-                fail(f'No configuration matches /{opts.get("config_regex")}/')
-                ok = False
-
-            def port_busy():
-                try:
-                    with _socket.create_connection((tst['address'], int(tst['port'])), timeout=1):
-                        return True
-                except OSError:
-                    return False
-
-            if ok and not dry and port_busy():
-                fmt.h(f'SKIP: {tst["address"]}:{tst["port"]} already has a Tracy client; another engine is running')
-                fmt.hu('the capture needs that port. This build stays successful and the project is left alone.')
-                res['status'] = 'skip'
-                res['facts']['skip'] = f'{tst["address"]}:{tst["port"]}'
-                ok = False
-
-            runs = Path(os.environ.get(tst['runs_env']) or tst['runs_default'])
-            run_dir = runs / build['name'] / _time.strftime('%Y%m%d-%H%M%S')
-            project_dir = project_src
-            addon_rel = Path('addons') / tt['addon_name']
-            addon_dst = project_dir / addon_rel
-            gdext = addon_dst / tt['install_gdextension']
-            # Launch the build this extension was compiled against. An installed
-            # editor with the same file name can carry a different defines hash.
-            engine_run = engine_src
-            client_run = runtime_src
-            xdg = run_dir / 'xdg'
-            trace = run_dir / 'capture.tracy'
-
-            if ok:
-                fmt.h(f'project: {project_dir.as_posix()}')
-                fmt.h(f'run dir: {run_dir.as_posix()}')
-                # The extension install merges this target's library line.
-                fmt.h(f'engine: {engine_run.as_posix()}')
-                fmt.h(f'client: {client_run.as_posix()}')
-
-                for config_name in configurations:
-                    fmt.s2(f' Installing {config_name or "default"} ')
-                    args = ['cmake', '--install', Path(cmake['build_path']).as_posix(),
-                            *(['--config', config_name] if config_name else []),
-                            '--prefix', project_dir.as_posix()]
-                    try:
-                        stream_command(args, dry=dry)
-                    except _sp.CalledProcessError as exc:
-                        fail(f'cmake --install exited {exc.returncode}')
-                        ok = False
-                        break
-                if ok:
-                    for flatc in sorted((addon_dst / 'bin').glob(tt['flatc_glob'])):
-                        if flatc.is_file() and not flatc.name.endswith(('.pdb', '.ilk')):
-                            if dry:
-                                fmt.hu(f'dry-run: chmod +x {flatc.as_posix()}')
-                            else:
-                                flatc.chmod(flatc.stat().st_mode | 0o111)
-                                fmt.hu(f'chmod +x {flatc.as_posix()}')
-                    if not dry and not gdext.is_file():
-                        fail(f'{gdext.as_posix()} not found after install')
-                        ok = False
-
-            if ok:
-                ext_list = project_dir / '.godot' / 'extension_list.cfg'
-                ext_line = f'res://{(addon_rel / tt["install_gdextension"]).as_posix()}'
-                if dry:
-                    fmt.hu(f'dry-run: ensure {ext_list.as_posix()} lists {ext_line}')
-                else:
-                    ext_list.parent.mkdir(parents=True, exist_ok=True)
-                    lines = ext_list.read_text(encoding='utf-8').splitlines() if ext_list.is_file() else []
-                    if ext_line not in (ln.strip() for ln in lines):
-                        lines.append(ext_line)
-                        ext_list.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-                    res['logs'].append(ext_list.as_posix())
-
-                env = {f'XDG_{k}_HOME': (xdg / k.lower()).as_posix() for k in ('CONFIG', 'DATA', 'CACHE', 'STATE')}
-                env[tst['headless_env']] = '1'
-                eng_cmd = [engine_run.as_posix(), *tst['engine_args'], '--path', project_dir.as_posix()]
-                cap_cmd = [str(capture_tool), '-o', trace.as_posix(), '-a', tst['address'], '-p', str(tst['port']), '-f']
-                res['facts'].update({'engine': engine_run.as_posix(), 'engine_cmd': cmdline(eng_cmd, env),
-                                     'capture_cmd': cmdline(cap_cmd), 'project': project_dir.as_posix()})
-                fmt.hu(f'$ {cmdline(cap_cmd)} &')
-                fmt.hu(f'(wait {tst["settle_secs"]} s)')
-                fmt.hu(f'$ {cmdline(eng_cmd, env)}')
-
-                if not dry:
-                    if port_busy():
-                        fail(f'{tst["address"]}:{tst["port"]} already has a Tracy client; another engine is running')
-                    else:
-                        for d in env.values():
-                            Path(d).mkdir(parents=True, exist_ok=True)
-                        (run_dir / 'capture.cmd').write_text(cmdline(cap_cmd) + '\n', encoding='utf-8')
-                        (run_dir / 'engine.cmd').write_text(cmdline(eng_cmd, env) + '\n', encoding='utf-8')
-                        cap_log = run_dir / 'capture.log'
-                        eng_log = run_dir / 'engine.log'
-                        res['logs'] += [cap_log.as_posix(), eng_log.as_posix()]
-                        with open(cap_log, 'w', encoding='utf-8') as cl:
-                            cap = _sp.Popen(cap_cmd, stdout=cl, stderr=_sp.STDOUT, stdin=_sp.DEVNULL)
-                            _time.sleep(tst['settle_secs'])
-                            with open(eng_log, 'w', encoding='utf-8') as el:
-                                try:
-                                    eng_rc = _sp.run(eng_cmd, stdout=el, stderr=_sp.STDOUT, stdin=_sp.DEVNULL,
-                                                     env={**os.environ, **env}, cwd=project_dir,
-                                                     timeout=tst.get('timeout') or 300).returncode
-                                except _sp.TimeoutExpired:
-                                    eng_rc = 'timeout'
-                            try:
-                                cap_rc = cap.wait(timeout=60)
-                            except _sp.TimeoutExpired:
-                                cap.terminate()   # a hard stop skips the write; terminate first
-                                try:
-                                    cap_rc = cap.wait(timeout=10)
-                                except _sp.TimeoutExpired:
-                                    cap.kill()
-                                    cap_rc = 'killed'
-                        res['facts'].update({'engine_rc': eng_rc, 'capture_rc': cap_rc})
-                        if eng_rc != 0:
-                            fail(f'engine exited {eng_rc} (log: {eng_log.as_posix()})')
-                        if cap_rc != 0:
-                            fail(f'tracy-capture exited {cap_rc} (log: {cap_log.as_posix()})')
-                        eng_text = eng_log.read_text(encoding='utf-8', errors='replace')
-
-                        if not trace.is_file() or not trace.stat().st_size:
-                            fail(f'capture missing or empty: {trace.as_posix()}')
-                        else:
-                            res['facts']['trace'] = trace.as_posix()
-                            res['facts']['trace_bytes'] = trace.stat().st_size
-                            zones_csv = run_dir / 'zones.csv'
-                            msgs_csv = run_dir / 'messages.csv'
-                            z = _sp.run([str(csvexport_tool), trace.as_posix()], capture_output=True, text=True,
-                                        errors='replace', timeout=300)
-                            m = _sp.run([str(csvexport_tool), '-m', trace.as_posix()], capture_output=True,
-                                        text=True, errors='replace', timeout=300)
-                            zones_csv.write_text(z.stdout, encoding='utf-8')
-                            msgs_csv.write_text(m.stdout, encoding='utf-8')
-                            res['logs'] += [zones_csv.as_posix(), msgs_csv.as_posix()]
-
-                            # tracy-csvexport: name,src_file,src_line,total_ns,total_perc,counts,mean,min,max,std
-                            ext_src = (source / 'src').resolve().as_posix()
-                            name_re = _re.compile(tst['zone_name_pattern'])
-                            ext_zones = []
-                            for row in list(_csv.reader(z.stdout.splitlines()))[1:]:
-                                if len(row) < 10:
-                                    continue
-                                zname, zfile = ','.join(row[:-9]), row[-9]
-                                if Path(zfile).as_posix().startswith(ext_src) or name_re.search(zname):
-                                    ext_zones.append(f'{zname} ({zfile}:{row[-8]}) x{row[-5]}')
-                            res['facts']['extension_zones'] = ext_zones
-                            fmt.h(f'extension zones: {len(ext_zones)}')
-                            for line in ext_zones[:10]:
-                                fmt.hu(line)
-                            if not ext_zones:
-                                fail(f'no extension zone in {zones_csv.as_posix()}')
-
-                        match_re = _re.compile(tst['client_matches_pattern'])
-                        msgs = msgs_csv.read_text(encoding='utf-8') if msgs_csv.is_file() else ''
-                        matched = bool(match_re.search(eng_text) or match_re.search(msgs))
-                        res['facts']['client_matches'] = matched
-                        fmt.h(f'godot_tracy_client_matches() true: {"yes" if matched else "not seen"}')
-                        if not matched:
-                            fail(f'godot_tracy_client_matches() true not seen in {eng_log.as_posix()} '
-                                 f'or the capture messages (pattern {tst["client_matches_pattern"]})')
-
-                        res['status'] = 'fail' if res['failures'] else 'pass'
-                        (run_dir / 'result.json').write_text(_json.dumps(res, indent=2, default=str), encoding='utf-8')
-                        fmt.h(f'result: {res["status"]}  ({(run_dir / "result.json").as_posix()})')
+            libtracy_headless_steps(tt, tst, dry, res)
             if dry:
                 res['status'] = 'dry'
             if res['failures']:
                 timer.status = TaskStatus.FAILED
         stats['test'] = timer.get_dict()
         config['ok'] = timer.ok() and not res['failures']
+
+    def libtracy_headless_steps(tt, tst, dry, res):
+        source = Path(build['source_path'])
+        bin_dir = Path(tt['bin_dir']) if 'bin_dir' in tt else None
+        engine_src = Path(tt['engine_path']) if tt.get('engine_path') else None
+        runtime_src = Path(tt['runtime_path']) if tt.get('runtime_path') else None
+        project_src = Path(os.environ.get(tst['project_env']) or tst.get('project') or (source / 'project'))
+        runner_rel = tst['script']
+        capture_tool = tst.get('capture')
+        csvexport_tool = tst.get('csvexport')
+
+        ok = all([
+            libtracy_need(res, bin_dir, 'Godot bin (libtracy Resolve did not run?)'),
+            libtracy_need(res, engine_src, 'shared-client engine exe (libtracy Resolve did not run?)'),
+            libtracy_need(res, runtime_src, 'TracyClient runtime (libtracy Resolve did not run?)'),
+            libtracy_need(res, project_src, f'Godot project (set ${tst["project_env"]})'),
+            libtracy_need(res, capture_tool, 'tracy-capture (godot TRACY_CAPTURE)'),
+            libtracy_need(res, csvexport_tool, 'tracy-csvexport (godot TRACY_CSVEXPORT)'),
+        ])
+        if ok and not (project_src / 'project.godot').is_file():
+            libtracy_fail(res, f'{project_src.as_posix()} has no project.godot')
+            ok = False
+        runner_path = project_src / runner_rel
+        if not runner_path.is_file():
+            libtracy_fail(res, f'test runner not found: {runner_path.as_posix()}')
+            ok = False
+        from src.select import chosen_config_types
+        cmake = buildtool
+        if cmake.get('configuration_types'):
+            configurations = chosen_config_types(cmake, opts.get('config_regex') or '.*')
+        else:
+            configurations = [None]
+        if not configurations:
+            libtracy_fail(res, f'No configuration matches /{opts.get("config_regex")}/')
+            ok = False
+
+        runs = Path(os.environ.get(tst['runs_env']) or tst['runs_default'])
+        run_dir = runs / build['name'] / _time.strftime('%Y%m%d-%H%M%S')
+        project_dir = project_src
+        addon_rel = Path('addons') / tt['addon_name']
+        addon_dst = project_dir / addon_rel
+        gdext = addon_dst / tt['install_gdextension']
+        # Launch the build this extension was compiled against. An installed
+        # editor with the same file name can carry a different defines hash.
+        engine_run = engine_src
+        client_run = runtime_src
+        xdg = run_dir / 'xdg'
+        trace = run_dir / 'capture.tracy'
+
+        if not ok:
+            return
+
+        fmt.h(f'project: {project_dir.as_posix()}')
+        fmt.h(f'run dir: {run_dir.as_posix()}')
+        # The extension install merges this target's library line.
+        fmt.h(f'engine: {engine_run.as_posix()}')
+        fmt.h(f'client: {client_run.as_posix()}')
+
+        for config_name in configurations:
+            fmt.s2(f' Installing {config_name or "default"} ')
+            args = ['cmake', '--install', Path(cmake['build_path']).as_posix(),
+                    *(['--config', config_name] if config_name else []),
+                    '--prefix', project_dir.as_posix()]
+            try:
+                stream_command(args, dry=dry)
+            except _sp.CalledProcessError as exc:
+                libtracy_fail(res, f'cmake --install exited {exc.returncode}')
+                return
+        for flatc in sorted((addon_dst / 'bin').glob(tt['flatc_glob'])):
+            if flatc.is_file() and not flatc.name.endswith(('.pdb', '.ilk')):
+                if dry:
+                    fmt.hu(f'dry-run: chmod +x {flatc.as_posix()}')
+                else:
+                    flatc.chmod(flatc.stat().st_mode | 0o111)
+                    fmt.hu(f'chmod +x {flatc.as_posix()}')
+        if not dry and not gdext.is_file():
+            libtracy_fail(res, f'{gdext.as_posix()} not found after install')
+            return
+
+        ext_list = project_dir / '.godot' / 'extension_list.cfg'
+        ext_line = f'res://{(addon_rel / tt["install_gdextension"]).as_posix()}'
+        if dry:
+            fmt.hu(f'dry-run: ensure {ext_list.as_posix()} lists {ext_line}')
+        else:
+            ext_list.parent.mkdir(parents=True, exist_ok=True)
+            lines = ext_list.read_text(encoding='utf-8').splitlines() if ext_list.is_file() else []
+            if ext_line not in (ln.strip() for ln in lines):
+                lines.append(ext_line)
+                ext_list.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+            res['logs'].append(ext_list.as_posix())
+
+        env = {f'XDG_{k}_HOME': (xdg / k.lower()).as_posix() for k in ('CONFIG', 'DATA', 'CACHE', 'STATE')}
+        env[tst['headless_env']] = '1'
+        port = str(tst['port']) if dry else libtracy_free_listen_port(tst['address'], tst['port'])
+        if port is None:
+            libtracy_fail(res, f'no free listen port on {tst["address"]} from {tst["port"]}')
+        elif not dry and port != str(tst['port']):
+            fmt.h(f'{tst["address"]}:{tst["port"]} is in use; using {port}')
+        eng_cmd = [engine_run.as_posix(), *tst['engine_args'], '--tracy-port', port,
+                   '--path', project_dir.as_posix()]
+        cap_cmd = [str(capture_tool), '-o', trace.as_posix(), '-a', tst['address'], '-p', port, '-f']
+        res['facts'].update({'engine': engine_run.as_posix(), 'engine_cmd': libtracy_cmdline(eng_cmd, env),
+                             'capture_cmd': libtracy_cmdline(cap_cmd), 'project': project_dir.as_posix(),
+                             'port': port})
+        fmt.hu(f'$ {libtracy_cmdline(cap_cmd)} &')
+        fmt.hu(f'(wait {tst["settle_secs"]} s)')
+        fmt.hu(f'$ {libtracy_cmdline(eng_cmd, env)}')
+
+        if not dry and port:
+            for d in env.values():
+                Path(d).mkdir(parents=True, exist_ok=True)
+            (run_dir / 'capture.cmd').write_text(libtracy_cmdline(cap_cmd) + '\n', encoding='utf-8')
+            (run_dir / 'engine.cmd').write_text(libtracy_cmdline(eng_cmd, env) + '\n', encoding='utf-8')
+            cap_log = run_dir / 'capture.log'
+            eng_log = run_dir / 'engine.log'
+            res['logs'] += [cap_log.as_posix(), eng_log.as_posix()]
+            with open(cap_log, 'w', encoding='utf-8') as cl:
+                cap = _sp.Popen(cap_cmd, stdout=cl, stderr=_sp.STDOUT, stdin=_sp.DEVNULL)
+                _time.sleep(tst['settle_secs'])
+                with open(eng_log, 'w', encoding='utf-8') as el:
+                    try:
+                        eng_rc = _sp.run(eng_cmd, stdout=el, stderr=_sp.STDOUT, stdin=_sp.DEVNULL,
+                                         env={**os.environ, **env}, cwd=project_dir,
+                                         timeout=tst.get('timeout') or 300).returncode
+                    except _sp.TimeoutExpired:
+                        eng_rc = 'timeout'
+                try:
+                    cap_rc = cap.wait(timeout=60)
+                except _sp.TimeoutExpired:
+                    cap.terminate()   # a hard stop skips the write; terminate first
+                    try:
+                        cap_rc = cap.wait(timeout=10)
+                    except _sp.TimeoutExpired:
+                        cap.kill()
+                        cap_rc = 'killed'
+            res['facts'].update({'engine_rc': eng_rc, 'capture_rc': cap_rc})
+            if eng_rc != 0:
+                libtracy_fail(res, f'engine exited {eng_rc} (log: {eng_log.as_posix()})')
+            if cap_rc != 0:
+                libtracy_fail(res, f'tracy-capture exited {cap_rc} (log: {cap_log.as_posix()})')
+            eng_text = eng_log.read_text(encoding='utf-8', errors='replace')
+
+            if not trace.is_file() or not trace.stat().st_size:
+                libtracy_fail(res, f'capture missing or empty: {trace.as_posix()}')
+            else:
+                res['facts']['trace'] = trace.as_posix()
+                res['facts']['trace_bytes'] = trace.stat().st_size
+                zones_csv = run_dir / 'zones.csv'
+                msgs_csv = run_dir / 'messages.csv'
+                z = _sp.run([str(csvexport_tool), trace.as_posix()], capture_output=True, text=True,
+                            errors='replace', timeout=300)
+                m = _sp.run([str(csvexport_tool), '-m', trace.as_posix()], capture_output=True,
+                            text=True, errors='replace', timeout=300)
+                zones_csv.write_text(z.stdout, encoding='utf-8')
+                msgs_csv.write_text(m.stdout, encoding='utf-8')
+                res['logs'] += [zones_csv.as_posix(), msgs_csv.as_posix()]
+
+                # tracy-csvexport: name,src_file,src_line,total_ns,total_perc,counts,mean,min,max,std
+                ext_src = (source / 'src').resolve().as_posix()
+                name_re = _re.compile(tst['zone_name_pattern'])
+                ext_zones = []
+                for row in list(_csv.reader(z.stdout.splitlines()))[1:]:
+                    if len(row) < 10:
+                        continue
+                    zname, zfile = ','.join(row[:-9]), row[-9]
+                    if Path(zfile).as_posix().startswith(ext_src) or name_re.search(zname):
+                        ext_zones.append(f'{zname} ({zfile}:{row[-8]}) x{row[-5]}')
+                res['facts']['extension_zones'] = ext_zones
+                fmt.h(f'extension zones: {len(ext_zones)}')
+                for line in ext_zones[:10]:
+                    fmt.hu(line)
+                if not ext_zones:
+                    libtracy_fail(res, f'no extension zone in {zones_csv.as_posix()}')
+
+            match_re = _re.compile(tst['client_matches_pattern'])
+            msgs = msgs_csv.read_text(encoding='utf-8') if msgs_csv.is_file() else ''
+            matched = bool(match_re.search(eng_text) or match_re.search(msgs))
+            res['facts']['client_matches'] = matched
+            fmt.h(f'godot_tracy_client_matches() true: {"yes" if matched else "not seen"}')
+            if not matched:
+                libtracy_fail(res, f'godot_tracy_client_matches() true not seen in {eng_log.as_posix()} '
+                             f'or the capture messages (pattern {tst["client_matches_pattern"]})')
+
+            res['status'] = 'fail' if res['failures'] else 'pass'
+            (run_dir / 'result.json').write_text(_json.dumps(res, indent=2, default=str), encoding='utf-8')
+            fmt.h(f'result: {res["status"]}  ({(run_dir / "result.json").as_posix()})')
+
+    libtracy_run_headless()
 
 
 def libtracy_bench():
@@ -1162,367 +1198,336 @@ def libtracy_bench():
     # One scenario suite on the template_release Tracy engine, captured.
     # The Godot project stays in place. Release is installed there so the
     # packed flatbuffers.gdextension names the Tracy library.
-    # Under <runs>/<build name>/<timestamp>/pack/, same layout as bench-run.ps1:
+    # Under <runs>/<build name>/<timestamp>/pack/, same layout as bench-run.py:
     #   template_release.exe   the real Tracy exe, renamed so the pck matches
     #   template_release.pck   --export-pack of the bench preset
     #   the Tracy extension library, under the filename the gdextension names
     #   the TracyClient the exe NEEDs
-    # The packed template is started first and binds the Tracy port. Capture
-    # starts only after that listen, so it cannot attach to the export editor
-    # (that editor is also a Tracy client, and it exits before this step).
-    # The engine is --headless --tracy, then
+    # The packed template is started with --tracy-port on the first free port
+    # at or after the configured one. Capture connects there after that listen,
+    # so it does not attach to the export editor.
+    # The engine is --headless --tracy --tracy-port <port>, then
     #   -- scenario template_release <history>
     # Pass: engine exit 0, capture saved, client match true, and the scenario
     # zones present (allocate, finish, get_buffer).
     # The export editor is the newest editor.libtracy bin, TracyClient beside
     # that exe. A default editor cannot load the tracy library.
-    # A Tracy client already on the port skips this capture. The build stays
-    # successful and the project is left alone.
     import csv as _csv
     import json as _json
     import re as _re
     import shutil as _shutil
-    import socket as _socket
     import subprocess as _sp
     import time as _time
 
-    tt = build['libtracy']
-    bench = tt['bench']
-    tst = tt['test']
-    if config['ok'] and 'test' in opts['build_actions'] and tt['target'] in bench['targets']:
+    def libtracy_run_bench():
+        # Same shape as the headless runner: the guard returns before the
+        # timer, and the epilogue runs when the steps return.
+        tt = build['libtracy']
+        bench = tt['bench']
+        tst = tt['test']
+        if not (config['ok'] and 'test' in opts['build_actions'] and tt['target'] in bench['targets']):
+            return
         dry = opts['dry']
         with fmt.Section('libtracy Bench'), Timer(name='test') as timer:
             res = {'status': None, 'failures': [], 'logs': [], 'facts': {}}
-
-            def fail(why):
-                res['failures'].append(why)
-                fmt.h(f'FAIL: {why}')
-
-            def need(path, what):
-                if path is None or not Path(path).exists():
-                    fail(f'{what} not found: {path}')
-                    return False
-                return True
-
-            def cmdline(args, env=None):
-                prefix = ''.join(f'{k}={v} ' for k, v in (env or {}).items())
-                return prefix + _sp.list2cmdline([str(a) for a in args])
-
-            source = Path(build['source_path'])
-            project_dir = Path(os.environ.get(tst['project_env']) or tst.get('project') or (source / 'project'))
-            engine_src = Path(tt['engine_path']) if tt.get('engine_path') else None
-            runtime_src = Path(tt['runtime_path']) if tt.get('runtime_path') else None
-            capture_tool = tst.get('capture')
-            csvexport_tool = tst.get('csvexport')
-            ok = all([
-                need(engine_src, 'shared-client engine exe (libtracy Resolve did not run?)'),
-                need(runtime_src, 'TracyClient runtime (libtracy Resolve did not run?)'),
-                need(project_dir, f'Godot project (set ${tst["project_env"]})'),
-                need(project_dir / 'project.godot', 'project.godot'),
-                need(project_dir / 'export_presets.cfg', 'export_presets.cfg'),
-                need(capture_tool, 'tracy-capture (godot TRACY_CAPTURE)'),
-                need(csvexport_tool, 'tracy-csvexport (godot TRACY_CSVEXPORT)'),
-            ])
-            preset_text = (project_dir / 'export_presets.cfg').read_text(encoding='utf-8', errors='replace') \
-                if (project_dir / 'export_presets.cfg').is_file() else ''
-            if f'name="{bench["preset"]}"' not in preset_text:
-                fail(f'export preset "{bench["preset"]}" not found in {(project_dir / "export_presets.cfg").as_posix()}')
-                ok = False
-
-            def port_busy():
-                try:
-                    with _socket.create_connection((tst['address'], int(tst['port'])), timeout=1):
-                        return True
-                except OSError:
-                    return False
-
-            skipped = False
-            if ok and not dry and port_busy():
-                fmt.h(f'SKIP: {tst["address"]}:{tst["port"]} already has a Tracy client; another engine is running')
-                fmt.hu('the capture needs that port. This build stays successful and the project is left alone.')
-                res['status'] = 'skip'
-                res['facts']['skip'] = f'{tst["address"]}:{tst["port"]}'
-                skipped = True
-                ok = False
-
-            editor = None
-            if not skipped:
-                # A default editor has no TracyClient beside it, so LoadLibrary of
-                # the tracy editor library fails with Windows error 126. The
-                # libtracy editor bin has that client. The .console twin is a
-                # second process.
-                editor_env = os.environ.get(bench['editor_env'])
-                if editor_env:
-                    editor = Path(editor_env)
-                    fmt.h(f'export editor from ${bench["editor_env"]}: {editor.as_posix()}')
-                else:
-                    root = Path(tt['godot_root'])
-                    pattern = tt['godot_glob'].replace(tt['target'] + '.libtracy', 'editor.libtracy')
-                    exe_glob = tt['engine'][0].replace(tt['target'], 'editor')
-                    client_glob = tt['runtime'][0].replace(tt['target'], 'editor')
-                    folders = []
-                    for folder in root.glob(pattern):
-                        if not folder.is_dir() or '.libtracy.' not in folder.name:
-                            continue
-                        suffix = folder.name.split('.libtracy.', 1)[1]
-                        if _re.fullmatch(r'\d+(?:\.\d+)*~?', suffix):
-                            folders.append(folder)
-
-                    def _editor_key(folder):
-                        suffix = folder.name.split('.libtracy.', 1)[1]
-                        m = _re.fullmatch(r'(\d+(?:\.\d+)*)(~?)', suffix)
-                        return (tuple(int(n) for n in m.group(1).split('.')),
-                                1 if m.group(2) else 0, folder.stat().st_mtime)
-
-                    def _editor_in(bin_dir):
-                        if not bin_dir.is_dir():
-                            return None
-                        exes = [p for p in bin_dir.glob(exe_glob)
-                                if p.is_file() and '.console.' not in p.name]
-                        if not exes or not any(bin_dir.glob(client_glob)):
-                            return None
-                        return max(exes, key=lambda p: p.stat().st_mtime)
-
-                    if folders:
-                        editor = _editor_in(max(folders, key=_editor_key) / 'bin')
-                        if editor is not None:
-                            fmt.h(f'export editor: {editor.as_posix()}')
-                if not need(editor, f'export editor (set ${bench["editor_env"]})'):
-                    ok = False
-
-            from src.select import chosen_config_types
-            cmake = buildtool
-            if cmake.get('configuration_types'):
-                configurations = chosen_config_types(cmake, bench['config'])
-            elif cmake.get('config_type') == bench['config']:
-                configurations = [None]
-            else:
-                configurations = []
-            if not skipped and not configurations:
-                fail(f'{bench["config"]} is not a configuration of this build')
-                ok = False
-
-            runs = Path(os.environ.get(tst['runs_env']) or tst['runs_default'])
-            run_dir = runs / build['name'] / _time.strftime('%Y%m%d-%H%M%S')
-            pack_dir = run_dir / 'pack'
-            exe_name = 'template_release.exe' if os.name == 'nt' else 'template_release'
-            engine_run = pack_dir / exe_name
-            pck = pack_dir / 'template_release.pck'
-            history = run_dir / 'history.tres'
-            xdg = run_dir / 'xdg'
-            trace = run_dir / 'capture.tracy'
-            addon_dst = project_dir / 'addons' / tt['addon_name']
-            gdext = addon_dst / tt['install_gdextension']
-
-            lib_src = None
-            if ok:
-                fmt.h(f'project: {project_dir.as_posix()}')
-                fmt.h(f'run dir: {run_dir.as_posix()}')
-                # Release only. A later Debug or RelWithDebInfo line would be
-                # the library the scenario times.
-                for config_name in configurations:
-                    fmt.s2(f' Installing {config_name or "default"} ')
-                    args = ['cmake', '--install', Path(cmake['build_path']).as_posix(),
-                            *(['--config', config_name] if config_name else []),
-                            '--prefix', project_dir.as_posix()]
-                    try:
-                        stream_command(args, dry=dry)
-                    except _sp.CalledProcessError as exc:
-                        fail(f'cmake --install exited {exc.returncode}')
-                        ok = False
-                        break
-                if ok and not dry:
-                    section, found = None, None
-                    if not gdext.is_file():
-                        fail(f'{gdext.as_posix()} not found after install')
-                        ok = False
-                    else:
-                        for raw in gdext.read_text(encoding='utf-8', errors='replace').splitlines():
-                            line = raw.strip()
-                            if line.startswith('['):
-                                section = line
-                                continue
-                            m = _re.fullmatch(r'([^=\s]+)\s*=\s*"([^"]*)"', line)
-                            if section != '[libraries]' or not m:
-                                continue
-                            if tt['target'] in m.group(1) and tt['output_tag'] in Path(m.group(2)).name.split('.'):
-                                found = m.group(2)
-                        if found is None:
-                            fail(f'{gdext.as_posix()} has no {tt["target"]} library with a ".{tt["output_tag"]}." name part')
-                            ok = False
-                        else:
-                            lib_src = addon_dst / found
-                            fmt.hu(f'extension: {lib_src.as_posix()}')
-                            if not lib_src.is_file():
-                                fail(f'{lib_src.as_posix()} not found')
-                                ok = False
-                ext_list = project_dir / '.godot' / 'extension_list.cfg'
-                ext_line = f'res://{(Path("addons") / tt["addon_name"] / tt["install_gdextension"]).as_posix()}'
-                if dry:
-                    fmt.hu(f'dry-run: ensure {ext_list.as_posix()} lists {ext_line}')
-                elif ok:
-                    ext_list.parent.mkdir(parents=True, exist_ok=True)
-                    lines = ext_list.read_text(encoding='utf-8').splitlines() if ext_list.is_file() else []
-                    if ext_line not in (ln.strip() for ln in lines):
-                        lines.append(ext_line)
-                        ext_list.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-
-            if ok:
-                if not dry:
-                    pack_dir.mkdir(parents=True, exist_ok=True)
-                export_cmd = [editor.as_posix(), '--headless', '--path', project_dir.as_posix(),
-                              '--export-pack', bench['preset'], pck.as_posix()]
-                fmt.hu(f'$ {cmdline(export_cmd)}')
-                if dry:
-                    fmt.hu(f'dry-run: copy {engine_src.as_posix()} -> {engine_run.as_posix()}')
-                    fmt.hu(f'dry-run: copy {runtime_src.as_posix()} -> {(pack_dir / runtime_src.name).as_posix()}')
-                    fmt.hu('dry-run: copy the installed extension library beside the exe')
-                else:
-                    export_log = run_dir / 'export.log'
-                    res['logs'].append(export_log.as_posix())
-                    with open(export_log, 'w', encoding='utf-8') as el:
-                        try:
-                            export_rc = _sp.run(export_cmd, stdout=el, stderr=_sp.STDOUT, stdin=_sp.DEVNULL,
-                                                timeout=bench['timeout']).returncode
-                        except _sp.TimeoutExpired:
-                            export_rc = 'timeout'
-                    if export_rc != 0 or not pck.is_file() or not pck.stat().st_size:
-                        fail(f'export-pack exited {export_rc} (log: {export_log.as_posix()})')
-                        ok = False
-                    else:
-                        _shutil.copy2(engine_src, engine_run)
-                        _shutil.copy2(runtime_src, pack_dir / runtime_src.name)
-                        _shutil.copy2(lib_src, pack_dir / lib_src.name)
-                        fmt.h(f'engine: {engine_run.as_posix()}')
-                        fmt.h(f'client: {(pack_dir / runtime_src.name).as_posix()}')
-                        fmt.h(f'library: {(pack_dir / lib_src.name).as_posix()}')
-
-            if ok:
-                env = {f'XDG_{k}_HOME': (xdg / k.lower()).as_posix() for k in ('CONFIG', 'DATA', 'CACHE', 'STATE')}
-                eng_cmd = [engine_run.as_posix(), '--headless', '--tracy', '--',
-                           bench['suite'], tt['target'], history.as_posix()]
-                cap_cmd = [str(capture_tool), '-o', trace.as_posix(), '-a', tst['address'],
-                           '-p', str(tst['port']), '-f']
-                res['facts'].update({'engine': engine_run.as_posix(), 'engine_cmd': cmdline(eng_cmd, env),
-                                     'capture_cmd': cmdline(cap_cmd), 'project': project_dir.as_posix(),
-                                     'suite': bench['suite']})
-                fmt.hu(f'$ {cmdline(eng_cmd, env)}')
-                fmt.hu(f'$ {cmdline(cap_cmd)} &   (once {tst["address"]}:{tst["port"]} is open)')
-
-                if not dry:
-                    # Export has returned. Its editor can still be exiting and
-                    # still be the process listening on this port. Wait that out
-                    # before the template binds it.
-                    if port_busy():
-                        fmt.h(f'waiting for {tst["address"]}:{tst["port"]} to close after export')
-                        deadline = _time.time() + 30
-                        while port_busy() and _time.time() < deadline:
-                            _time.sleep(0.2)
-                    if port_busy():
-                        fail(f'{tst["address"]}:{tst["port"]} still open after export; refusing to capture that client')
-                    else:
-                        for d in env.values():
-                            Path(d).mkdir(parents=True, exist_ok=True)
-                        (run_dir / 'capture.cmd').write_text(cmdline(cap_cmd) + '\n', encoding='utf-8')
-                        (run_dir / 'engine.cmd').write_text(cmdline(eng_cmd, env) + '\n', encoding='utf-8')
-                        cap_log = run_dir / 'capture.log'
-                        eng_log = run_dir / 'engine.log'
-                        res['logs'] += [cap_log.as_posix(), eng_log.as_posix()]
-                        eng_rc = None
-                        cap_rc = None
-                        with open(eng_log, 'w', encoding='utf-8') as el:
-                            eng = _sp.Popen(eng_cmd, stdout=el, stderr=_sp.STDOUT, stdin=_sp.DEVNULL,
-                                            env={**os.environ, **env}, cwd=pack_dir)
-                            deadline = _time.time() + 30
-                            while eng.poll() is None and not port_busy() and _time.time() < deadline:
-                                _time.sleep(0.05)
-                            if eng.poll() is not None:
-                                eng_rc = eng.returncode
-                                fail(f'engine exited {eng_rc} before its Tracy client listened (log: {eng_log.as_posix()})')
-                            elif not port_busy():
-                                eng.kill()
-                                eng_rc = 'no-listen'
-                                fail(f'engine did not open {tst["address"]}:{tst["port"]} (log: {eng_log.as_posix()})')
-                            else:
-                                with open(cap_log, 'w', encoding='utf-8') as cl:
-                                    cap = _sp.Popen(cap_cmd, stdout=cl, stderr=_sp.STDOUT, stdin=_sp.DEVNULL)
-                                try:
-                                    eng_rc = eng.wait(timeout=bench['timeout'])
-                                except _sp.TimeoutExpired:
-                                    eng.kill()
-                                    eng_rc = 'timeout'
-                                try:
-                                    cap_rc = cap.wait(timeout=60)
-                                except _sp.TimeoutExpired:
-                                    cap.terminate()
-                                    try:
-                                        cap_rc = cap.wait(timeout=10)
-                                    except _sp.TimeoutExpired:
-                                        cap.kill()
-                                        cap_rc = 'killed'
-                        if eng_rc is not None:
-                            res['facts']['engine_rc'] = eng_rc
-                        if cap_rc is not None:
-                            res['facts']['capture_rc'] = cap_rc
-                        if cap_rc is None:
-                            eng_text = ''
-                        else:
-                            if eng_rc != 0:
-                                fail(f'engine exited {eng_rc} (log: {eng_log.as_posix()})')
-                            if cap_rc != 0:
-                                fail(f'tracy-capture exited {cap_rc} (log: {cap_log.as_posix()})')
-                            eng_text = eng_log.read_text(encoding='utf-8', errors='replace')
-                        msgs_csv = run_dir / 'messages.csv'
-
-                        if cap_rc is None:
-                            pass
-                        elif not trace.is_file() or not trace.stat().st_size:
-                            fail(f'capture missing or empty: {trace.as_posix()}')
-                        else:
-                            res['facts']['trace'] = trace.as_posix()
-                            res['facts']['trace_bytes'] = trace.stat().st_size
-                            zones_csv = run_dir / 'zones.csv'
-                            z = _sp.run([str(csvexport_tool), trace.as_posix()], capture_output=True, text=True,
-                                        errors='replace', timeout=300)
-                            m = _sp.run([str(csvexport_tool), '-m', trace.as_posix()], capture_output=True,
-                                        text=True, errors='replace', timeout=300)
-                            zones_csv.write_text(z.stdout, encoding='utf-8')
-                            msgs_csv.write_text(m.stdout, encoding='utf-8')
-                            res['logs'] += [zones_csv.as_posix(), msgs_csv.as_posix()]
-
-                            seen = []
-                            for row in list(_csv.reader(z.stdout.splitlines()))[1:]:
-                                if len(row) < 10:
-                                    continue
-                                seen.append(','.join(row[:-9]))
-                            present = [name for name in bench['required_zones'] if name in seen]
-                            missing = [name for name in bench['required_zones'] if name not in seen]
-                            res['facts']['zones_present'] = present
-                            res['facts']['zones_missing'] = missing
-                            fmt.h(f'scenario zones: {len(present)}/{len(bench["required_zones"])}')
-                            for name in present:
-                                fmt.hu(name)
-                            if missing:
-                                fail(f'missing zones in {zones_csv.as_posix()}: {", ".join(missing)}')
-
-                        if cap_rc is not None:
-                            match_re = _re.compile(tst['client_matches_pattern'])
-                            msgs = msgs_csv.read_text(encoding='utf-8') if msgs_csv.is_file() else ''
-                            matched = bool(match_re.search(eng_text) or match_re.search(msgs))
-                            res['facts']['client_matches'] = matched
-                            fmt.h(f'godot_tracy_client_matches() true: {"yes" if matched else "not seen"}')
-                            if not matched:
-                                fail(f'godot_tracy_client_matches() true not seen in {eng_log.as_posix()} '
-                                     f'or the capture messages')
-
-                        res['status'] = 'fail' if res['failures'] else 'pass'
-                        (run_dir / 'result.json').write_text(_json.dumps(res, indent=2, default=str), encoding='utf-8')
-                        fmt.h(f'result: {res["status"]}  ({(run_dir / "result.json").as_posix()})')
-                        if trace.is_file():
-                            fmt.h(f'capture: {trace.as_posix()}')
+            libtracy_bench_steps(tt, bench, tst, dry, res)
             if dry:
                 res['status'] = 'dry'
             if res['failures']:
                 timer.status = TaskStatus.FAILED
         stats['test'] = timer.get_dict()
         config['ok'] = timer.ok() and not res['failures']
+
+    def libtracy_bench_steps(tt, bench, tst, dry, res):
+        source = Path(build['source_path'])
+        project_dir = Path(os.environ.get(tst['project_env']) or tst.get('project') or (source / 'project'))
+        engine_src = Path(tt['engine_path']) if tt.get('engine_path') else None
+        runtime_src = Path(tt['runtime_path']) if tt.get('runtime_path') else None
+        capture_tool = tst.get('capture')
+        csvexport_tool = tst.get('csvexport')
+        ok = all([
+            libtracy_need(res, engine_src, 'shared-client engine exe (libtracy Resolve did not run?)'),
+            libtracy_need(res, runtime_src, 'TracyClient runtime (libtracy Resolve did not run?)'),
+            libtracy_need(res, project_dir, f'Godot project (set ${tst["project_env"]})'),
+            libtracy_need(res, project_dir / 'project.godot', 'project.godot'),
+            libtracy_need(res, project_dir / 'export_presets.cfg', 'export_presets.cfg'),
+            libtracy_need(res, capture_tool, 'tracy-capture (godot TRACY_CAPTURE)'),
+            libtracy_need(res, csvexport_tool, 'tracy-csvexport (godot TRACY_CSVEXPORT)'),
+        ])
+        preset_text = (project_dir / 'export_presets.cfg').read_text(encoding='utf-8', errors='replace') \
+            if (project_dir / 'export_presets.cfg').is_file() else ''
+        if f'name="{bench["preset"]}"' not in preset_text:
+            libtracy_fail(res, f'export preset "{bench["preset"]}" not found in {(project_dir / "export_presets.cfg").as_posix()}')
+            ok = False
+
+        editor = None
+        # A default editor has no TracyClient beside it, so LoadLibrary of
+        # the tracy editor library fails with Windows error 126. The
+        # libtracy editor bin has that client. The .console twin is a
+        # second process.
+        editor_env = os.environ.get(bench['editor_env'])
+        if editor_env:
+            editor = Path(editor_env)
+            fmt.h(f'export editor from ${bench["editor_env"]}: {editor.as_posix()}')
+        else:
+            root = Path(tt['godot_root'])
+            pattern = tt['godot_glob'].replace(tt['target'] + '.libtracy', 'editor.libtracy')
+            exe_glob = tt['engine'][0].replace(tt['target'], 'editor')
+            client_glob = tt['runtime'][0].replace(tt['target'], 'editor')
+            folders = []
+            for folder in root.glob(pattern):
+                if not folder.is_dir() or '.libtracy.' not in folder.name:
+                    continue
+                suffix = folder.name.split('.libtracy.', 1)[1]
+                if _re.fullmatch(r'\d+(?:\.\d+)*~?', suffix):
+                    folders.append(folder)
+
+            def _editor_key(folder):
+                suffix = folder.name.split('.libtracy.', 1)[1]
+                m = _re.fullmatch(r'(\d+(?:\.\d+)*)(~?)', suffix)
+                return (tuple(int(n) for n in m.group(1).split('.')),
+                        1 if m.group(2) else 0, folder.stat().st_mtime)
+
+            def _editor_in(bin_dir):
+                if not bin_dir.is_dir():
+                    return None
+                exes = [p for p in bin_dir.glob(exe_glob)
+                        if p.is_file() and '.console.' not in p.name]
+                if not exes or not any(bin_dir.glob(client_glob)):
+                    return None
+                return max(exes, key=lambda p: p.stat().st_mtime)
+
+            if folders:
+                editor = _editor_in(max(folders, key=_editor_key) / 'bin')
+                if editor is not None:
+                    fmt.h(f'export editor: {editor.as_posix()}')
+        if not libtracy_need(res, editor, f'export editor (set ${bench["editor_env"]})'):
+            ok = False
+
+        from src.select import chosen_config_types
+        cmake = buildtool
+        if cmake.get('configuration_types'):
+            configurations = chosen_config_types(cmake, bench['config'])
+        elif cmake.get('config_type') == bench['config']:
+            configurations = [None]
+        else:
+            configurations = []
+        if not configurations:
+            libtracy_fail(res, f'{bench["config"]} is not a configuration of this build')
+            ok = False
+
+        runs = Path(os.environ.get(tst['runs_env']) or tst['runs_default'])
+        run_dir = runs / build['name'] / _time.strftime('%Y%m%d-%H%M%S')
+        pack_dir = run_dir / 'pack'
+        exe_name = 'template_release.exe' if os.name == 'nt' else 'template_release'
+        engine_run = pack_dir / exe_name
+        pck = pack_dir / 'template_release.pck'
+        history = run_dir / 'history.tres'
+        xdg = run_dir / 'xdg'
+        trace = run_dir / 'capture.tracy'
+        addon_dst = project_dir / 'addons' / tt['addon_name']
+        gdext = addon_dst / tt['install_gdextension']
+
+        lib_src = None
+        if not ok:
+            return
+
+        fmt.h(f'project: {project_dir.as_posix()}')
+        fmt.h(f'run dir: {run_dir.as_posix()}')
+        # Release only. A later Debug or RelWithDebInfo line would be
+        # the library the scenario times.
+        for config_name in configurations:
+            fmt.s2(f' Installing {config_name or "default"} ')
+            args = ['cmake', '--install', Path(cmake['build_path']).as_posix(),
+                    *(['--config', config_name] if config_name else []),
+                    '--prefix', project_dir.as_posix()]
+            try:
+                stream_command(args, dry=dry)
+            except _sp.CalledProcessError as exc:
+                libtracy_fail(res, f'cmake --install exited {exc.returncode}')
+                ok = False
+                break
+        if ok and not dry:
+            section, found = None, None
+            if not gdext.is_file():
+                libtracy_fail(res, f'{gdext.as_posix()} not found after install')
+                ok = False
+            else:
+                for raw in gdext.read_text(encoding='utf-8', errors='replace').splitlines():
+                    line = raw.strip()
+                    if line.startswith('['):
+                        section = line
+                        continue
+                    m = _re.fullmatch(r'([^=\s]+)\s*=\s*"([^"]*)"', line)
+                    if section != '[libraries]' or not m:
+                        continue
+                    if tt['target'] in m.group(1) and tt['output_tag'] in Path(m.group(2)).name.split('.'):
+                        found = m.group(2)
+                if found is None:
+                    libtracy_fail(res, f'{gdext.as_posix()} has no {tt["target"]} library with a ".{tt["output_tag"]}." name part')
+                    ok = False
+                else:
+                    lib_src = addon_dst / found
+                    fmt.hu(f'extension: {lib_src.as_posix()}')
+                    if not lib_src.is_file():
+                        libtracy_fail(res, f'{lib_src.as_posix()} not found')
+                        ok = False
+        ext_list = project_dir / '.godot' / 'extension_list.cfg'
+        ext_line = f'res://{(Path("addons") / tt["addon_name"] / tt["install_gdextension"]).as_posix()}'
+        if dry:
+            fmt.hu(f'dry-run: ensure {ext_list.as_posix()} lists {ext_line}')
+        elif ok:
+            ext_list.parent.mkdir(parents=True, exist_ok=True)
+            lines = ext_list.read_text(encoding='utf-8').splitlines() if ext_list.is_file() else []
+            if ext_line not in (ln.strip() for ln in lines):
+                lines.append(ext_line)
+                ext_list.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+        if not ok:
+            return
+
+        if not dry:
+            pack_dir.mkdir(parents=True, exist_ok=True)
+        export_cmd = [editor.as_posix(), '--headless', '--path', project_dir.as_posix(),
+                      '--export-pack', bench['preset'], pck.as_posix()]
+        fmt.hu(f'$ {libtracy_cmdline(export_cmd)}')
+        if dry:
+            fmt.hu(f'dry-run: copy {engine_src.as_posix()} -> {engine_run.as_posix()}')
+            fmt.hu(f'dry-run: copy {runtime_src.as_posix()} -> {(pack_dir / runtime_src.name).as_posix()}')
+            fmt.hu('dry-run: copy the installed extension library beside the exe')
+        else:
+            export_log = run_dir / 'export.log'
+            res['logs'].append(export_log.as_posix())
+            with open(export_log, 'w', encoding='utf-8') as el:
+                try:
+                    export_rc = _sp.run(export_cmd, stdout=el, stderr=_sp.STDOUT, stdin=_sp.DEVNULL,
+                                        timeout=bench['timeout']).returncode
+                except _sp.TimeoutExpired:
+                    export_rc = 'timeout'
+            if export_rc != 0 or not pck.is_file() or not pck.stat().st_size:
+                libtracy_fail(res, f'export-pack exited {export_rc} (log: {export_log.as_posix()})')
+                return
+            _shutil.copy2(engine_src, engine_run)
+            _shutil.copy2(runtime_src, pack_dir / runtime_src.name)
+            _shutil.copy2(lib_src, pack_dir / lib_src.name)
+            fmt.h(f'engine: {engine_run.as_posix()}')
+            fmt.h(f'client: {(pack_dir / runtime_src.name).as_posix()}')
+            fmt.h(f'library: {(pack_dir / lib_src.name).as_posix()}')
+
+        env = {f'XDG_{k}_HOME': (xdg / k.lower()).as_posix() for k in ('CONFIG', 'DATA', 'CACHE', 'STATE')}
+        port = str(tst['port']) if dry else libtracy_free_listen_port(tst['address'], tst['port'])
+        if port is None:
+            libtracy_fail(res, f'no free listen port on {tst["address"]} from {tst["port"]}')
+        elif not dry and port != str(tst['port']):
+            fmt.h(f'{tst["address"]}:{tst["port"]} is in use; using {port}')
+        eng_cmd = [engine_run.as_posix(), '--headless', '--tracy', '--tracy-port', port, '--',
+                   bench['suite'], tt['target'], history.as_posix()]
+        cap_cmd = [str(capture_tool), '-o', trace.as_posix(), '-a', tst['address'],
+                   '-p', port, '-f']
+        res['facts'].update({'engine': engine_run.as_posix(), 'engine_cmd': libtracy_cmdline(eng_cmd, env),
+                             'capture_cmd': libtracy_cmdline(cap_cmd), 'project': project_dir.as_posix(),
+                             'suite': bench['suite'], 'port': port})
+        fmt.hu(f'$ {libtracy_cmdline(eng_cmd, env)}')
+        fmt.hu(f'$ {libtracy_cmdline(cap_cmd)} &   (once {tst["address"]}:{port} is open)')
+
+        if not dry and port:
+            for d in env.values():
+                Path(d).mkdir(parents=True, exist_ok=True)
+            (run_dir / 'capture.cmd').write_text(libtracy_cmdline(cap_cmd) + '\n', encoding='utf-8')
+            (run_dir / 'engine.cmd').write_text(libtracy_cmdline(eng_cmd, env) + '\n', encoding='utf-8')
+            cap_log = run_dir / 'capture.log'
+            eng_log = run_dir / 'engine.log'
+            res['logs'] += [cap_log.as_posix(), eng_log.as_posix()]
+            eng_rc = None
+            cap_rc = None
+            with open(eng_log, 'w', encoding='utf-8') as el:
+                eng = _sp.Popen(eng_cmd, stdout=el, stderr=_sp.STDOUT, stdin=_sp.DEVNULL,
+                                env={**os.environ, **env}, cwd=pack_dir)
+                deadline = _time.time() + 30
+                while eng.poll() is None and not libtracy_port_busy(tst['address'], port) and _time.time() < deadline:
+                    _time.sleep(0.05)
+                if eng.poll() is not None:
+                    eng_rc = eng.returncode
+                    libtracy_fail(res, f'engine exited {eng_rc} before its Tracy client listened (log: {eng_log.as_posix()})')
+                elif not libtracy_port_busy(tst['address'], port):
+                    eng.kill()
+                    eng_rc = 'no-listen'
+                    libtracy_fail(res, f'engine did not open {tst["address"]}:{port} (log: {eng_log.as_posix()})')
+                else:
+                    with open(cap_log, 'w', encoding='utf-8') as cl:
+                        cap = _sp.Popen(cap_cmd, stdout=cl, stderr=_sp.STDOUT, stdin=_sp.DEVNULL)
+                    try:
+                        eng_rc = eng.wait(timeout=bench['timeout'])
+                    except _sp.TimeoutExpired:
+                        eng.kill()
+                        eng_rc = 'timeout'
+                    try:
+                        cap_rc = cap.wait(timeout=60)
+                    except _sp.TimeoutExpired:
+                        cap.terminate()
+                        try:
+                            cap_rc = cap.wait(timeout=10)
+                        except _sp.TimeoutExpired:
+                            cap.kill()
+                            cap_rc = 'killed'
+            if eng_rc is not None:
+                res['facts']['engine_rc'] = eng_rc
+            if cap_rc is not None:
+                res['facts']['capture_rc'] = cap_rc
+            if cap_rc is None:
+                eng_text = ''
+            else:
+                if eng_rc != 0:
+                    libtracy_fail(res, f'engine exited {eng_rc} (log: {eng_log.as_posix()})')
+                if cap_rc != 0:
+                    libtracy_fail(res, f'tracy-capture exited {cap_rc} (log: {cap_log.as_posix()})')
+                eng_text = eng_log.read_text(encoding='utf-8', errors='replace')
+            msgs_csv = run_dir / 'messages.csv'
+
+            if cap_rc is None:
+                pass
+            elif not trace.is_file() or not trace.stat().st_size:
+                libtracy_fail(res, f'capture missing or empty: {trace.as_posix()}')
+            else:
+                res['facts']['trace'] = trace.as_posix()
+                res['facts']['trace_bytes'] = trace.stat().st_size
+                zones_csv = run_dir / 'zones.csv'
+                z = _sp.run([str(csvexport_tool), trace.as_posix()], capture_output=True, text=True,
+                            errors='replace', timeout=300)
+                m = _sp.run([str(csvexport_tool), '-m', trace.as_posix()], capture_output=True,
+                            text=True, errors='replace', timeout=300)
+                zones_csv.write_text(z.stdout, encoding='utf-8')
+                msgs_csv.write_text(m.stdout, encoding='utf-8')
+                res['logs'] += [zones_csv.as_posix(), msgs_csv.as_posix()]
+
+                seen = []
+                for row in list(_csv.reader(z.stdout.splitlines()))[1:]:
+                    if len(row) < 10:
+                        continue
+                    seen.append(','.join(row[:-9]))
+                present = [name for name in bench['required_zones'] if name in seen]
+                missing = [name for name in bench['required_zones'] if name not in seen]
+                res['facts']['zones_present'] = present
+                res['facts']['zones_missing'] = missing
+                fmt.h(f'scenario zones: {len(present)}/{len(bench["required_zones"])}')
+                for name in present:
+                    fmt.hu(name)
+                if missing:
+                    libtracy_fail(res, f'missing zones in {zones_csv.as_posix()}: {", ".join(missing)}')
+
+            if cap_rc is not None:
+                match_re = _re.compile(tst['client_matches_pattern'])
+                msgs = msgs_csv.read_text(encoding='utf-8') if msgs_csv.is_file() else ''
+                matched = bool(match_re.search(eng_text) or match_re.search(msgs))
+                res['facts']['client_matches'] = matched
+                fmt.h(f'godot_tracy_client_matches() true: {"yes" if matched else "not seen"}')
+                if not matched:
+                    libtracy_fail(res, f'godot_tracy_client_matches() true not seen in {eng_log.as_posix()} '
+                                 f'or the capture messages')
+
+            res['status'] = 'fail' if res['failures'] else 'pass'
+            (run_dir / 'result.json').write_text(_json.dumps(res, indent=2, default=str), encoding='utf-8')
+            fmt.h(f'result: {res["status"]}  ({(run_dir / "result.json").as_posix()})')
+            if trace.is_file():
+                fmt.h(f'capture: {trace.as_posix()}')
+
+    libtracy_run_bench()
