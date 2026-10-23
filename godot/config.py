@@ -2168,8 +2168,10 @@ def install_scons():
     # MARK: Install
     #[================================[ Install ]================================]
     # Launch files only: the engine binary, its console twin, matching symbol
-    # files, shared libraries next to them, and godot_profiling.gen.h when the
-    # build produced it. Import libraries stay in the build tree.
+    # files, shared libraries next to them, and godot_profiling<suffix>.gen.h
+    # when the build produced it. The suffix matches the engine binary so
+    # several builds can share the install directory. Import libraries stay
+    # in the build tree.
     if 'install' not in opts['build_actions']:
         pass
     else:
@@ -2257,7 +2259,9 @@ def install_scons():
                             name = path.name
                             if path.suffix.lower() == '.dll' or name.endswith('.dylib') or '.so' in name:
                                 files.append(path)
-                        header = bin_dir / 'godot_profiling.gen.h'
+                        # stem is "godot" plus the engine suffix. The header uses that suffix
+                        # so a later install does not overwrite another build's copy.
+                        header = bin_dir / f'godot_profiling{stem.removeprefix("godot")}.gen.h'
                         if header.is_file():
                             files.append(header)
                         files = sorted(set(files))

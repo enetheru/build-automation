@@ -379,7 +379,7 @@ LIBTRACY_TEST = {
 }
 
 # template_release scenario capture (libtracy_bench). One suite. The pack
-# layout matches project/bench/run.ps1: the exe, the pck named after that exe,
+# layout matches project/bench-run.ps1: the exe, the pck named after that exe,
 # the extension library, and the TracyClient sit in one directory. Template
 # binaries drop --path and --script. A library inside the pck is not a file
 # LoadLibrary can open.
@@ -1162,7 +1162,7 @@ def libtracy_bench():
     # One scenario suite on the template_release Tracy engine, captured.
     # The Godot project stays in place. Release is installed there so the
     # packed flatbuffers.gdextension names the Tracy library.
-    # Under <runs>/<build name>/<timestamp>/pack/, same layout as bench/run.ps1:
+    # Under <runs>/<build name>/<timestamp>/pack/, same layout as bench-run.ps1:
     #   template_release.exe   the real Tracy exe, renamed so the pck matches
     #   template_release.pck   --export-pack of the bench preset
     #   the Tracy extension library, under the filename the gdextension names
