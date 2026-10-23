@@ -301,10 +301,10 @@ LIBTRACY_FLATC_GLOB = 'flatc*'                         # in <dest>/bin; installe
 LIBTRACY_OUTPUT_TAG = 'tracy'
 
 # What the extension prints at SCENE init (src/profiling.cpp), verbatim shape:
-#   godot-flatbuffers tracy: godot_tracy_client_matches()=true client_version=0x000e01
+#   godot-flatbuffers tracy: tracy_client_matches()=true client_version=0x000e01
 #   client_defines_hash=0x... header_version=0x000e01 header_defines_hash=0x...
 # (one line). A mismatch prints =false and pushes LIBTRACY_MISMATCH_WARNING.
-LIBTRACY_MATCH_LINE_RE = (r'godot-flatbuffers tracy: godot_tracy_client_matches\(\)=(true|false)'
+LIBTRACY_MATCH_LINE_RE = (r'godot-flatbuffers tracy: tracy_client_matches\(\)=(true|false)'
                           r' client_version=(0x[0-9a-f]+) client_defines_hash=(0x[0-9a-f]+)'
                           r' header_version=(0x[0-9a-f]+) header_defines_hash=(0x[0-9a-f]+)')
 LIBTRACY_MISMATCH_WARNING = "godot-flatbuffers: the engine's TracyClient does not match"
@@ -367,11 +367,11 @@ LIBTRACY_TEST = {
     'settle_secs': 3,
     # --editor so EditorScript and the test-runner plugin can run. -s is not
     # used: that path replaces the main loop and rejects EditorScript.
-    'engine_args': ['--headless', '--editor', '--tracy'],
-    # godot_tracy_client_matches() true: searched in the engine output and the
+    'engine_args': ['--headless', '--editor', '--profiler'],
+    # tracy_client_matches() true: searched in the engine output and the
     # capture's messages (tracy-csvexport -m).
     # TODO(extension): replace with the exact line the extension prints or sends.
-    'client_matches_pattern': r'godot_tracy_client_matches\(\)\W*(?:is\W*)?true',
+    'client_matches_pattern': r'tracy_client_matches\(\)\W*(?:is\W*)?true',
     # An extension zone: a zone whose source file is under the extension's
     # src/ dir, or whose name matches this pattern.
     # TODO(extension): exact zone names (builder, verify, read) still to come.
@@ -379,7 +379,7 @@ LIBTRACY_TEST = {
 }
 
 # template_release scenario capture (libtracy_bench). One suite. The pack
-# layout matches project/bench-run.py: the exe, the pck named after that exe,
+# layout matches project/py/bench-run.py: the exe, the pck named after that exe,
 # the extension library, and the TracyClient sit in one directory. Template
 # binaries drop --path and --script. A library inside the pck is not a file
 # LoadLibrary can open.
@@ -586,7 +586,7 @@ def libtracy_resolve():
             if not _re.search(r'#define\s+GODOT_TRACY_SHARED_CLIENT\b', text):
                 _missing('the header has no GODOT_TRACY_SHARED_CLIENT', [
                     header.as_posix(),
-                    'the engine was not built with tracy_as_shared=yes, so there is no client library to link'])
+                    'the engine was not built with tracy_shared=yes, so there is no client library to link'])
 
             # 3. The client library the extension links, and the one it loads.
             def _find(globs):
@@ -933,7 +933,7 @@ def libtracy_run_helpers():
             return False
 
     def libtracy_free_listen_port(address, preferred):
-        # --tracy-port pins the engine to one port. A busy 8086 is
+        # --profiler-port pins the engine to one port. A busy 8086 is
         # another engine; take the next free port instead of skipping.
         try:
             start = int(preferred)
@@ -973,9 +973,9 @@ def libtracy_test_headless():
     # Per run, under <runs>/<build name>/<timestamp>/: xdg/ for XDG_*_HOME,
     # capture.tracy, *.log, *.cmd, zones.csv, messages.csv, result.json.
     # tracy-capture listens first, the engine starts settle_secs later. Pass:
-    # engine exit 0, capture saved, godot_tracy_client_matches() true, and at
+    # engine exit 0, capture saved, tracy_client_matches() true, and at
     # least one extension zone in the capture.
-    # --tracy-port and tracy-capture -p share the first free port at or after
+    # --profiler-port and tracy-capture -p share the first free port at or after
     # the configured one, so an engine already on 8086 does not take this capture.
     import csv as _csv
     import json as _json
@@ -1099,7 +1099,7 @@ def libtracy_test_headless():
             libtracy_fail(res, f'no free listen port on {tst["address"]} from {tst["port"]}')
         elif not dry and port != str(tst['port']):
             fmt.h(f'{tst["address"]}:{tst["port"]} is in use; using {port}')
-        eng_cmd = [engine_run.as_posix(), *tst['engine_args'], '--tracy-port', port,
+        eng_cmd = [engine_run.as_posix(), *tst['engine_args'], '--profiler-port', port,
                    '--path', project_dir.as_posix()]
         cap_cmd = [str(capture_tool), '-o', trace.as_posix(), '-a', tst['address'], '-p', port, '-f']
         res['facts'].update({'engine': engine_run.as_posix(), 'engine_cmd': libtracy_cmdline(eng_cmd, env),
@@ -1179,9 +1179,9 @@ def libtracy_test_headless():
             msgs = msgs_csv.read_text(encoding='utf-8') if msgs_csv.is_file() else ''
             matched = bool(match_re.search(eng_text) or match_re.search(msgs))
             res['facts']['client_matches'] = matched
-            fmt.h(f'godot_tracy_client_matches() true: {"yes" if matched else "not seen"}')
+            fmt.h(f'tracy_client_matches() true: {"yes" if matched else "not seen"}')
             if not matched:
-                libtracy_fail(res, f'godot_tracy_client_matches() true not seen in {eng_log.as_posix()} '
+                libtracy_fail(res, f'tracy_client_matches() true not seen in {eng_log.as_posix()} '
                              f'or the capture messages (pattern {tst["client_matches_pattern"]})')
 
             res['status'] = 'fail' if res['failures'] else 'pass'
@@ -1204,15 +1204,15 @@ def libtracy_bench():
     # One scenario suite on the template_release Tracy engine, captured.
     # The Godot project stays in place. Release is installed there so the
     # packed flatbuffers.gdextension names the Tracy library.
-    # Under <runs>/<build name>/<timestamp>/pack/, same layout as bench-run.py:
+    # Under <runs>/<build name>/<timestamp>/pack/, same layout as py/bench-run.py:
     #   template_release.exe   the real Tracy exe, renamed so the pck matches
     #   template_release.pck   --export-pack of the bench preset
     #   the Tracy extension library, under the filename the gdextension names
     #   the TracyClient the exe NEEDs
-    # The packed template is started with --tracy-port on the first free port
+    # The packed template is started with --profiler-port on the first free port
     # at or after the configured one. Capture connects there after that listen,
     # so it does not attach to the export editor.
-    # The engine is --headless --tracy --tracy-port <port>, then
+    # The engine is --headless --profiler --profiler-port <port>, then
     #   -- scenario template_release <history>
     # Pass: engine exit 0, capture saved, client match true, and the scenario
     # zones present (allocate, finish, get_buffer).
@@ -1425,7 +1425,7 @@ def libtracy_bench():
             libtracy_fail(res, f'no free listen port on {tst["address"]} from {tst["port"]}')
         elif not dry and port != str(tst['port']):
             fmt.h(f'{tst["address"]}:{tst["port"]} is in use; using {port}')
-        eng_cmd = [engine_run.as_posix(), '--headless', '--tracy', '--tracy-port', port, '--',
+        eng_cmd = [engine_run.as_posix(), '--headless', '--profiler', '--profiler-port', port, '--',
                    bench['suite'], tt['target'], history.as_posix()]
         cap_cmd = [str(capture_tool), '-o', trace.as_posix(), '-a', tst['address'],
                    '-p', port, '-f']
@@ -1525,9 +1525,9 @@ def libtracy_bench():
                 msgs = msgs_csv.read_text(encoding='utf-8') if msgs_csv.is_file() else ''
                 matched = bool(match_re.search(eng_text) or match_re.search(msgs))
                 res['facts']['client_matches'] = matched
-                fmt.h(f'godot_tracy_client_matches() true: {"yes" if matched else "not seen"}')
+                fmt.h(f'tracy_client_matches() true: {"yes" if matched else "not seen"}')
                 if not matched:
-                    libtracy_fail(res, f'godot_tracy_client_matches() true not seen in {eng_log.as_posix()} '
+                    libtracy_fail(res, f'tracy_client_matches() true not seen in {eng_log.as_posix()} '
                                  f'or the capture messages')
 
             res['status'] = 'fail' if res['failures'] else 'pass'

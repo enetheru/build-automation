@@ -297,9 +297,9 @@ def libtracy_config( cfg:SimpleNamespace ) -> bool:
     cfg.buildtool.build_vars += [
         'extra_suffix=tracy',
         "profiler=tracy",
-        # "profiler_sample_callstack=yes",
-        # "profiler_track_memory=yes",
-        'tracy_as_shared=yes',
+        # "profiler_callstack=yes",
+        # "profiler_memory=yes",
+        'tracy_shared=yes',
     ]
     tc = cfg.toolchain
     match tc.host:

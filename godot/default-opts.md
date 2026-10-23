@@ -21,19 +21,18 @@ short_sha = repo.git.rev_parse(sha, short=4)
 
 	profiler                      = "none"    # ("none", "tracy", "perfetto", "instruments")
 	profiler_path                 = ""        # Checkout used when profiler is tracy or perfetto
-	profiler_sample_callstack     = "no"      # Zone call stacks. Not the periodic sampler
-	profiler_track_memory         = "no"      # Also defines TRACY_MEMORY_ENABLED
-	profiler_record_on_demand     = "yes"     # Tracy TRACY_ON_DEMAND
-	tracy_as_shared               = "no"      # Build TracyClient as a shared library
-	tracy_zones                   = "yes"
-	tracy_plots                   = "yes"
-	tracy_messages                = "yes"
-	tracy_memory                  = "no"      # Also on when profiler_track_memory is on
-	tracy_locks                   = "yes"
-	tracy_gpu                     = "yes"
-	tracy_gdscript_auto           = "yes"     # Runtime token gdscript_auto is silent until listed
-	tracy_frames                  = "yes"
-	tracy_frame_images            = "no"
+	profiler_callstack            = "no"      # Zone call stacks. Not the periodic sampler
+	profiler_on_demand            = "yes"     # Tracy TRACY_ON_DEMAND
+	profiler_memory               = "no"      # Allocator hooks. Also defines PROFILER_MEMORY_ENABLED
+	profiler_zones                = "yes"
+	profiler_plots                = "yes"
+	profiler_messages             = "yes"
+	profiler_locks                = "yes"
+	profiler_gpu                  = "yes"
+	profiler_auto_gdscript        = "yes"     # Token auto_gdscript
+	profiler_frames               = "yes"
+	profiler_frame_images         = "no"
+	tracy_shared                  = "no"      # Build TracyClient as a shared library
 
 
 ## Target build options

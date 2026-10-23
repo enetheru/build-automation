@@ -86,8 +86,8 @@ TRACY_TEST_REQUIRED = {
     'minimum': ['version', 'doctest'],
     'tracy': ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
               'silenced', 'toggle', 'log', 'frame_images', 'gpu_late_start'],
-    'tracy_shared': ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
-                 'silenced', 'toggle', 'log', 'frame_images', 'gpu_late_start'],
+    'libtracy': ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
+                'silenced', 'toggle', 'log', 'frame_images', 'gpu_late_start'],
 }
 
 # The test harness lives in the Godot fork. Relative paths are resolved against
@@ -2649,9 +2649,9 @@ def tracy_script():
     os.environ["TRACY_NO_DBGHELP_INIT_LOAD"] = "1"
 
 
-def config_tracy_shared( cfg:SimpleNamespace ) -> bool:
+def config_libtracy( cfg:SimpleNamespace ) -> bool:
     """
-    Tracy build that links Tracy as a shared library.
+    Tracy build that links TracyClient as a shared library.
     :param cfg:
     :return:
     """
@@ -2705,7 +2705,7 @@ variations = {
     'default': lambda cfg: True,
     'minimum': config_minim,
     'tracy': config_tracy,
-    'tracy_shared': config_tracy_shared,
+    'libtracy': config_libtracy,
 }
 
 
