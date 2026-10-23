@@ -792,66 +792,70 @@ def libtracy_check():
     import re as _re
     import subprocess as _sp
 
-    tt = build['libtracy']
-    acts = set(opts['build_actions'])
-    dry = opts['dry']
-    if config['ok'] and acts & {'build', 'install'} and 'runtime_path' in tt:
+    def libtracy_check_err(errors, msg):
+        fmt.h(f'ERROR: {msg}')
+        errors.append(msg)
+
+    def libtracy_check_is_tracy(tt, path):
+        return tt['output_tag'] in path.name.split('.')
+
+    def libtracy_check_needed(lib):
+        # The dynamic section's library names, or None when no tool read it.
+        for cmd, line_re in ((['readelf', '-d', str(lib)], r'\(NEEDED\).*\[(.+)\]'),
+                             (['objdump', '-p', str(lib)], r'DLL Name:\s*(\S+)')):
+            try:
+                out = _sp.run(cmd, capture_output=True, text=True, timeout=60)
+            except (OSError, _sp.SubprocessError):
+                continue
+            if out.returncode == 0:
+                return _re.findall(line_re, out.stdout)
+        return None
+
+    def libtracy_check_lib(tt, runtime, errors, lib):
+        names = libtracy_check_needed(lib)
+        if names is None:
+            fmt.hu(f'WARNING: no readelf/objdump to check {lib.name}')
+            return
+        clients = [n for n in names if _re.search(tt['exe_client_re'], n)]
+        fmt.hu(f'{lib.name} NEEDED client: {", ".join(clients) or "none"}')
+        if runtime.name not in clients:
+            libtracy_check_err(errors, f'{lib.as_posix()} does not NEED {runtime.name}')
+
+    def libtracy_check_strays(tt, directory):
+        strays = sorted({p for g in tt['runtime'] for p in Path(directory).glob(g) if p.is_file()})
+        for stray in strays:
+            fmt.h(f'WARNING: Tracy client next to the extension: {stray.as_posix()}; '
+                  'the client must come only from the engine, delete this copy')
+
+    def libtracy_run_check():
+        # A failed build check still inspects the install. Both halves append
+        # to the same list, and the config is failed once, after both.
+        tt = build['libtracy']
+        acts = set(opts['build_actions'])
+        dry = opts['dry']
+        if not (config['ok'] and acts & {'build', 'install'} and 'runtime_path' in tt):
+            return
         with fmt.Section('libtracy Check'):
             runtime = Path(tt['runtime_path'])
-            errors = []   # the body runs at script level, so no nonlocal
-
-            def err(msg):
-                fmt.h(f'ERROR: {msg}')
-                errors.append(msg)
-
-            def is_tracy(p):
-                return tt['output_tag'] in p.name.split('.')
-
-            def needed(lib):
-                # The dynamic section's library names, or None when no tool read it.
-                for cmd, line_re in ((['readelf', '-d', str(lib)], r'\(NEEDED\).*\[(.+)\]'),
-                                     (['objdump', '-p', str(lib)], r'DLL Name:\s*(\S+)')):
-                    try:
-                        out = _sp.run(cmd, capture_output=True, text=True, timeout=60)
-                    except (OSError, _sp.SubprocessError):
-                        continue
-                    if out.returncode == 0:
-                        return _re.findall(line_re, out.stdout)
-                return None
-
-            def check_lib(lib):
-                names = needed(lib)
-                if names is None:
-                    fmt.hu(f'WARNING: no readelf/objdump to check {lib.name}')
-                    return
-                clients = [n for n in names if _re.search(tt['exe_client_re'], n)]
-                fmt.hu(f'{lib.name} NEEDED client: {", ".join(clients) or "none"}')
-                if runtime.name not in clients:
-                    err(f'{lib.as_posix()} does not NEED {runtime.name}')
-
-            def check_strays(directory):
-                strays = sorted({p for g in tt['runtime'] for p in Path(directory).glob(g) if p.is_file()})
-                for stray in strays:
-                    fmt.h(f'WARNING: Tracy client next to the extension: {stray.as_posix()}; '
-                          'the client must come only from the engine, delete this copy')
+            errors = []
 
             engine_client = Path(tt['bin_dir']) / runtime.name
             if engine_client.is_file() and _filecmp.cmp(engine_client, runtime, shallow=False):
                 fmt.h(f'engine client: {engine_client.as_posix()}')
             else:
-                err(f'{engine_client.as_posix()} is missing or differs from {runtime.as_posix()}')
+                libtracy_check_err(errors, f'{engine_client.as_posix()} is missing or differs from {runtime.as_posix()}')
 
             # The build tree.
             if 'build' in acts:
                 build_bin = Path(buildtool['build_path']) / tt['build_bin']
-                built = sorted(p for p in build_bin.glob(tt['extension']) if is_tracy(p))
+                built = sorted(p for p in build_bin.glob(tt['extension']) if libtracy_check_is_tracy(tt, p))
                 if not built and not dry:
-                    err(f'no tracy extension built for {tt["target"]}: '
-                        f'{(build_bin / tt["extension"]).as_posix()} with a ".{tt["output_tag"]}." name part')
+                    libtracy_check_err(errors, f'no tracy extension built for {tt["target"]}: '
+                                       f'{(build_bin / tt["extension"]).as_posix()} with a ".{tt["output_tag"]}." name part')
                 for ext in built:
                     fmt.hu(f'built: {ext.as_posix()}')
-                    check_lib(ext)
-                check_strays(build_bin)
+                    libtracy_check_lib(tt, runtime, errors, ext)
+                libtracy_check_strays(tt, build_bin)
 
             # The installed addon.
             if 'install' in acts:
@@ -862,7 +866,7 @@ def libtracy_check():
                 gdext = dest / tt['install_gdextension']
                 if not gdext.is_file():
                     if not dry:
-                        err(f'{gdext.as_posix()} not found')
+                        libtracy_check_err(errors, f'{gdext.as_posix()} not found')
                 else:
                     # [libraries] lines whose library is this target's extension.
                     section, lines = None, []
@@ -875,26 +879,28 @@ def libtracy_check():
                         if section == '[libraries]' and m and Path(m.group(2)).match(tt['extension']):
                             lines.append((m.group(1), m.group(2), line))
                     if len(lines) != 1:
-                        err(f'{gdext.as_posix()}: expected one {tt["extension"]} line, found {len(lines)}')
+                        libtracy_check_err(errors, f'{gdext.as_posix()}: expected one {tt["extension"]} line, found {len(lines)}')
                     for key, rel, line in lines:
                         fmt.hu(f'gdextension: {line}')
                         lib = dest / rel
-                        if not is_tracy(lib):
-                            err(f'{key} points at {rel}, not a ".{tt["output_tag"]}." library')
+                        if not libtracy_check_is_tracy(tt, lib):
+                            libtracy_check_err(errors, f'{key} points at {rel}, not a ".{tt["output_tag"]}." library')
                         if not lib.is_file():
-                            err(f'{lib.as_posix()} not found')
+                            libtracy_check_err(errors, f'{lib.as_posix()} not found')
                         else:
                             fmt.hu(f'installed: {lib.as_posix()}')
-                            check_lib(lib)
+                            libtracy_check_lib(tt, runtime, errors, lib)
                 for flatc in sorted((dest / 'bin').glob(tt['flatc_glob'])):
                     if flatc.is_file() and not os.access(flatc, os.X_OK) and os.name != 'nt':
                         if dry:
                             fmt.hu(f'dry-run: {flatc.name} is not executable yet (Install makes it so)')
                         else:
-                            err(f'{flatc.as_posix()} is not executable')
-                check_strays(dest / 'bin')
+                            libtracy_check_err(errors, f'{flatc.as_posix()} is not executable')
+                libtracy_check_strays(tt, dest / 'bin')
             if errors:
                 config['ok'] = False
+
+    libtracy_run_check()
 
 
 def libtracy_run_helpers():
