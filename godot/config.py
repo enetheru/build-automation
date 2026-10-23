@@ -51,6 +51,10 @@ origin = SimpleNamespace({**vars(git_base), **{
 # so a different Tracy in TRACY_PROFILER_PATH can't slip into a build.
 TRACY_VERSION = '0.14.1'
 TRACY_CAPTURE_ADDR = '127.0.0.1'
+# Listen port for tracy-capture and the engine's --tracy-port. After
+# paths.local.py, an environment variable overrides it: TRACY_CAPTURE_PORT,
+# then GODOT_TRACY_PORT, then TRACY_PORT. Each capture starts here and
+# moves to the next free port when this one is already bound.
 TRACY_CAPTURE_PORT = '8086'
 TRACY_TEST_FEATURES = 'zones,plots,messages,frames,gdscript_auto,gdscript_zones_manual'
 TRACY_TEST_TIMEOUT = 300    # seconds for one engine run
@@ -165,6 +169,20 @@ def _load_local_paths() -> None:
 
 
 _load_local_paths()
+
+
+def _port_from_environ() -> str | None:
+    import os
+    for name in ('TRACY_CAPTURE_PORT', 'GODOT_TRACY_PORT', 'TRACY_PORT'):
+        value = os.environ.get(name)
+        if value:
+            return value
+    return None
+
+
+_env_port = _port_from_environ()
+if _env_port:
+    TRACY_CAPTURE_PORT = _env_port
 
 # Built after the local overrides. The generated build script only carries the
 # body of test_scons, so configure_scons copies this onto the build as
@@ -825,11 +843,36 @@ def test_scons():
                 return path if path.is_absolute() else source_dir / path
 
             def port_busy(address, port):
+                # A connect that succeeds means something is listening.
+                # Refused means free. Binding to probe would leave the port
+                # in TIME_WAIT, and the engine listen after that would fail.
+                # Any other error counts as taken so a black-holed port is
+                # not handed to Tracy.
                 try:
                     with socket.create_connection((address, int(port)), timeout=1):
                         return True
-                except OSError:
+                except ConnectionRefusedError:
                     return False
+                except OSError:
+                    return True
+
+            def free_listen_port(address, preferred):
+                # Leave tt['port'] alone. The next stage starts from the
+                # configured port again once this capture has released it.
+                try:
+                    start = int(preferred)
+                except (TypeError, ValueError):
+                    return None
+                if start < 1 or start > 65535:
+                    return None
+                spans = [range(start, 65536)]
+                if start > 1024:
+                    spans.append(range(1024, start))
+                for span in spans:
+                    for port in span:
+                        if not port_busy(address, port):
+                            return str(port)
+                return None
 
             def option_value(args, name):
                 args = [str(a) for a in args]
@@ -864,8 +907,21 @@ def test_scons():
                 # tracy-capture in the background, then the engine with a subprocess timeout.
                 facts = res['facts']
                 trace = logdir / f'{name}.tracy'
-                cap_cmd = [str(tool('capture')), '-o', str(trace), '-a', tt['address'], '-p', tt['port'], '-f']
                 eng_cmd = [str(a) for a in eng_cmd]
+                # Pin tracy-capture -p and the engine to the same free port.
+                # Without --tracy-port the client searches from 8086 and can
+                # miss this capture, or meet an engine already listening.
+                port = free_listen_port(tt['address'], tt.get('port'))
+                if port is None:
+                    fail(res, f"no free listen port on {tt['address']} from {tt.get('port')}")
+                    return None, None
+                if port != str(tt.get('port')):
+                    print(f"  {tt['address']}:{tt.get('port')} is in use; using {port}")
+                cap_cmd = [str(tool('capture')), '-o', str(trace), '-a', tt['address'], '-p', port, '-f']
+                if '--tracy-port' in eng_cmd[:-1]:
+                    eng_cmd[eng_cmd.index('--tracy-port') + 1] = port
+                else:
+                    eng_cmd += ['--tracy-port', port]
                 facts['capture_cmd'] = cmdline(cap_cmd)
                 facts['engine_cmd'] = cmdline(eng_cmd, env)
                 facts['tracy_flag'] = '--tracy' in eng_cmd
@@ -875,9 +931,6 @@ def test_scons():
                 if dry:
                     print(f'  $ {cmdline(eng_cmd, env)}')
                     as_dry(res)
-                    return None, None
-                if port_busy(tt['address'], tt['port']):
-                    fail(res, f"{tt['address']}:{tt['port']} already has a Tracy client; another engine is running")
                     return None, None
                 write_cmd(res, f'{name}-capture', cap_cmd)
                 started = time.monotonic()
