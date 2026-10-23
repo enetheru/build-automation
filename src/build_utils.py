@@ -22,6 +22,40 @@ from src.utils import get_interior_dict, process_log_null
 console = ConsoleMultiplex()
 pretendio = type('obj', (object,), {'write': lambda self, v: print(v)})()
 
+def print_full_table(table: Table) -> None:
+    """Print a table without ellipsizing it to a narrow terminal.
+
+    Rich sizes a table to the console width, then clips cells. A pipe is 80
+    columns, which turns the summary into "Fai…" and "0:0…". The width is
+    restored so later output still follows the terminal.
+    """
+    saved = (console._width, console._height)
+    console._width = 400
+    console._height = 1024
+    try:
+        console.print(table, soft_wrap=True)
+    finally:
+        console._width, console._height = saved
+
+
+def log_console(log_file):
+    """Plain, wide console for a log file.
+
+    force_terminal writes ANSI into the file. Rich also ignores a width
+    unless height is set, when the console is a dumb terminal, and then
+    lays tables out at 80 columns. soft_wrap keeps long lines intact.
+    """
+    return Console(
+        file=log_file,
+        color_system=None,
+        soft_wrap=True,
+        # Both dimensions are required. A dumb terminal ignores width alone
+        # and goes back to 80. Wider than a status row, short of a full-width
+        # box of padding. soft_wrap still keeps PATH and compiler lines whole.
+        width=240,
+        height=1024,
+    )
+
 
 
 
@@ -83,7 +117,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     log_path = project.path / f"logs-raw/{build.name}.log"
     with (
         open( file=log_path, mode='w', buffering=1, encoding="utf-8" ) as build_log,
-        TeeOutput(console, Console( file=build_log, force_terminal=True ), build.name ),
+        TeeOutput(console, log_console(build_log), build.name ),
         fmt.Section("Build: " + build.name)
     ):
 
@@ -182,10 +216,13 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         #   that way it can trigger a check of the system if it is failing this test.
 
         table = Table( highlight=True, min_width=80, show_header=False )
+        table.add_column(overflow="ignore", no_wrap=True)
+        table.add_column(overflow="ignore", no_wrap=True)
+        table.add_column(overflow="ignore", no_wrap=True)
         table.add_row(
             build.name, f"{stats['status']}", f"{stats['duration']}",
             style="red" if stats["status"] == "Failed" else "green", )
-        console.print( table )
+        print_full_table( table )
 
     # ==================[ Output Log Processing ]==================-
     fmt.h1( "Post Run Actions" )
@@ -210,7 +247,7 @@ def process_project(opts: SimpleNamespace, project: SimpleNamespace):
     log_path = project.path / f"logs-raw/{project.name}.log"
     with (
         open(file=log_path, mode='w', buffering=1, encoding="utf-8") as log_file,
-        TeeOutput(console, Console(file=log_file, force_terminal=True), project.name),
+        TeeOutput(console, log_console(log_file), project.name),
         fmt.Section("Project: " + project.name)
     ):
         if opts.verbose:
@@ -265,16 +302,16 @@ def show_statistics( opts:SimpleNamespace ):
             for key in build.stats['subs'].keys():
                 column_set.add(key)
 
-    table.add_column( "Commit" )
-    table.add_column( "Project/Config", style="cyan", no_wrap=True )
-    table.add_column( "Status" )
-    table.add_column( "Total Time" )
+    table.add_column( "Commit", overflow="ignore", no_wrap=True )
+    table.add_column( "Project/Config", style="cyan", overflow="ignore", no_wrap=True )
+    table.add_column( "Status", overflow="ignore", no_wrap=True )
+    table.add_column( "Total Time", overflow="ignore", no_wrap=True )
 
     sub_columns:list = []
     for action in opts.build_actions:
         if action in column_set:
             sub_columns.append( action )
-            table.add_column( action )
+            table.add_column( action, overflow="ignore", no_wrap=True )
 
     for project in opts.projects.values():
         for build in project.build_configs.values():
@@ -307,7 +344,7 @@ def show_statistics( opts:SimpleNamespace ):
                 else: r.append( str(sub['duration']) )
 
             table.add_row( *r )
-    console.print(table)
+    print_full_table(table)
 
 
 # MARK: Toolchain Actions
