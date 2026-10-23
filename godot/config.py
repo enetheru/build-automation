@@ -51,14 +51,14 @@ origin = SimpleNamespace({**vars(git_base), **{
 # so a different Tracy in TRACY_PROFILER_PATH can't slip into a build.
 TRACY_VERSION = '0.14.1'
 TRACY_CAPTURE_ADDR = '127.0.0.1'
-# Listen port for tracy-capture and the engine's --tracy-port. After
+# Listen port for tracy-capture and the engine's --profiler-port. After
 # paths.local.py, an environment variable overrides it: TRACY_CAPTURE_PORT,
-# then GODOT_TRACY_PORT, then TRACY_PORT. Each capture starts here and
+# then GODOT_PROFILER_PORT, then TRACY_PORT. Each capture starts here and
 # moves to the next free port when this one is already bound.
 TRACY_CAPTURE_PORT = '8086'
-TRACY_TEST_FEATURES = 'zones,plots,messages,frames,gdscript_auto,gdscript_zones_manual'
+TRACY_TEST_FEATURES = 'zones,plots,messages,frames,auto_gdscript'
 TRACY_TEST_TIMEOUT = 300    # seconds for one engine run
-# --tracy-mask for the capture runs; None passes no --tracy-mask (build default).
+# --profiler-categories for the capture runs; None passes no --profiler-categories (build default).
 TRACY_TEST_MASK: str | None = None
 # Doctest selection for the doctest stage (doctest --test-case pattern).
 TRACY_TEST_DOCTEST = '*[Profiling]*'
@@ -86,7 +86,7 @@ TRACY_TEST_REQUIRED = {
     'minimum': ['version', 'doctest'],
     'tracy': ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
               'silenced', 'toggle', 'log', 'frame_images', 'gpu_late_start'],
-    'libtracy': ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
+    'tracy_shared': ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
                  'silenced', 'toggle', 'log', 'frame_images', 'gpu_late_start'],
 }
 
@@ -173,7 +173,7 @@ _load_local_paths()
 
 def _port_from_environ() -> str | None:
     import os
-    for name in ('TRACY_CAPTURE_PORT', 'GODOT_TRACY_PORT', 'TRACY_PORT'):
+    for name in ('TRACY_CAPTURE_PORT', 'GODOT_PROFILER_PORT', 'TRACY_PORT'):
         value = os.environ.get(name)
         if value:
             return value
@@ -902,10 +902,10 @@ def test_scons():
                 cmd = [str(exe), '--headless']
                 if is_template():
                     cmd += ['--path', str(stub_project())]
-                cmd += ['--tracy'] if unsilence else []
-                cmd += ['--script', str(Path(script).resolve()), '--tracy-features', tt['features']]
+                cmd += ['--profiler'] if unsilence else []
+                cmd += ['--script', str(Path(script).resolve()), '--profiler-features', tt['features']]
                 if tt.get('mask') is not None:
-                    cmd += ['--tracy-mask', tt['mask']]
+                    cmd += ['--profiler-categories', tt['mask']]
                 return cmd
 
             def capture_run(res, name, eng_cmd, env=None):
@@ -914,7 +914,7 @@ def test_scons():
                 trace = logdir / f'{name}.tracy'
                 eng_cmd = [str(a) for a in eng_cmd]
                 # Pin tracy-capture -p and the engine to the same free port.
-                # Without --tracy-port the client searches from 8086 and can
+                # Without --profiler-port the client searches from 8086 and can
                 # miss this capture, or meet an engine already listening.
                 port = free_listen_port(tt['address'], tt.get('port'))
                 if port is None:
@@ -923,15 +923,15 @@ def test_scons():
                 if port != str(tt.get('port')):
                     print(f"  {tt['address']}:{tt.get('port')} is in use; using {port}")
                 cap_cmd = [str(tool('capture')), '-o', str(trace), '-a', tt['address'], '-p', port, '-f']
-                if '--tracy-port' in eng_cmd[:-1]:
-                    eng_cmd[eng_cmd.index('--tracy-port') + 1] = port
+                if '--profiler-port' in eng_cmd[:-1]:
+                    eng_cmd[eng_cmd.index('--profiler-port') + 1] = port
                 else:
-                    eng_cmd += ['--tracy-port', port]
+                    eng_cmd += ['--profiler-port', port]
                 facts['capture_cmd'] = cmdline(cap_cmd)
                 facts['engine_cmd'] = cmdline(eng_cmd, env)
-                facts['tracy_flag'] = '--tracy' in eng_cmd
-                facts['tracy_features'] = option_value(eng_cmd, '--tracy-features')
-                facts['tracy_mask'] = option_value(eng_cmd, '--tracy-mask')   # None: build default
+                facts['tracy_flag'] = '--profiler' in eng_cmd
+                facts['tracy_features'] = option_value(eng_cmd, '--profiler-features')
+                facts['tracy_mask'] = option_value(eng_cmd, '--profiler-categories')   # None: build default
                 print(f'  $ {cmdline(cap_cmd)} &')
                 if dry:
                     print(f'  $ {cmdline(eng_cmd, env)}')
@@ -1255,12 +1255,12 @@ def test_scons():
                 if info['gpu_contexts'] and not ctx_lines:
                     info['gpu_context_names'] = None   # an older analyser without ctx lines
                 texts = [msg for _, _, msg in info['message_list']]
-                info['capture_started_msg'] = 'Godot Tracy capture started' in texts
-                info['capture_stopped_msg'] = 'Godot Tracy capture stopped' in texts
+                info['capture_started_msg'] = 'Godot profiler enabled' in texts
+                info['capture_stopped_msg'] = 'Godot profiler disabled' in texts
                 info['capture_started_at'] = [t for t, _, msg in info['message_list']
-                                              if msg == 'Godot Tracy capture started']
+                                              if msg == 'Godot profiler enabled']
                 info['capture_stopped_at'] = [t for t, _, msg in info['message_list']
-                                              if msg == 'Godot Tracy capture stopped']
+                                              if msg == 'Godot profiler disabled']
                 m = re.search(r'frameimages=(\d+)', text)
                 info['frame_images'] = int(m.group(1)) if m else None
                 info['frame_image_sizes'] = [
@@ -1319,14 +1319,14 @@ def test_scons():
                         proc.kill()
 
             def probe_help():
-                # --tracy in --help marks the silent-client feature; the note says
+                # --profiler in --help marks the silent-client feature; the note says
                 # whether the build is on-demand or records from launch.
                 out = run(ctx['help_res'], 'help', [exe, '--headless', '--help'], 60, echo=0)
                 text = plain(out['out'] + out['err'])
-                ctx['silent_client'] = bool(re.search(r'^\s*--tracy\s', text, re.M))
+                ctx['silent_client'] = bool(re.search(r'^\s*--profiler\s', text, re.M))
                 m = re.search(r'This build (?:is on-demand|records from launch)[^\n]*', text)
                 ctx['help_mode'] = m.group(0).strip() if m else None
-                fmt.h(f'silent-client support (--tracy in --help): {ctx["silent_client"]}')
+                fmt.h(f'silent-client support (--profiler in --help): {ctx["silent_client"]}')
                 fmt.h(f'--help mode: {ctx["help_mode"] or "(no on-demand/record-from-launch note)"}')
 
             def capture_gate(res, need_silent_client=False, needs_project=False):
@@ -1340,7 +1340,7 @@ def test_scons():
                 if not tool('capture'):
                     return skip(res, f'no tracy-capture at {tt.get("capture")} (TRACY_CAPTURE)')
                 if need_silent_client and ctx['silent_client'] is False:
-                    return not_applicable(res, 'build has no silent-client support (--tracy missing from --help)')
+                    return not_applicable(res, 'build has no silent-client support (--profiler missing from --help)')
                 return None
 
             # MARK: Stages
@@ -1388,7 +1388,7 @@ def test_scons():
                 facts['gen_h_sha256'] = hashlib.sha256(data).hexdigest()
                 defines = {}
                 for dname, dvalue in re.findall(
-                        r'^#define\s+((?:TRACY|GODOT_TRACY|GODOT_PROFILER|GODOT_USE_TRACY)\w*)[ \t]*(.*)$',
+                        r'^#define\s+((?:TRACY|GODOT_TRACY|GODOT_PROFILER|GODOT_USE_TRACY|PROFILER)\w*)[ \t]*(.*)$',
                         data.decode('utf-8', 'replace'), re.M):
                     defines[dname] = dvalue.strip()
                 facts['defines'] = defines
@@ -1507,7 +1507,7 @@ def test_scons():
                 return res
 
             def stage_silenced():
-                # Launched without --tracy, the engine sends nothing. A GPU context entry is allowed.
+                # Launched without --profiler, the engine sends nothing. A GPU context entry is allowed.
                 res = result()
                 gate = capture_gate(res, need_silent_client=True, needs_project=True)
                 if gate:
@@ -1541,7 +1541,7 @@ def test_scons():
                 return res
 
             def stage_toggle():
-                # Profiler.set_capture_enabled on at frame 100, off at 200: zones only in between.
+                # Profiler.set_enabled on at frame 100, off at 200: zones only in between.
                 res = result()
                 facts = res['facts']
                 gate = capture_gate(res, need_silent_client=True, needs_project=True)
@@ -1563,9 +1563,9 @@ def test_scons():
                 msgs = info['message_list']
                 starts, stops = info['capture_started_at'], info['capture_stopped_at']
                 if not starts:
-                    fail(res, "no 'Godot Tracy capture started' message")
+                    fail(res, "no 'Godot profiler enabled' message")
                 if not stops:
-                    fail(res, "no 'Godot Tracy capture stopped' message")
+                    fail(res, "no 'Godot profiler disabled' message")
                 if not info['zones']:
                     fail(res, 'no zones between the boundaries')
                 eps = 1e-5   # the analyser prints microseconds
@@ -1660,10 +1660,10 @@ def test_scons():
                     fail(sub, f"no ctx type=Vulkan line (contexts: {info['gpu_context_names']})")
                 if mode == 'A':
                     if not info['gpu_zones']:
-                        fail(sub, 'no GPU zones with --tracy from launch')
+                        fail(sub, 'no GPU zones with --profiler from launch')
                 elif mode == 'B':
                     if not starts:
-                        return fail(sub, "no 'Godot Tracy capture started' message")
+                        return fail(sub, "no 'Godot profiler enabled' message")
                     sf['gpu_zones_before_start'] = sum(1 for t in times if t < starts[0] - eps)
                     sf['gpu_zones_after_start'] = len(times) - sf['gpu_zones_before_start']
                     if sf['gpu_zones_before_start']:
@@ -1675,7 +1675,7 @@ def test_scons():
                 elif mode == 'C':
                     restart = [t for t in starts if stops and t > stops[0]]
                     if not stops or not restart:
-                        return fail(sub, "missing 'Godot Tracy capture stopped' then 'started' messages")
+                        return fail(sub, "missing 'Godot profiler disabled' then 'enabled' messages")
                     stop_t, start_t = stops[0], restart[0]
                     before, in_flight, silenced, after = split_gpu_silence(times, stop_t, start_t, eps)
                     sf['gpu_zones_before_stop'] = len(before)
@@ -1709,9 +1709,9 @@ def test_scons():
                 if gate:
                     return gate
                 defines = ctx.get('defines')
-                log_built = ('TRACY_LOG_ENABLED' in defines) if defines else scons_opt('tracy_log') != 'no'
+                log_built = ('PROFILER_LOG_ENABLED' in defines) if defines else scons_opt('profiler_log') != 'no'
                 if not log_built:
-                    return not_applicable(res, 'build has no log bridge (no TRACY_LOG_ENABLED)')
+                    return not_applicable(res, 'build has no log bridge (no PROFILER_LOG_ENABLED)')
                 script = harness('log_gd')
                 if not script or not script.is_file():
                     return skip(res, f'no log harness at {script}')
@@ -1744,10 +1744,10 @@ def test_scons():
                     if is_template():
                         eng_cmd += ['--path', str(stub_project())]
                     if ctx['silent_client'] is not False:
-                        eng_cmd.append('--tracy')
-                    eng_cmd += ['--script', str(Path(script).resolve()), '--tracy-features', features]
+                        eng_cmd.append('--profiler')
+                    eng_cmd += ['--script', str(Path(script).resolve()), '--profiler-features', features]
                     if tt.get('mask') is not None:
-                        eng_cmd += ['--tracy-mask', tt['mask']]
+                        eng_cmd += ['--profiler-categories', tt['mask']]
                     trace, eng = capture_run(sub, f'log_{mode}', eng_cmd)
                     res['logs'] += sub['logs']
                     if dry:
@@ -1833,12 +1833,12 @@ def test_scons():
                 if gate:
                     return gate
                 defines = ctx.get('defines')
-                images_built = ('TRACY_FRAME_IMAGES_ENABLED' in defines) if defines else scons_opt('tracy_frame_images') != 'no'
-                frames_built = ('TRACY_FRAMES_ENABLED' in defines) if defines else scons_opt('tracy_frames') != 'no'
+                images_built = ('PROFILER_FRAME_IMAGES_ENABLED' in defines) if defines else scons_opt('profiler_frame_images') != 'no'
+                frames_built = ('PROFILER_FRAMES_ENABLED' in defines) if defines else scons_opt('profiler_frames') != 'no'
                 if not images_built:
-                    return not_applicable(res, 'build has no frame images (no TRACY_FRAME_IMAGES_ENABLED)')
+                    return not_applicable(res, 'build has no frame images (no PROFILER_FRAME_IMAGES_ENABLED)')
                 if not frames_built:
-                    return not_applicable(res, 'build has no frame marks (no TRACY_FRAMES_ENABLED)')
+                    return not_applicable(res, 'build has no frame marks (no PROFILER_FRAMES_ENABLED)')
                 script = harness('frame_images_gd')
                 if not script or not script.is_file():
                     return skip(res, f'no frame image harness at {script}')
@@ -1860,12 +1860,12 @@ def test_scons():
                         eng_cmd.append('--headless')
                     if is_template():
                         eng_cmd += ['--path', str(stub_project())]
-                    # --tracy unsilences an on-demand build. A from-launch build has no such flag.
+                    # --profiler unsilences an on-demand build. A from-launch build has no such flag.
                     if ctx['silent_client'] is not False:
-                        eng_cmd.append('--tracy')
-                    eng_cmd += ['--script', str(Path(script).resolve()), '--tracy-features', features]
+                        eng_cmd.append('--profiler')
+                    eng_cmd += ['--script', str(Path(script).resolve()), '--profiler-features', features]
                     if tt.get('mask') is not None:
-                        eng_cmd += ['--tracy-mask', tt['mask']]
+                        eng_cmd += ['--profiler-categories', tt['mask']]
                     trace, eng = capture_run(sub, f'frame_{mode}', eng_cmd, env=display_env)
                     res['logs'] += sub['logs']
                     if dry:
@@ -1924,9 +1924,9 @@ def test_scons():
                 if gate:
                     return gate
                 defines = ctx.get('defines')
-                gpu_built = ('TRACY_GPU_ENABLED' in defines) if defines else scons_opt('tracy_gpu') != 'no'
+                gpu_built = ('PROFILER_GPU_ENABLED' in defines) if defines else scons_opt('profiler_gpu') != 'no'
                 if not gpu_built:
-                    return not_applicable(res, 'build has no GPU instrumentation (no TRACY_GPU_ENABLED)')
+                    return not_applicable(res, 'build has no GPU instrumentation (no PROFILER_GPU_ENABLED)')
                 if scons_opt('vulkan') == 'no':
                     return not_applicable(res, 'build has no Vulkan driver (vulkan=no)')
                 src_project = harness('late_gpu_project')
@@ -1950,10 +1950,10 @@ def test_scons():
                     sub = result()
                     runs[mode] = sub
                     eng_cmd = [str(exe), '--path', str(proj), '--rendering-driver', 'vulkan', '--verbose']
-                    eng_cmd += ['--tracy'] if unsilence else []
-                    eng_cmd += ['--tracy-features', tt.get('gpu_features') or 'zones,messages,gpu,frames']
+                    eng_cmd += ['--profiler'] if unsilence else []
+                    eng_cmd += ['--profiler-features', tt.get('gpu_features') or 'zones,messages,gpu,frames']
                     if tt.get('mask') is not None:
-                        eng_cmd += ['--tracy-mask', tt['mask']]
+                        eng_cmd += ['--profiler-categories', tt['mask']]
                     eng_cmd += ['--quit-after', str(tt.get('gpu_quit_after') or 320)]
                     trace, eng = capture_run(sub, f'gpu{mode}', eng_cmd, env={'LATE_GPU_MODE': mode, **display_env})
                     res['logs'] += sub['logs']
@@ -2071,8 +2071,8 @@ def test_scons():
                     mask = row['tracy_mask']
                     names = row['gpu_context_names']
                     lines.append(f"  {row['name']} [{row['status']}]: {row['engine_cmd']}")
-                    lines.append(f"    --tracy {yes_no(row['tracy_flag'])}, --tracy-features {row['tracy_features']}, "
-                                 f"--tracy-mask {'(not passed)' if mask is None else mask}")
+                    lines.append(f"    --profiler {yes_no(row['tracy_flag'])}, --profiler-features {row['tracy_features']}, "
+                                 f"--profiler-categories {'(not passed)' if mask is None else mask}")
                     if row['vulkan_device']:
                         lines.append(f"    {row['vulkan_device']}")
                     lines.append(f"    gpu contexts {row['gpu_contexts']}{': ' + ', '.join(names) if names else ''}; "
@@ -2561,24 +2561,23 @@ def config_minim( cfg:SimpleNamespace ) -> bool:
     return True
 
 
-# SConstruct BoolVariables. tracy_memory is yes here because
-# profiler_track_memory=yes also defines TRACY_MEMORY_ENABLED.
+# SConstruct BoolVariables. profiler_memory is yes here because
+# profiler_memory=yes also defines PROFILER_MEMORY_ENABLED.
 # Automatic GDScript zones stay on: the coroutine fiber path is compiled
-# only with them, and --tracy-features cannot add code the build left out.
-# Frame images and the log bridge stay on for the same reason. They stay
-# silent until --tracy-features lists them. log is not part of
-# TRACY_TEST_FEATURES, so the other captures do not forward every engine print.
+# only with them, and --profiler-features cannot add code the build left out.
+# Frame images and the log bridge stay compiled in for the same reason.
+# log is not part of TRACY_TEST_FEATURES, so those captures do not forward every engine print.
 _TRACY_FEATURES = (
-    ("tracy_zones", "yes"),
-    ("tracy_plots", "yes"),
-    ("tracy_messages", "yes"),
-    ("tracy_memory", "yes"),
-    ("tracy_locks", "yes"),
-    ("tracy_gpu", "yes"),
-    ("tracy_gdscript_auto", "yes"),
-    ("tracy_frames", "yes"),
-    ("tracy_frame_images", "yes"),
-    ("tracy_log", "yes"),
+    ("profiler_zones", "yes"),
+    ("profiler_plots", "yes"),
+    ("profiler_messages", "yes"),
+    ("profiler_memory", "yes"),
+    ("profiler_locks", "yes"),
+    ("profiler_gpu", "yes"),
+    ("profiler_auto_gdscript", "yes"),
+    ("profiler_frames", "yes"),
+    ("profiler_frame_images", "yes"),
+    ("profiler_log", "yes"),
 )
 
 
@@ -2627,12 +2626,9 @@ def config_tracy( cfg:SimpleNamespace ) -> bool:
         return False
     scons.build_vars.append(f"profiler_path={TRACY_PROFILER_PATH}")
 
-    # profiler_sample_callstack: Profile random samples application-wide using a callstack based sampler. (yes|no)
+    # profiler_callstack: Profile random samples application-wide using a callstack based sampler. (yes|no)
     if cfg.target != 'template_release':
-        scons.build_vars.append("profiler_sample_callstack=yes")
-
-    # profiler_track_memory: Profile memory allocations, if the profiler supports it. (yes|no)
-    scons.build_vars.append("profiler_track_memory=yes")
+        scons.build_vars.append("profiler_callstack=yes")
 
     _append_tracy_features(scons)
 
@@ -2653,7 +2649,7 @@ def tracy_script():
     os.environ["TRACY_NO_DBGHELP_INIT_LOAD"] = "1"
 
 
-def config_libtracy( cfg:SimpleNamespace ) -> bool:
+def config_tracy_shared( cfg:SimpleNamespace ) -> bool:
     """
     Tracy build that links Tracy as a shared library.
     :param cfg:
@@ -2661,7 +2657,7 @@ def config_libtracy( cfg:SimpleNamespace ) -> bool:
     """
     if not config_tracy(cfg):
         return False
-    cfg.buildtool.build_vars.append('tracy_as_shared=yes')
+    cfg.buildtool.build_vars.append('tracy_shared=yes')
     return True
 
 
@@ -2709,7 +2705,7 @@ variations = {
     'default': lambda cfg: True,
     'minimum': config_minim,
     'tracy': config_tracy,
-    'libtracy': config_libtracy,
+    'tracy_shared': config_tracy_shared,
 }
 
 
