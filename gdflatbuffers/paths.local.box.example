@@ -4,16 +4,15 @@
 
 # Install prefix of every gdflatbuffers build (cmake --install --prefix). A
 # relative path is under that build's source worktree; the default 'install'
-# is <source>/install. Main and libtracy each install into their own worktree.
-#
-# Never point this at a shared Godot project. The install merges a line into
-# flatbuffers.gdextension and its merge key drops `.tracy`, so a libtracy
-# install replaces the main build's slot for that platform and target (the
-# last install wins). Install refuses a prefix that holds project.godot.
-# Use the default, or a scratch folder the runner owns.
+# is <source>/install. An absolute path is used as given. Files land in
+# <prefix>/addons/enetheru.flatbuffers-extension/. The prefix may be a Godot
+# project. Main and libtracy each install into this prefix, and the merge key
+# drops `.tracy`, so a libtracy install replaces the main build's slot for
+# that platform and target (the last install wins).
 # GDFB_INSTALL_PREFIX = '/workspace/gdflatbuffers-install'
 
 # Godot project the libtracy test and bench use in place. The runner worktree
 # gitignores `project`, so the default <source>/project has no project.godot.
-# The install verb does not use this path.
+# Set this to the same folder as GDFB_INSTALL_PREFIX when the build under test
+# is the one just installed.
 # GDFB_TRACY_PROJECT = '/path/to/Enetheru.flatbuffers-project'
