@@ -1527,6 +1527,10 @@ def test_scons():
                 metric('counts', 'fibers_zones', facts['csv_zones'], exact=False)
                 return res
 
+            def engine_messages(info):
+                # src 0 is the profiled program. Tracy's own diagnostics are another source.
+                return [row for row in info['tracy_msgs'] if row['src'] == 0]
+
             def stage_silenced():
                 # Launched without --profiler, the engine sends nothing. A GPU context entry is allowed.
                 res = result()
@@ -1549,8 +1553,9 @@ def test_scons():
                     fail(res, f"{info['zones']} zones while silenced")
                 if info['gpu_zones']:
                     fail(res, f"{info['gpu_zones']} GPU zones while silenced")
-                if info['messages']:
-                    fail(res, f"{info['messages']} messages while silenced")
+                silenced_msgs = engine_messages(info)
+                if silenced_msgs:
+                    fail(res, f"{len(silenced_msgs)} messages while silenced")
                 if info['engine_plots']:
                     fail(res, f"{info['engine_plots']} engine plots while silenced")
                 # Allowed: Tracy's CPU-usage plot (SysTime) and the 3 frames the 0.14.1
@@ -1714,8 +1719,9 @@ def test_scons():
                         fail(sub, f"{info['gpu_zones']} GPU zones while silenced")
                     if info['zones']:
                         fail(sub, f"{info['zones']} CPU zones while silenced")
-                    if info['messages']:
-                        fail(sub, f"{info['messages']} messages while silenced")
+                    silenced_msgs = engine_messages(info)
+                    if silenced_msgs:
+                        fail(sub, f"{len(silenced_msgs)} messages while silenced")
                 return sub
 
             def stage_log():
