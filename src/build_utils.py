@@ -347,7 +347,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     with (
         open( file=log_path, mode='w', buffering=1, encoding="utf-8" ) as build_log,
         TeeOutput(console, log_console(build_log), build.name ),
-        fmt.Section("Build: " + build.name)
+        fmt.Section(build.name)
     ):
 
         # =================[ Build Heading / Config ]==================-
@@ -507,18 +507,55 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         clean_log( log_raw, log_clean )
 
 
+def _build_will_run(opts: SimpleNamespace, build: SimpleNamespace) -> bool:
+    """True when this config has a requested action and is not disabled."""
+    if getattr(build, 'disabled', False):
+        return False
+    verbs = getattr(build, 'verbs', None) or []
+    return any(action in verbs for action in opts.build_actions)
+
+
+def _run_project_builds(opts: SimpleNamespace, project: SimpleNamespace) -> None:
+    project_total = len(project.build_configs)
+    build_num = 0
+    for build in project.build_configs.values():
+        build_num += 1
+        console.set_window_title(f"{project.name}[{build_num}:{project_total}] - {build.name}")
+        try:
+            process_build(opts, build)
+        except KeyboardInterrupt:
+            print(f'"Cancelling project "{project.name}", CTRL+C again to cancel all projects"')
+            try:
+                from time import sleep
+                sleep(3)
+            except KeyboardInterrupt as e:
+                console.pop(project.name)
+                raise e
+            print("continuing")
+
+
 def process_project(opts: SimpleNamespace, project: SimpleNamespace):
-    """Process project actions (fetch) and matching builds."""
+    """Run the requested build actions for one project.
+
+    Fetch is its own section in the caller, before scripts are generated.
+    A config that will not run records a skipped row and does not open a heading.
+    """
     os.chdir(project.path)
 
     os.makedirs(project.path / "logs-raw", exist_ok=True)
     os.makedirs(project.path / "logs-clean", exist_ok=True)
 
+    actions = []
+    for action in opts.build_actions:
+        if any(action in (getattr(build, 'verbs', None) or [])
+               for build in project.build_configs.values()
+               if _build_will_run(opts, build)):
+            actions.append(action)
+
     log_path = project.path / f"logs-raw/{project.name}.log"
     with (
         open(file=log_path, mode='w', buffering=1, encoding="utf-8") as log_file,
         TeeOutput(console, log_console(log_file), project.name),
-        fmt.Section("Project: " + project.name)
     ):
         if opts.verbose:
             fmt.t2(project.name)
@@ -528,23 +565,21 @@ def process_project(opts: SimpleNamespace, project: SimpleNamespace):
             for build in project.build_configs.values():
                 fmt.h(build.name)
 
-        project_total = len(project.build_configs)
-        build_num = 0
-        for build in project.build_configs.values():
-            build_num += 1
-            console.set_window_title(f"{project.name}[{build_num}:{project_total}] - {build.name}")
-            try:
-                process_build(opts, build)
-            except KeyboardInterrupt:
-                print(f'"Cancelling project "{project.name}", CTRL+C again to cancel all projects"')
-                try:
-                    from time import sleep
-                    sleep(3)
-                except KeyboardInterrupt as e:
-                    console.pop(project.name)
-                    raise e
-                print("continuing")
+        if actions:
+            with fmt.Section(f"{project.name} - {', '.join(actions)}"):
+                _run_project_builds(opts, project)
+        else:
+            _run_project_builds(opts, project)
 
+
+
+def has_statistics(opts: SimpleNamespace) -> bool:
+    """True when a build has recorded a stats row."""
+    return any(
+        getattr(build, 'stats', None) is not None
+        for project in opts.projects.values()
+        for build in project.build_configs.values()
+    )
 
 
 # (show_statistics moved to src/build_utils.py)
@@ -557,8 +592,7 @@ def show_statistics( opts:SimpleNamespace ):
     Returns:
         None: Prints a rich table with build status, duration, and sub-action durations.
     """
-    has_stats = any(getattr(build, 'stats', None) is not None for project in opts.projects.values() for build in project.build_configs.values())
-    if not has_stats:
+    if not has_statistics(opts):
         return
 
     table = Table( title="Stats", highlight=True, min_width=80 )
@@ -641,4 +675,5 @@ def process_toolchains( opts:SimpleNamespace ):
     for verb in opts.toolchain_actions:
         for toolchain_name, toolchain in opts.toolchains.items():
             if verb in getattr( toolchain, 'verbs', [] ):
-                getattr( toolchain, verb )( toolchain, opts, console )
+                with fmt.Section(f"{toolchain.name} - {verb}"):
+                    getattr( toolchain, verb )( toolchain, opts, console )

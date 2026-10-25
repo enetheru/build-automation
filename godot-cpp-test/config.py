@@ -43,27 +43,31 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         'arch': 'x86_64'
     }})
 
+    # project_base's toolchain view is the dict from before -t replaces it.
+    project.toolchains = opts.toolchains.values()
     builds = expand_host_env( build_start, project )
 
-    # Only expand cmake on configs that actually use cmake
-    cmake_builds = [b for b in builds if getattr(b.buildtool, 'name', None) == 'cmake']
-    if cmake_builds: cmake_builds = expand_func(cmake_builds, expand_cmake)
-    # Put them back (or replace the cmake ones)
-    builds = [b for b in builds if getattr(b.buildtool, 'name', None) != 'cmake'] + cmake_builds
-
+    # generic_toolchain_expand stores the pair on the toolchain.
+    # Android's expand already set arch and platform on the build.
+    for build in builds:
+        toolchain = build.toolchain
+        if hasattr(toolchain, 'target_arch'):
+            build.arch = toolchain.target_arch
+            build.platform = toolchain.target_platform
 
     # Rename
     for build in builds:
 
         toolchain = build.toolchain.name
         arch = godot_arch[build.arch]
-        platform = godot_platforms[build.platform]
+        platform_name = godot_platforms[build.platform]
 
         if build.buildtool.name == 'cmake':
-
             cmake = build.buildtool
-            short_gen = cmake.generators[cmake.generator]
-            short_type = cmake.config_types[cmake.config_type]
+            # expand_cmake records short_gen and short_type. This project does
+            # not expand generators, and the raw maps are keyed by short names.
+            short_gen = getattr(cmake, 'short_gen', None)
+            short_type = getattr(cmake, 'short_type', None)
         else:
             short_gen = None
             short_type = None
@@ -71,7 +75,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         name_parts = [
             build.host,
             toolchain if toolchain != 'emscripten' else None,
-            platform if build.platform != 'android' else None,
+            platform_name if build.platform != 'android' else None,
             arch if arch != 'wasm32' else None,
             short_gen,
             short_type

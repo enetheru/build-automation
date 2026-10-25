@@ -8,6 +8,7 @@ module enables effective integration of SDK tools with automation scripts or
 build systems.
 
 """
+import platform
 import re
 import subprocess
 from copy import deepcopy
@@ -165,6 +166,9 @@ def expand(self, config:SimpleNamespace) -> list:
         setattr( cfg, 'android_abi', abi )
         setattr( cfg, 'arch', abi )
         setattr( cfg, 'platform', 'android' )
+        # Same pair generic_toolchain_expand records, so naming can read either place.
+        setattr( cfg.toolchain, 'target_arch', abi )
+        setattr( cfg.toolchain, 'target_platform', 'android' )
         configs_out.append( cfg )
 
     return configs_out
@@ -215,6 +219,7 @@ def android_toolchain() -> SimpleNamespace | None:
         return None
     toolchain = SimpleNamespace(**cast( Mapping[str,Any],{
         'name':'android',
+        'host': platform.system(),
         'desc':'[Android](https://developer.android.com/tools/sdkmanager)',
         'verbs':['update'],
         'abi':['armeabi-v7a','arm64-v8a','x86','x86_64'],

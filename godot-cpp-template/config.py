@@ -1,4 +1,5 @@
 import copy
+import platform
 from types import SimpleNamespace
 
 from rich import json
@@ -65,7 +66,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         expand_attr_list,
         'source_def',
         sources.values() )
-    fmt.hu(f"build configs after source expansion: {len(builds)}")
+    if opts.debug: fmt.hu(f"build configs after source expansion: {len(builds)}")
 
     # Toolchains
     builds:list[SimpleNamespace] = expand_func(
@@ -73,7 +74,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         expand_attr_list,
         'toolchain',
         opts.toolchains.values() )
-    fmt.hu(f"build configs after toolchain expansion: {len(builds)}")
+    if opts.debug: fmt.hu(f"build configs after toolchain expansion: {len(builds)}")
 
     # godot targets
     builds:list[SimpleNamespace] = expand_func(
@@ -81,7 +82,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         expand_attr_list,
         'target',
         ['editor', 'template_debug', 'template_release'] )
-    fmt.hu(f"build configs after godot target expansion: {len(builds)}")
+    if opts.debug: fmt.hu(f"build configs after godot target expansion: {len(builds)}")
 
     # Build tools
     builds:list[SimpleNamespace] = expand_func(
@@ -89,11 +90,11 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         expand_attr_list,
         'buildtool',
         project.buildtools.values() )
-    fmt.hu(f"build configs after build tool expansion: {len(builds)}")
+    if opts.debug: fmt.hu(f"build configs after build tool expansion: {len(builds)}")
 
     # == Variations ==
     builds = expand_func( builds, expand_variations )
-    fmt.hu(f"build configs after variation expansion: {len(builds)}")
+    if opts.debug: fmt.hu(f"build configs after variation expansion: {len(builds)}")
 
     # == Configure ==
     builds = [
@@ -301,8 +302,10 @@ def libtracy_config( cfg:SimpleNamespace ) -> bool:
         # "profiler_memory=yes",
         'tracy_shared=yes',
     ]
+    # host is the machine the profiler is installed on. Android's toolchain
+    # did not carry toolchain_base.host, so fall back to this machine.
     tc = cfg.toolchain
-    match tc.host:
+    match getattr(tc, 'host', None) or platform.system():
         case 'Windows':
             cfg.buildtool.build_vars.append("profiler_path=C:/git/wolfpld/tracy")
         case 'Darwin':
