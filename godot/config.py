@@ -57,7 +57,7 @@ TRACY_CAPTURE_ADDR = '127.0.0.1'
 # moves to the next free port when this one is already bound.
 TRACY_CAPTURE_PORT = '8086'
 TRACY_TEST_FEATURES = 'zones,plots,messages,frames,auto_gdscript'
-TRACY_TEST_TIMEOUT = 300    # seconds for one engine run
+TRACY_TEST_TIMEOUT = 60     # seconds for one engine run
 # --profiler-categories for the capture runs; None passes no --profiler-categories (build default).
 TRACY_TEST_MASK: str | None = None
 # Doctest selection for the doctest stage (doctest --test-case pattern).
@@ -685,7 +685,7 @@ def test_scons():
 
             tt = dict(build.get('tracy_test') or {})
             dry = bool(opts['dry'])
-            run_timeout = int(tt.get('timeout') or 300)
+            run_timeout = int(tt.get('timeout') or 60)
             tolerance = float(tt.get('best_tolerance') or 0)
             runtime_case = '[Profiling] Report the runtime state'
             stage_names = ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
@@ -731,8 +731,9 @@ def test_scons():
                     parts.append(extra)
                 stem = '.'.join(part for part in parts if part)
                 if platform_name == 'windows':
-                    exe = bin_dir / f'{stem}.console.exe'
-                    return exe if exe.is_file() else bin_dir / f'{stem}.exe'
+                    # The .console.exe wrapper starts the real binary and waits
+                    # until that process and its children exit. Time the engine.
+                    return bin_dir / f'{stem}.exe'
                 return bin_dir / stem
 
             def result():
@@ -771,6 +772,16 @@ def test_scons():
                 prefix = ''.join(f'{k}={v} ' for k, v in (env or {}).items())
                 return prefix + subprocess.list2cmdline([str(a) for a in args])
 
+            def short_arg(text):
+                # A long path hides the flags. The full command stays in the .cmd file.
+                if (os.path.sep in text or (os.path.altsep and os.path.altsep in text)) and len(text) > 48:
+                    return Path(text).name or text
+                return text
+
+            def short_cmd(args, env=None):
+                prefix = ''.join(f'{k}={v} ' for k, v in (env or {}).items())
+                return prefix + subprocess.list2cmdline([short_arg(str(a)) for a in args])
+
             def write_cmd(res, name, args, env=None):
                 # Every command a stage launches is saved as <name>.cmd.
                 if dry:
@@ -782,7 +793,7 @@ def test_scons():
             def run(res, name, args, timeout, echo=20, env=None):
                 # Like stream_command: print the command, launch nothing when dry.
                 args = [str(a) for a in args]
-                print(f'  $ {cmdline(args, env)}')
+                print(f'  $ {short_cmd(args, env)}')
                 if dry:
                     return None
                 write_cmd(res, name, args, env)
@@ -932,9 +943,9 @@ def test_scons():
                 facts['tracy_flag'] = '--profiler' in eng_cmd
                 facts['tracy_features'] = option_value(eng_cmd, '--profiler-features')
                 facts['tracy_mask'] = option_value(eng_cmd, '--profiler-categories')   # None: build default
-                print(f'  $ {cmdline(cap_cmd)} &')
+                print(f'  $ {short_cmd(cap_cmd)} &')
                 if dry:
-                    print(f'  $ {cmdline(eng_cmd, env)}')
+                    print(f'  $ {short_cmd(eng_cmd, env)}')
                     as_dry(res)
                     return None, None
                 write_cmd(res, f'{name}-capture', cap_cmd)
@@ -1294,7 +1305,7 @@ def test_scons():
                 if num is None:
                     return None, 'no free X display number for Xvfb'
                 cmd = [xvfb, f':{num}', '-screen', '0', '1280x720x24', '-nolisten', 'tcp']
-                print(f'  $ {cmdline(cmd)} &')
+                print(f'  $ {short_cmd(cmd)} &')
                 ctx['xvfb_cmd'] = cmdline(cmd)
                 if dry:
                     return {'DISPLAY': f':{num}'}, None
@@ -2058,7 +2069,8 @@ def test_scons():
 
             def report_lines(summary):
                 rep = summary['report']
-                lines = [f"Tracy test report, {summary['finished']}",
+                lines = [summary['line'],
+                         f"Tracy test report, {summary['finished']}",
                          f"binary:       {rep['binary']}",
                          f"commit:       {rep['commit']}",
                          f"build:        {rep['build']} (variant {rep['variant']})",
@@ -2066,25 +2078,7 @@ def test_scons():
                          f"doctest:      {rep['doctest_filter']}",
                          f"--help mode:  {rep['help_mode']}",
                          f"runtime:      {rep['tracy_state'] or '(no Tracy state: line from the doctests)'}",
-                         'captures:']
-                for row in rep['captures']:
-                    mask = row['tracy_mask']
-                    names = row['gpu_context_names']
-                    lines.append(f"  {row['name']} [{row['status']}]: {row['engine_cmd']}")
-                    lines.append(f"    --profiler {yes_no(row['tracy_flag'])}, --profiler-features {row['tracy_features']}, "
-                                 f"--profiler-categories {'(not passed)' if mask is None else mask}")
-                    if row['vulkan_device']:
-                        lines.append(f"    {row['vulkan_device']}")
-                    lines.append(f"    gpu contexts {row['gpu_contexts']}{': ' + ', '.join(names) if names else ''}; "
-                                 f"zones {row['zones']}, gpu zones {row['gpu_zones']}, messages {row['messages']}, "
-                                 f"plots {row['plots']}, frames {row['frames']}, frame images {row['frame_images']}, "
-                                 f"capture started/stopped msgs "
-                                 f"{yes_no(row['capture_started_msg'])}/{yes_no(row['capture_stopped_msg'])}")
-                    sizes = row.get('frame_image_sizes') or []
-                    if sizes:
-                        lines.append('    ' + ', '.join(
-                            f"{s['count']} x {s['w']}x{s['h']} flip={s['flip']}" for s in sizes))
-                lines.append('stages:')
+                         'stages:']
                 for name in stage_names:
                     res = summary['stages'][name]
                     need = 'required' if name in summary['required'] else 'optional'
@@ -2098,7 +2092,25 @@ def test_scons():
                 lines.append(f"best run:     {best['path']}"
                              f"{' (updated: ' + ', '.join(best['updated']) + ')' if best['updated'] else ''}")
                 lines.append(f"logs:         {summary['log_dir']}")
-                lines.append(summary['line'])
+                # The full engine command is in <name>-engine.cmd. The live log prints a short form.
+                lines.append('captures:')
+                for row in rep['captures']:
+                    mask = row['tracy_mask']
+                    names = row['gpu_context_names']
+                    lines.append(f"  {row['name']} [{row['status']}]")
+                    lines.append(f"    --profiler {yes_no(row['tracy_flag'])}, --profiler-features {row['tracy_features']}, "
+                                 f"--profiler-categories {'(not passed)' if mask is None else mask}")
+                    if row['vulkan_device']:
+                        lines.append(f"    {row['vulkan_device']}")
+                    lines.append(f"    gpu contexts {row['gpu_contexts']}{': ' + ', '.join(names) if names else ''}; "
+                                 f"zones {row['zones']}, gpu zones {row['gpu_zones']}, messages {row['messages']}, "
+                                 f"plots {row['plots']}, frames {row['frames']}, frame images {row['frame_images']}, "
+                                 f"capture started/stopped msgs "
+                                 f"{yes_no(row['capture_started_msg'])}/{yes_no(row['capture_stopped_msg'])}")
+                    sizes = row.get('frame_image_sizes') or []
+                    if sizes:
+                        lines.append('    ' + ', '.join(
+                            f"{s['count']} x {s['w']}x{s['h']} flip={s['flip']}" for s in sizes))
                 return lines
 
             # MARK: Run
@@ -2154,6 +2166,9 @@ def test_scons():
                                 stages[name] = stage_funcs[name]()
                             except (OSError, ValueError, KeyError, subprocess.SubprocessError) as e:
                                 stages[name] = fail(result(), f'{type(e).__name__}: {e}')
+                            res = stages[name]
+                            detail = '; '.join(res['failures']) or res.get('reason') or ''
+                            fmt.h(f"{name}: {res['status']}" + (f' - {detail}' if detail else ''))
                     finally:
                         stop_display()
                     best_info = compare_best(stages)
