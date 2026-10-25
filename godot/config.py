@@ -72,7 +72,7 @@ TRACY_TEST_GPU_QUIT_AFTER = 320     # --quit-after; late_gpu.gd quits at frame 3
 # on-demand server drops the earliest indexes), so the floor is well under 90.
 TRACY_TEST_FRAME_IMAGE_FEATURES = 'frames,frame_images'
 TRACY_TEST_FRAME_IMAGE_MIN = 20
-# Headless log stage. log.gd waits a second, then prints. The on run lists only log.
+# Headless log stage. log.gd prints once Profiler.server_connected fires. The on run lists only log.
 # The off run lists messages and not log, so those lines must not be messages.
 TRACY_TEST_LOG_FEATURES = 'log'
 TRACY_TEST_LOG_OFF_FEATURES = 'messages'
@@ -958,7 +958,17 @@ def test_scons():
                         popen_kw['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
                     cap = subprocess.Popen(cap_cmd, stdout=cap_log, stderr=subprocess.STDOUT,
                                            stdin=subprocess.DEVNULL, **popen_kw)
-                    time.sleep(2)   # the manual flow starts the capture 2 s ahead
+                    # "Connecting to" is flushed before the handshake. The harness
+                    # then waits for Profiler.server_connected, so the engine starts
+                    # as soon as capture is trying, not after a fixed 2 s.
+                    deadline = time.monotonic() + 10
+                    while time.monotonic() < deadline and cap.poll() is None:
+                        try:
+                            if 'Connecting to' in cap_log_path.read_text(encoding='utf-8', errors='backslashreplace'):
+                                break
+                        except OSError:
+                            pass
+                        time.sleep(0.05)
                     eng = run(res, f'{name}-engine', eng_cmd, run_timeout, echo=8, env=env)
                     try:
                         cap_rc = cap.wait(timeout=60)
@@ -2079,7 +2089,9 @@ def test_scons():
                          f"--help mode:  {rep['help_mode']}",
                          f"runtime:      {rep['tracy_state'] or '(no Tracy state: line from the doctests)'}",
                          'stages:']
-                for name in stage_names:
+                for index, name in enumerate(stage_names):
+                    if index:
+                        lines.append('')
                     res = summary['stages'][name]
                     need = 'required' if name in summary['required'] else 'optional'
                     lines.append(f"  {name:<15} {res['status']:<5} {need}"
@@ -2094,7 +2106,9 @@ def test_scons():
                 lines.append(f"logs:         {summary['log_dir']}")
                 # The full engine command is in <name>-engine.cmd. The live log prints a short form.
                 lines.append('captures:')
-                for row in rep['captures']:
+                for index, row in enumerate(rep['captures']):
+                    if index:
+                        lines.append('')
                     mask = row['tracy_mask']
                     names = row['gpu_context_names']
                     lines.append(f"  {row['name']} [{row['status']}]")
@@ -2159,6 +2173,7 @@ def test_scons():
                     stages = ctx['stages']
                     try:
                         for name in stage_names:
+                            print()
                             fmt.h(f'Stage: {name}')
                             try:
                                 if name == 'fibers_capture' and is_tracy and not dry:
