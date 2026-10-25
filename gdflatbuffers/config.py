@@ -208,7 +208,8 @@ _load_local_paths()
 # CMake interface of the extension (godot-flatbuffers cmake/tracy.cmake, tracy branch
 # 54a6325). Every option name the variant passes is here and nowhere else. The
 # Tracy client comes only from the engine's bin; the extension never copies it.
-# On MinGW the import library (.a) is all the configure needs.
+# Clang-cl and MSVC link the import library beside the dll (.lib).
+# MinGW links the .a under obj/core/profiling.
 LIBTRACY_CMAKE = {
     'enable':         'GDFB_ENABLE_TRACY',       # BOOL, ON for libtracy only. Default folders leave it unset.
     'header_dir':     'GODOT_TRACY_HEADER_DIR',  # dir of godot_profiling.<suffix>.gen.h
@@ -231,8 +232,10 @@ LIBTRACY_SUBMODULE_GIT_CONFIG = ['url.https://github.com/.insteadOf=git@github.c
 LIBTRACY_BIN_ENV = 'GDFB_GODOT_TRACY_BIN'
 
 # The engine binary the libtracy launch uses. It must be a shared-client build:
-# its dynamic section names the TracyClient library (readelf -d on Linux,
-# objdump -p on Windows). A static-Tracy exe in the same bin is rejected.
+# its dynamic section names the TracyClient library. The script probes PATH
+# for the tool this host can read: objdump or llvm-objdump -p on Windows,
+# readelf or llvm-readelf -d elsewhere. A static-Tracy exe in the same bin
+# is rejected.
 # Pick one explicitly with $GDFB_GODOT_TRACY_EXE_<TARGET> or $GDFB_GODOT_TRACY_EXE:
 # a file name in the Godot bin, or an absolute path. Without it, the platform's
 # 'engine' globs are tried in order and the newest shared-client match wins.
@@ -255,16 +258,15 @@ LIBTRACY_HEADER = 'godot_profiling.*.gen.h'
 # the Tracy engine binary. The test launches the godot runner's install of it.
 LIBTRACY_PLATFORMS = {
     'win32': {
-        'toolchains': ['mingw64'],     # the import library is MinGW
-        'godot_glob': '{host}.mingw64.x86_64.windows.{target}.libtracy.*',
-        'link':       ['obj/core/profiling/libTracyClient.windows.{target}.x86_64.*tracy.a'],
+        'godot_glob': '{host}.{toolchain}.x86_64.windows.{target}.libtracy.*',
+        'link':       ['TracyClient.windows.{target}.x86_64.*tracy.lib',
+                       'obj/core/profiling/libTracyClient.windows.{target}.x86_64.*tracy.a'],
         'runtime':    ['TracyClient.windows.{target}.x86_64.*tracy.dll'],
         'extension':  'flatbuffers.windows.{target}.*.dll',
         # The real exe. The .console.exe wrapper is a second process.
         'engine':     ['godot.windows.{target}*.x86_64.*tracy.exe'],   # .tracy or .libtracy
     },
     'linux': {
-        'toolchains': ['gcc'],
         # The runner does not build Godot on Linux yet. The env override above is the usual path.
         'godot_glob': '{host}.*.x86_64.linux.{target}.libtracy.*',
         # The engine loads this library by SONAME; the extension needs no RUNPATH.
@@ -426,7 +428,7 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
     from src.expand_config import short_host
 
     spec = LIBTRACY_PLATFORMS.get(cfg.platform)
-    if spec is None or cfg.toolchain.name not in spec['toolchains']:
+    if spec is None:
         return None
     if cfg.arch != 'x86_64' or getattr(cfg.buildtool, 'short_gen', None) != 'ninja-multi':
         return None
@@ -450,7 +452,8 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
         'include_dir': include_dir,
         'bin_env': [f'{LIBTRACY_BIN_ENV}_{target.upper()}', LIBTRACY_BIN_ENV],
         'godot_root': (gopts.path / 'godot').as_posix(),
-        'godot_glob': spec['godot_glob'].format(host=short_host(), target=target),
+        'godot_glob': spec['godot_glob'].format(
+            host=short_host(), target=target, toolchain=cfg.toolchain.name),
         'link': [g.format(target=target) for g in spec['link']],
         'runtime': [g.format(target=target) for g in spec['runtime']],
         'extension': spec['extension'].format(target=target),
@@ -521,6 +524,44 @@ def libtracy_resolve():
     build:dict = {}
     buildtool:dict = {}
     # start_script
+
+    # Imported library names from the first dump tool on PATH for this host,
+    # or None when none of them can be run. Windows reads PE "DLL Name" lines.
+    # Other hosts read ELF NEEDED entries. Resolve and the later check both
+    # call this; it is defined here so it exists before either section runs.
+    def libtracy_dump_label():
+        import sys
+        if sys.platform == 'win32':
+            return 'objdump/llvm-objdump'
+        return 'readelf/llvm-readelf'
+
+    def libtracy_needed_names(path):
+        import re as _re
+        import shutil
+        import subprocess as _sp
+        import sys
+        if sys.platform == 'win32':
+            candidates = (
+                ('objdump', '-p', r'DLL Name:\s*(\S+)'),
+                ('llvm-objdump', '-p', r'DLL Name:\s*(\S+)'),
+            )
+        else:
+            candidates = (
+                ('readelf', '-d', r'\(NEEDED\).*\[(.+)\]'),
+                ('llvm-readelf', '-d', r'\(NEEDED\).*\[(.+)\]'),
+            )
+        for name, flag, line_re in candidates:
+            exe = shutil.which(name)
+            if not exe:
+                continue
+            try:
+                out = _sp.run([exe, flag, str(path)], capture_output=True, text=True, timeout=60)
+            except (OSError, _sp.SubprocessError):
+                continue
+            if out.returncode != 0:
+                continue
+            return _re.findall(line_re, out.stdout)
+        return None
 
     # MARK: libtracy-Resolve
     #[===========================[ libtracy Resolve ]===========================]
@@ -616,22 +657,13 @@ def libtracy_resolve():
             fmt.hu(f'runtime: {runtime.as_posix()}')
 
             # 4. The engine exe: a shared-client build (it NEEDs the TracyClient).
-            import subprocess as _sp
-
             def _client_needed(exe):
-                # Names in the exe's dynamic section that match the TracyClient,
-                # or None when no tool could read it.
-                for cmd, line_re in ((['readelf', '-d', str(exe)], r'\(NEEDED\).*\[(.+)\]'),
-                                     (['objdump', '-p', str(exe)], r'DLL Name:\s*(\S+)')):
-                    try:
-                        out = _sp.run(cmd, capture_output=True, text=True, timeout=60)
-                    except (OSError, _sp.SubprocessError):
-                        continue
-                    if out.returncode != 0:
-                        continue
-                    names = _re.findall(line_re, out.stdout)
-                    return [n for n in names if _re.search(tt['exe_client_re'], n)]
-                return None
+                # TracyClient names in the dynamic section, or None when no
+                # dump tool could read the exe.
+                names = libtracy_needed_names(exe)
+                if names is None:
+                    return None
+                return [n for n in names if _re.search(tt['exe_client_re'], n)]
 
             chosen = None
             for name in tt['exe_env']:
@@ -657,7 +689,7 @@ def libtracy_resolve():
             for exe in candidates:
                 needed = _client_needed(exe)
                 if needed is None:
-                    fmt.hu(f'WARNING: no readelf/objdump to check {exe.name}; accepted unchecked')
+                    fmt.hu(f'WARNING: no {libtracy_dump_label()} to check {exe.name}; accepted unchecked')
                     engine = exe
                     break
                 if needed:
@@ -799,7 +831,6 @@ def libtracy_check():
     # platform and target pointing at a .tracy library.
     import filecmp as _filecmp
     import re as _re
-    import subprocess as _sp
 
     def libtracy_check_err(errors, msg):
         fmt.h(f'ERROR: {msg}')
@@ -808,22 +839,10 @@ def libtracy_check():
     def libtracy_check_is_tracy(tt, path):
         return tt['output_tag'] in path.name.split('.')
 
-    def libtracy_check_needed(lib):
-        # The dynamic section's library names, or None when no tool read it.
-        for cmd, line_re in ((['readelf', '-d', str(lib)], r'\(NEEDED\).*\[(.+)\]'),
-                             (['objdump', '-p', str(lib)], r'DLL Name:\s*(\S+)')):
-            try:
-                out = _sp.run(cmd, capture_output=True, text=True, timeout=60)
-            except (OSError, _sp.SubprocessError):
-                continue
-            if out.returncode == 0:
-                return _re.findall(line_re, out.stdout)
-        return None
-
     def libtracy_check_lib(tt, runtime, errors, lib):
-        names = libtracy_check_needed(lib)
+        names = libtracy_needed_names(lib)
         if names is None:
-            fmt.hu(f'WARNING: no readelf/objdump to check {lib.name}')
+            fmt.hu(f'WARNING: no {libtracy_dump_label()} to check {lib.name}')
             return
         clients = [n for n in names if _re.search(tt['exe_client_re'], n)]
         fmt.hu(f'{lib.name} NEEDED client: {", ".join(clients) or "none"}')
