@@ -5,7 +5,6 @@ This script provides a command-line interface for managing toolchains, fetching 
 sources, and running build configurations for Godot-related projects.
 """
 from io import StringIO
-
 import rich.box
 from rich import print
 from rich.pretty import pprint
@@ -14,7 +13,7 @@ from rich.pretty import pprint
 from src import format as fmt
 from src.config import gopts
 from src.generate import generate_build_scripts
-from src.build_utils import console, log_console, process_project, show_statistics, process_toolchains
+from src.build_utils import console, log_console, has_statistics, process_project, show_statistics, process_toolchains
 from src.git_utils import git_fetch_project
 # Src modules (refactored)
 from src.args import parse_args
@@ -28,6 +27,77 @@ class PretendIO(StringIO):
         print( value )
 
 pretendio = PretendIO()
+
+
+# Order is the order a person runs them. Text is one line, for the idle list.
+VERB_HELP = {
+    'fetch': 'pull the latest from all remotes',
+    'source': 'check out a source worktree',
+    'update': 'update the toolchain',
+    'reset': 'delete the CMake cache',
+    'configure': 'configure the build',
+    'clean': 'remove build outputs',
+    'build': 'compile',
+    'test': 'run the tests',
+    'install': 'install the build products',
+}
+VERB_ORDER = list(VERB_HELP)
+
+
+def _verbs(obj) -> list:
+    return list(getattr(obj, 'verbs', None) or [])
+
+
+def print_summary(toolchains, projects, list_configs: bool) -> None:
+    """Counts first, then names. --list prints config names under each project."""
+    n_configs = sum(len(project.build_configs) for project in projects.values())
+    with fmt.Section('Summary'):
+        fmt.h(f'Toolchains: {len(toolchains)}')
+        fmt.h(f'Projects: {len(projects)}')
+        fmt.h(f'Configs: {n_configs}')
+        if toolchains:
+            with fmt.Section(f'Toolchains ({len(toolchains)})'):
+                for toolchain in toolchains.values():
+                    fmt.h(toolchain.name)
+        if projects:
+            with fmt.Section(f'Projects ({len(projects)})'):
+                for project in projects.values():
+                    n = len(project.build_configs)
+                    label = f'{project.name} ({n} configs)'
+                    if list_configs and project.build_configs:
+                        with fmt.Section(label):
+                            for name in sorted(build.name for build in project.build_configs.values()):
+                                fmt.h(name)
+                    else:
+                        fmt.h(label)
+
+
+def print_available_actions(toolchains, projects) -> None:
+    """Unnumbered list of actions. Shown only when the run named none."""
+    found = []
+
+    def add(verbs):
+        for verb in verbs:
+            if verb and verb not in found:
+                found.append(verb)
+
+    for toolchain in toolchains.values():
+        add(_verbs(toolchain))
+    for project in projects.values():
+        add(_verbs(project))
+        for build in project.build_configs.values():
+            add(_verbs(build))
+    if not found:
+        return
+
+    ordered = [verb for verb in VERB_ORDER if verb in found]
+    ordered += [verb for verb in found if verb not in VERB_HELP]
+    # Not a Section: this list is only present when nothing ran, so it is not a step.
+    print()
+    print('Available Actions')
+    for verb in ordered:
+        text = VERB_HELP.get(verb)
+        fmt.h(f'{verb} - {text}' if text else verb, level=2)
 
 # ================[ Setup Multiplexed Console ]================-
 # Member 'TextIO' of 'TextIO | Any' does not have attribute 'reconfigure'
@@ -53,11 +123,10 @@ def main():
     2. Parses command-line arguments into global options
     3. Imports and filters toolchains from */toolchains.py files
     4. Imports and generates project configurations from */config.py files
-    5. Displays a summary of available toolchains, projects, and build configurations
-    6. Executes toolchain-specific actions (e.g. update)
-    7. Fetches project sources via git if the 'fetch' action is specified
-    8. Generates and executes build scripts for matching configurations
-    9. Displays a statistics table with build status and durations
+    5. Summarises toolchain and project names. --list also lists each build config name
+    6. Runs toolchain actions, fetch, then build configs under Processing
+    7. Displays one statistics table when a build recorded a row
+    8. Lists available actions, unnumbered, when the run named no actions
 
     Side effects:
         - Creates/updates log files in project directories
@@ -67,7 +136,8 @@ def main():
         - Writes build_log.log to the script directory
 
     Returns:
-        None: Exits with status 0 if --list flag used, otherwise completes workflow.
+        None. --list prints each project's build config names in the summary and
+        then continues, so a requested fetch or build still runs.
 
     Raises:
         KeyboardInterrupt: User cancellation propagated from subprocess handlers.
@@ -89,117 +159,61 @@ def main():
         console.rule("Options")
         pprint( gopts.__dict__, expand_all=True )
 
-    with fmt.Section("Import Toolchains"):
-        import_toolchains(gopts)
-        toolchains = gopts.toolchains
-        if gopts.verbose:
-            with fmt.Section("Toolchains"):
+    with fmt.Section('Import'):
+        with fmt.Section('Toolchains'):
+            import_toolchains(gopts)
+            toolchains = gopts.toolchains
+            if gopts.verbose:
                 for toolchain in toolchains:
                     fmt.h(toolchain)
-
-    with fmt.Section("Import Projects"):
-        gopts.projects = import_projects(gopts)
-        projects = gopts.projects
-        if gopts.verbose:
-            with fmt.Section("Projects"):
+        with fmt.Section('Projects'):
+            gopts.projects = import_projects(gopts)
+            projects = gopts.projects
+            if gopts.verbose:
                 for project in projects:
                     fmt.h(project)
 
-    total_builds = sum(len(p.build_configs) for p in gopts.projects.values())
-    with fmt.Section("Summary"):
-        t_verbs = ', '.join(gopts.toolchain_verbs) if gopts.toolchain_verbs else 'none'
-        fmt.h(f"Toolchains ({len(gopts.toolchains)}) - available: {t_verbs}")
-        p_verbs = ', '.join(gopts.project_verbs) if gopts.project_verbs else 'none'
-        b_verbs = ', '.join(gopts.build_verbs) if gopts.build_verbs else 'none'
-        fmt.h(f"Projects ({len(gopts.projects)}) ({total_builds} configurations)")
-        project_run = [a for a in gopts.project_actions if a in gopts.project_verbs]
-        project_run = ', '.join(project_run) if project_run else 'none'
-        build_run = ', '.join(gopts.build_actions) if gopts.build_actions else 'none'
-        fmt.h(f"project actions: {project_run}")
-        fmt.h(f"project verbs: {p_verbs}")
-        fmt.h(f"build actions: {build_run}")
-        fmt.h(f"build verbs: {b_verbs}")
+    print_summary(toolchains, projects, gopts.list)
 
-    # TODO if help in any of the system verbs then display a list of verb help items.
-    # List only.
-    if gopts.list:
-        with fmt.Section('List Items'):
-            with fmt.Section(f"Toolchains ({len(toolchains)})"):
-                for toolchain in toolchains.values():
-                    verbs:str = ''
-                    if len(toolchain.verbs):
-                        verbs = f' - available actions:{toolchain.verbs}'
-                    fmt.h(f'{toolchain.name}{verbs}')
+    actions_specified = gopts.toolchain_actions or gopts.project_actions or gopts.build_actions
+    if actions_specified:
+        with fmt.Section('Processing'):
+            toolchain_run = [
+                action for action in gopts.toolchain_actions
+                if any(action in getattr(toolchain, 'verbs', []) for toolchain in toolchains.values())
+            ]
+            if toolchain_run:
+                process_toolchains(gopts)
 
-            n_builds = 0
-            with fmt.Section(f"Projects ({len(projects)})"):
-                for project_name,project in projects.items():
-                    n_builds += len(project.build_configs)
-                    verbs:str = ''
-                    if len(project.verbs):
-                        verbs = f' - available actions:{project.verbs}'
-                    fmt.h(f'{project.name}{verbs}')
-
-            from src.select import collect_options, configuration_folder
-            with fmt.Section('Options'):
-                for project_name, project in projects.items():
-                    fmt.h(project_name)
-                    switches, lists = collect_options(project.build_configs.values())
-                    if switches:
-                        fmt.hu('switches')
-                        for name in switches:
-                            fmt.h(name, level=fmt.pad.level + 2)
-                    if lists:
-                        fmt.hu('lists')
-                        for name, values in lists:
-                            fmt.h(f'{name}: {", ".join(values)}', level=fmt.pad.level + 2)
-
-            with fmt.Section(f"Configurations ({n_builds})"):
-                for project_name, project in projects.items():
-                    for build in project.build_configs.values():
-                        fmt.h(configuration_folder(project_name, build))
-
-        with fmt.Section("Show Statistics"):
-            show_statistics( gopts )
-
-    toolchain_run = [
-        action for action in gopts.toolchain_actions
-        if any(action in getattr(toolchain, 'verbs', []) for toolchain in gopts.toolchains.values())
-    ]
-    if toolchain_run:
-        with fmt.Section("Process Toolchain Actions"):
-            process_toolchains( gopts )
-
-    # Basically the same thing again for the fetch command in prject, should be re-arranged
-    if 'fetch' in gopts.project_actions:
-        with fmt.Section("Process Project Actions"):
-            if not projects:
-                fmt.h('No matching configurations, skipping fetch')
-            else:
-                with fmt.Section( 'Fetching Projects' ):
+            # Fetch updates the bare repo from the in-memory config. Do it
+            # before generating scripts, which do not read the new tips.
+            if 'fetch' in gopts.project_actions:
+                if not projects:
+                    fmt.h('No matching configurations, skipping fetch')
+                else:
                     for project in projects.values():
-                        git_fetch_project( gopts, project )
+                        if 'fetch' not in _verbs(project):
+                            continue
+                        with fmt.Section(f'{project.name} - fetch'):
+                            git_fetch_project(gopts, project)
 
-    # Generate the build scripts
-    # This one is the processing script for the build itself, should be renamed.something like
-    # for build_config in project.configs process_build( build ) since the build has a handle to its parent
-    with fmt.Section("Process Builds"):
-        if len(gopts.build_actions) == 0:
-            verbs = ', '.join(gopts.build_verbs) if gopts.build_verbs else 'none'
-            fmt.h(f"No build actions specified. Available: {verbs}")
-        elif not projects:
-            fmt.h('No matching configurations')
-        else:
-            with fmt.Section("Generate Build Scripts"):
-                generate_build_scripts( gopts )
+            if gopts.build_actions:
+                if not projects:
+                    fmt.h('No matching configurations')
+                else:
+                    with fmt.Section('Generate Build Scripts'):
+                        generate_build_scripts(gopts)
+                    for project in projects.values():
+                        try: process_project(gopts, project)
+                        except KeyboardInterrupt:
+                            print('Processing Cancelled')
 
-            for project in projects.values():
-                try: process_project( gopts, project )
-                except KeyboardInterrupt:
-                    print("Processing Cancelled")
+    if has_statistics(gopts):
+        with fmt.Section('Statistics'):
+            show_statistics(gopts)
 
-    with fmt.Section("Show Statistics"):
-        show_statistics( gopts )
+    if not actions_specified:
+        print_available_actions(toolchains, projects)
 
     console.pop( "build_log" )
 
