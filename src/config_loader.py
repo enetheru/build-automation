@@ -168,8 +168,11 @@ def import_projects(opts: SimpleNamespace) -> dict:
             if fmt.re.search( opts.build_regex, v.name )
             and row_selected(v, getattr(opts, 'config_regex', '.*'), getattr(opts, 'target_regex', '.*'))}
 
-    # Filter projects with zero valid build configurations
+    # Callers read opts.projects, not the returned dict. Leaving a project here
+    # after its rows were filtered out kept an empty path, and fetch cloned
+    # into the working directory.
     projects = {v.name: v for v in projects.values() if len(v.build_configs)}
+    opts.projects = projects
 
     # Update project and build fields with information from param:opts
     for project in projects.values():

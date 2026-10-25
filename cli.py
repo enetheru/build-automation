@@ -98,7 +98,7 @@ def main():
                     fmt.h(toolchain)
 
     with fmt.Section("Import Projects"):
-        import_projects(gopts)
+        gopts.projects = import_projects(gopts)
         projects = gopts.projects
         if gopts.verbose:
             with fmt.Section("Projects"):
@@ -173,9 +173,12 @@ def main():
     # Basically the same thing again for the fetch command in prject, should be re-arranged
     if 'fetch' in gopts.project_actions:
         with fmt.Section("Process Project Actions"):
-            with fmt.Section( 'Fetching Projects' ):
-                for project in projects.values():
-                    git_fetch_project( gopts, project )
+            if not projects:
+                fmt.h('No matching configurations, skipping fetch')
+            else:
+                with fmt.Section( 'Fetching Projects' ):
+                    for project in projects.values():
+                        git_fetch_project( gopts, project )
 
     # Generate the build scripts
     # This one is the processing script for the build itself, should be renamed.something like
@@ -184,6 +187,8 @@ def main():
         if len(gopts.build_actions) == 0:
             verbs = ', '.join(gopts.build_verbs) if gopts.build_verbs else 'none'
             fmt.h(f"No build actions specified. Available: {verbs}")
+        elif not projects:
+            fmt.h('No matching configurations')
         else:
             with fmt.Section("Generate Build Scripts"):
                 generate_build_scripts( gopts )

@@ -217,6 +217,11 @@ def git_override(opts: SimpleNamespace):
 #MARK: Fetch
 def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
     """Handle git fetch/prune/add-remote/ls-remote/rev-parse for project builds/sources."""
+    name = getattr(project, 'name', '') or 'project'
+    if not getattr(project, 'build_configs', None):
+        fmt.h(f"Skipping fetch ({name}): no matching configurations")
+        return
+
     if opts.dry:
         fmt.h("Dry-Run: Skipping Fetch")
         return
@@ -226,9 +231,22 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
         fmt.h(f"Skipping fetch ({srcdef_for_clone.type} source)")
         return
 
-    os.chdir(project.path)
+    # path is unset until a project survives filtering. An empty path is the
+    # working directory, and gitdir 'git' then becomes <cwd>/git.
+    root = Path(opts.path).resolve()
+    raw_path = Path(getattr(project, 'path', '') or '')
+    expected = (root / name).resolve()
+    if not raw_path.is_absolute() or raw_path.resolve() != expected:
+        raise RuntimeError(
+            f'Refusing to fetch {name}: path is unset or not {expected.as_posix()}')
+    project_path = raw_path.resolve()
 
-    gitdir = project.path / getattr(srcdef_for_clone, 'gitdir', Path('git'))
+    os.chdir(project_path)
+
+    gitdir = (project_path / getattr(srcdef_for_clone, 'gitdir', Path('git'))).resolve()
+    if project_path not in gitdir.parents:
+        raise RuntimeError(
+            f'Refusing to clone {gitdir.as_posix()} outside {project_path.as_posix()}')
 
     # Ensure git repo exists, and is clean
     if not gitdir.exists():
