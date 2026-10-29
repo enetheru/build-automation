@@ -853,24 +853,37 @@ def test_scons():
                 path = Path(value)
                 return path if path.is_absolute() else source_dir / path
 
+            def family_busy(family, addr, port, v6only):
+                try:
+                    sock = socket.socket(family, socket.SOCK_STREAM)
+                except OSError:
+                    return False
+                try:
+                    if v6only is not None:
+                        sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, v6only)
+                    sock.bind((addr, port))
+                except OSError:
+                    return True
+                finally:
+                    sock.close()
+                return False
+
             def port_busy(address, port):
                 # Bind and close. Windows drops a SYN to a closed port, so a
                 # connect probe times out on every port and the walk from
                 # 8086 never finishes. A listen socket that accepted nothing
                 # does not stay in TIME_WAIT, so Tracy can bind the port next.
+                # Tracy binds IPv6 with IPV6_V6ONLY off and, when
+                # --profiler-port is set, does not try another port. A
+                # 127.0.0.1 bind still succeeds while that listen is up, and
+                # the engine then never accepts.
                 try:
-                    infos = socket.getaddrinfo(
-                        address, int(port), type=socket.SOCK_STREAM,
-                        proto=socket.IPPROTO_TCP)
-                except OSError:
+                    port = int(port)
+                except (TypeError, ValueError):
                     return True
-                family, socktype, proto, _, sockaddr = infos[0]
-                try:
-                    with socket.socket(family, socktype, proto) as sock:
-                        sock.bind(sockaddr)
-                except OSError:
+                if family_busy(socket.AF_INET6, '::', port, 0):
                     return True
-                return False
+                return family_busy(socket.AF_INET, address, port, None)
 
             def free_listen_port(address, preferred):
                 # Leave tt['port'] alone. The next stage starts from the
@@ -1430,7 +1443,23 @@ def test_scons():
                 facts['filter'] = flt
                 listing = run(res, 'doctest-list', [exe, '--headless', '--test', '--list-test-cases',
                                                     f'--test-case={flt}'], 300, echo=0)
-                out = run(res, 'doctest', [exe, '--headless', '--test', f'--test-case={flt}'], 900, echo=12)
+                # On-demand builds name a GDScript fiber only while a server is
+                # connected. Pin a free port and hand tracy-capture to the
+                # statement-call case. A 127.0.0.1 bind still succeeds while
+                # an editor listens on ::, so free_listen_port checks that too.
+                doctest_args = [exe, '--headless', '--test', f'--test-case={flt}']
+                doctest_env = None
+                if scons_opt('profiler') == 'tracy' and tool('capture'):
+                    port = free_listen_port(tt['address'], tt.get('port'))
+                    if port:
+                        doctest_args += ['--profiler-port', port]
+                        doctest_env = {
+                            'TRACY_CAPTURE': str(tool('capture')),
+                            'TRACY_TEST_PORT': port,
+                            'TRACY_TEST_ADDR': tt['address'],
+                            'TRACY_TEST_TRACE': str(logdir / 'branch-doctest.tracy'),
+                        }
+                out = run(res, 'doctest', doctest_args, 900, echo=12, env=doctest_env)
                 if out is None:
                     return as_dry(res)
                 # The listing prints the case names between two ===== rules.
