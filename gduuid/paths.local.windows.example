@@ -1,0 +1,14 @@
+# Per-machine gduuid paths for this Windows box.
+# Copy to gduuid/paths.local.py (gitignored) and adjust; gduuid/config.py
+# loads it when present. Any name left out keeps its default from config.py.
+
+# Local checkout to fetch the main source from. Unset keeps the GitHub url
+# in config.py. Ref stays main, which must be a branch in that repo. Fetch
+# sees committed refs only.
+# GDUUID_SOURCE_PATH = 'C:/Godot/extensions/Enetheru-godot-uuid'
+
+# Install prefix of every gduuid build (cmake --install --prefix). A
+# relative path is under that build's source worktree; the default 'install'
+# is <source>/install. An absolute path is used as given. Files land in
+# <prefix>/addons/enetheru.uuid-extension/. The prefix may be a Godot project.
+# GDUUID_INSTALL_PREFIX = 'C:/Godot/extensions/Enetheru-godot-uuid/project'
