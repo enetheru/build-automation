@@ -26,10 +26,20 @@ from rich.panel import Panel
 sys.stdout.reconfigure(encoding='utf-8')
 # The parent captures this script through a pipe. Rich then wraps at 79
 # columns and folds paths in the middle. A terminal keeps the normal console.
+# AUTOBUILD_COLOR means the parent frame will paint ANSI, so this pipe still
+# emits color. soft_wrap leaves the wrapping to that frame.
+_want_color = (
+    os.environ.get('AUTOBUILD_COLOR') == '1'
+    and not os.environ.get('NO_COLOR')
+    and os.environ.get('CLICOLOR') != '0'
+)
 if sys.stdout.isatty():
     rich._console = console = Console()
+elif _want_color:
+    rich._console = console = Console(force_terminal=True, soft_wrap=True)
 else:
     rich._console = console = Console(color_system=None, soft_wrap=True)
+if not sys.stdout.isatty():
     # Captured logs only need the toolchain directory that was prepended.
     # The rest of PATH is the machine and is the same on every build.
     prepend = os.environ.get('AUTOBUILD_PATH_PREPEND', '')

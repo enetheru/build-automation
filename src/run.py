@@ -39,15 +39,44 @@ def _end_marker() -> None:
     sys.stdout.flush()
 
 
+def color_env(env: dict | None) -> dict | None:
+    """Ask a piped child to keep color when this console can show it.
+
+    cmake, ninja, and clang turn color off when stdout is a pipe. The parent
+    frame paints the ANSI and writes plain text to the log. NO_COLOR and
+    CLICOLOR=0 still win. AUTOBUILD_COLOR carries the request into the child,
+    whose own stdout is the pipe and would otherwise look colorless.
+    """
+    source = os.environ if env is None else env
+    if source.get('NO_COLOR') or source.get('CLICOLOR') == '0':
+        return env
+    showing = source.get('AUTOBUILD_COLOR') == '1' or sys.stdout.isatty()
+    if not showing:
+        return env
+    copied = dict(source)
+    copied.setdefault('CLICOLOR_FORCE', '1')
+    copied.setdefault('FORCE_COLOR', '1')
+    copied.setdefault('CMAKE_COLOR_DIAGNOSTICS', 'ON')
+    copied.setdefault('AUTOBUILD_COLOR', '1')
+    return copied
+
+
 def _print_tty_panel(cmd: str, title: str, lines: list[str]) -> None:
-    body = cmd if not lines else cmd + '\n' + '\n'.join(lines)
-    longest = max([len(cmd), len(title) + 2, *(len(line) for line in lines)], default=0)
+    body = Text.from_ansi(cmd)
+    body.no_wrap = True
+    body.overflow = 'ignore'
+    widths = [len(body.plain), len(title) + 2]
+    for line in lines:
+        body.append('\n')
+        painted = Text.from_ansi(line)
+        widths.append(len(painted.plain))
+        body.append(painted)
     rich.print(Panel(
-        Text(body, no_wrap=True, overflow='ignore'),
+        body,
         title=Text(title, no_wrap=True, overflow='ignore'),
         title_align='left',
         expand=True,
-        width=max(80, longest + 4),
+        width=max(80, max(widths) + 4),
         padding=(0, 1),
     ))
 
@@ -141,7 +170,7 @@ def stream_command(
     try:
         with (
             # errors: 'strict', 'replace', 'ignore', 'backslashreplace'
-            Popen(args, bufsize=1, stdout=stdout, stderr=stderr, env=env, **kwargs, text=text, encoding='utf-8', errors='backslashreplace') as process,
+            Popen(args, bufsize=1, stdout=stdout, stderr=stderr, env=color_env(env), **kwargs, text=text, encoding='utf-8', errors='backslashreplace') as process,
             ThreadPoolExecutor(2) as pool,  # two threads to handle the (live) streams separately
         ):
             exhaust = partial(deque, maxlen=0)  # collections recipe: exhaust an iterable at C-speed

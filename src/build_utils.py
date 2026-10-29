@@ -71,13 +71,22 @@ def _screen_width() -> int:
     return width
 
 
+def _display_line(text: str) -> Text:
+    """One captured line, with tool color kept and markup left off.
+
+    The child is a pipe, so cmake and ninja send ANSI instead of painting
+    the terminal themselves. Square brackets stay literal: [1/83] is not a tag.
+    """
+    return Text.from_ansi(text)
+
+
 class CommandFrame:
     """A command panel that stays open while the command's lines arrive.
 
     The screen and build_log.log get the same box, wrapped to the terminal.
     Lines wrap on spaces. A single token longer than the box is split so
-    the border stays aligned. markup is off so paths and ninja counts such
-    as [1/83] are not tags. Blank lines are dropped.
+    the border stays aligned. The screen keeps ANSI color. The log gets the
+    same characters with the codes removed. Blank lines are dropped.
     """
 
     def __init__(self, cmd: str, title: str):
@@ -86,68 +95,93 @@ class CommandFrame:
         self.line(cmd)
 
     def line(self, text: str) -> None:
-        if not text.strip():
+        styled = _display_line(text)
+        plain = styled.plain
+        if not plain.strip():
             return
         # Per-build logs keep the compiler line whole. The box is only for
         # the session log and the screen, and those two match.
-        self._plain(text)
-        for part in self._wrap(text, self.screen_width - 4):
-            self._emit(self._row(part, self.screen_width))
+        self._plain(plain)
+        for part in self._wrap_styled(styled, self.screen_width - 4):
+            self._emit(self._row_text(part, self.screen_width))
 
-    def _wrap(self, text: str, inner: int) -> list[str]:
-        """Wrap on spaces.
+    def _wrap_styled(self, styled: Text, inner: int) -> list[Text]:
+        """Wrap on spaces, keeping the styles on each slice.
 
         A quoted span stays together, and so does a Windows path such as
         C:\\Program Files\\.... Cmd quote toggling would otherwise swallow
         the rest of a link line into one token and slice it mid-path.
         A span that cannot fit breaks at the previous space.
         """
-        lines: list[str] = []
-        current = ''
-        for token in self._atoms(text, inner):
+        lines: list[Text] = []
+        current = Text()
+        for token in self._atom_texts(styled, inner):
             piece = token
-            while len(piece) > inner:
-                if current:
+            while len(piece.plain) > inner:
+                if current.plain:
                     lines.append(current)
-                    current = ''
+                    current = Text()
                 lines.append(piece[:inner])
                 piece = piece[inner:]
-            if not piece:
+            if not piece.plain:
                 continue
-            extra = len(piece) if not current else len(piece) + 1
-            if current and len(current) + extra > inner:
+            extra = len(piece.plain) if not current.plain else len(piece.plain) + 1
+            if current.plain and len(current.plain) + extra > inner:
                 lines.append(current)
                 current = piece
-            elif current:
-                current = f'{current} {piece}'
+            elif current.plain:
+                current.append(' ')
+                current.append(piece)
             else:
                 current = piece
-        if current:
+        if current.plain:
             lines.append(current)
         return lines
 
-    def _atoms(self, text: str, inner: int) -> list[str]:
-        parts = [part for part in text.split(' ') if part]
-        atoms: list[str] = []
-        buf = ''
-        for part in parts:
-            if not buf:
+    def _atom_texts(self, styled: Text, inner: int) -> list[Text]:
+        plain = styled.plain
+        spans: list[tuple[int, int]] = []
+        i = 0
+        n = len(plain)
+        while i < n:
+            if plain[i] == ' ':
+                i += 1
+                continue
+            j = i + 1
+            while j < n and plain[j] != ' ':
+                j += 1
+            spans.append((i, j))
+            i = j
+
+        atoms: list[Text] = []
+        buf: Text | None = None
+        for start, end in spans:
+            part = styled[start:end]
+            if buf is None or not buf.plain:
                 buf = part
                 continue
-            joined = len(buf) + 1 + len(part)
-            keep = self._quote_open(buf) or self._continues_path(buf, part)
+            buf_plain = buf.plain
+            part_plain = part.plain
+            joined = len(buf_plain) + 1 + len(part_plain)
+            keep = self._quote_open(buf_plain) or self._continues_path(buf_plain, part_plain)
             if keep and joined <= inner:
-                buf = f'{buf} {part}'
+                buf.append(' ')
+                buf.append(part)
                 continue
-            if self._continues_path(buf, part):
-                head, tail = self._split_path_head(buf)
+            if self._continues_path(buf_plain, part_plain):
+                head, tail = self._split_path_head(buf_plain)
                 if head:
-                    atoms.append(head)
-                buf = f'{tail} {part}' if tail else part
+                    atoms.append(buf[:len(head)])
+                if tail:
+                    buf = buf[len(buf_plain) - len(tail):]
+                    buf.append(' ')
+                    buf.append(part)
+                else:
+                    buf = part
                 continue
             atoms.append(buf)
             buf = part
-        if buf:
+        if buf is not None and buf.plain:
             atoms.append(buf)
         return atoms
 
@@ -183,12 +217,17 @@ class CommandFrame:
     def close(self) -> None:
         self._emit(self._edge('└', '┘', self.screen_width))
 
-    def _row(self, part: str, width: int) -> str:
+    def _row_text(self, part: Text, width: int) -> Text:
         inner = width - 4
-        gap = inner - len(part)
+        gap = inner - len(part.plain)
         if gap < 0:
             gap = 0
-        return '│ ' + part + ' ' * gap + ' │'
+        row = Text('│ ')
+        row.append(part)
+        if gap:
+            row.append(' ' * gap)
+        row.append(' │')
+        return row
 
     def _title(self, title: str, width: int) -> str:
         label = f' {title} '
@@ -201,13 +240,17 @@ class CommandFrame:
     def _edge(left: str, right: str, width: int) -> str:
         return left + '─' * (width - 2) + right
 
-    def _emit(self, text: str) -> None:
+    def _emit(self, text: str | Text) -> None:
         self._screen(text)
-        self._log(text)
+        self._log(text.plain if isinstance(text, Text) else text)
 
-    def _screen(self, text: str) -> None:
-        if not console.quiet:
-            Console.print(console, text, markup=False, highlight=False, soft_wrap=True)
+    def _screen(self, text: str | Text) -> None:
+        if console.quiet:
+            return
+        if isinstance(text, Text):
+            Console.print(console, text, soft_wrap=True)
+            return
+        Console.print(console, text, markup=False, highlight=False, soft_wrap=True)
 
     def _log(self, text: str) -> None:
         dest = console.outputs.get('build_log')
@@ -381,8 +424,9 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         step = {'title': 'command'}
 
         def write_line(line: str) -> None:
-            # markup=False: ninja "[1/83]" and g++ notes are not Rich tags.
-            console.print(line, markup=False, highlight=False, soft_wrap=True)
+            # Outside the frame. ANSI still paints on screen; a file console
+            # with no color system stores the plain text. Markup stays off.
+            console.print(Text.from_ansi(line), soft_wrap=True)
 
         def close_frame() -> None:
             frame = current['frame']
