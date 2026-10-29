@@ -292,6 +292,14 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
             fetch_list.setdefault(gitdef.remote, set()).add(gitdef.ref)
             continue
 
+        # ls-remote uses gitdef.url, then `git fetch <name>` uses the URL
+        # stored on the remote. A changed url has to be written first or the
+        # fetch keeps hitting the old place.
+        existing = repo.remote(gitdef.remote)
+        if not _same_git_url(str(existing.url), gitdef.url):
+            fmt.hu(f'retargeting {gitdef.remote} to {gitdef.url}')
+            existing.set_url(gitdef.url)
+
         # If we are being passed a commit hash, full or short, continue if it exists.
         if sha_re.match(gitdef.ref) and resolve_local_ref(repo, gitdef.ref):
             if opts.verbose:
@@ -370,6 +378,21 @@ def prune_worktrees(opts, repo):
             parts = line.rsplit(maxsplit=1)
             table.add_row(parts[0] if len(parts) > 1 else line, parts[-1] if len(parts) > 1 else "")
         console.print(table)
+
+
+def _same_git_url(current: str, wanted: str) -> bool:
+    """True when two remote URLs name the same place.
+
+    A trailing slash and backslashes do not count. Local paths are compared
+    case-insensitively. Scheme URLs keep their case.
+    """
+    def norm(url: str) -> str:
+        text = url.strip().replace('\\', '/').rstrip('/')
+        if '://' not in text:
+            text = text.casefold()
+        return text
+
+    return norm(current) == norm(wanted)
 
 
 #MARK: AddRemote
