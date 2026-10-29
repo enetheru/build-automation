@@ -24,9 +24,10 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
 
     # main builds one library. GODOTCPP_TARGET is a cache string, so each
     # flavor is its own configure. flatc is a second --target of that cache.
+    # GDFB_SOURCE_PATH, when set, replaces the GitHub url. Ref stays main.
     git_source = SimpleNamespace({**vars(git_base), **{
         'name': 'git',
-        'url': "https://github.com/enetheru/godot-flatbuffers.git/",
+        'url': GDFB_SOURCE_PATH or "https://github.com/enetheru/godot-flatbuffers.git/",
         'ref': "main"
     }})
     project = SimpleNamespace({**vars(project_base), **{
@@ -144,6 +145,10 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
 # to gdflatbuffers/paths.local.py and edit it. Without that file the defaults
 # below apply.
 #
+# GDFB_SOURCE_PATH: checkout fetch uses for the main source (remote origin,
+#   ref main). None keeps the GitHub url. A local repo only advertises its
+#   branches, so uncommitted files there are not what gets built. libtracy
+#   uses this same path when it is set, and still checks out ref tracy.
 # GDFB_INSTALL_PREFIX: the `cmake --install --prefix` of every build, main
 #   and libtracy. Relative paths resolve against that build's source
 #   worktree; the default 'install' is <source>/install. An absolute path is
@@ -159,11 +164,13 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
 #   time still overrides the path baked into the script. Point
 #   GDFB_INSTALL_PREFIX at the same folder when the build under test is the
 #   one just installed.
+GDFB_SOURCE_PATH: str | None = None
 GDFB_INSTALL_PREFIX: str = 'install'
 GDFB_TRACY_PROJECT: str | None = None
 
 # Names paths.local.py may set.
 _LOCAL_OVERRIDES = (
+    'GDFB_SOURCE_PATH',
     'GDFB_INSTALL_PREFIX',
     'GDFB_TRACY_PROJECT',
 )
@@ -333,14 +340,17 @@ LIBTRACY_ZONE_SOURCES = (
 # These names are the ones the extension emits.
 
 # The source the libtracy configs build. The default configs keep `git` above.
-# GDFB_TRACY_SOURCE_URL / GDFB_TRACY_SOURCE_REF override it when the runner
-# generates (for example a local bare). The runner fetches it into its own bare
-# (gdflatbuffers/git) as remote `gitlab`; the repo is private, so the fetch needs a
-# GitLab credential in the environment.
+# URL order: $GDFB_TRACY_SOURCE_URL, else GDFB_SOURCE_PATH, else the private
+# GitLab repo (that fallback needs a GitLab credential). Remote name stays
+# `gitlab` so fetch retargets the existing bare remote. Ref stays tracy.
 LIBTRACY_SOURCE = SimpleNamespace({**vars(git_base), **{
     'name': 'tracy',
     'remote': 'gitlab',
-    'url': os.environ.get('GDFB_TRACY_SOURCE_URL') or 'https://gitlab.com/enetheru/godot-flatbuffers.git',
+    'url': (
+        os.environ.get('GDFB_TRACY_SOURCE_URL')
+        or GDFB_SOURCE_PATH
+        or 'https://gitlab.com/enetheru/godot-flatbuffers.git'
+    ),
     'ref': os.environ.get('GDFB_TRACY_SOURCE_REF') or 'tracy',
 }})
 
@@ -371,6 +381,10 @@ LIBTRACY_TEST = {
     # --editor so EditorScript and the test-runner plugin can run. -s is not
     # used: that path replaces the main loop and rejects EditorScript.
     'engine_args': ['--headless', '--editor', '--profiler'],
+    # Seconds for the whole editor process. Plugin init and the first
+    # filesystem scan run before res://tests, and this project was still in
+    # "Initializing plugins" at 60s. The suite after that scan is short.
+    'timeout': 300,
     # tracy_client_matches() true: searched in the engine output and the
     # capture's messages (tracy-csvexport -m).
     # TODO(extension): replace with the exact line the extension prints or sends.
@@ -392,6 +406,8 @@ LIBTRACY_BENCH = {
     'preset': 'bench',
     'editor_env': 'GDFB_BENCH_EDITOR',
     'config': 'Release',
+    # Seconds for the export and the scenario capture. Separate from the
+    # editor suite above.
     'timeout': 600,
     # Zones the scenario suite reaches. The read path builds the root with
     # FBFooBarContainer.new, so FlatBuffer.get_root is not on this list.
@@ -471,12 +487,12 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
         'test': {
             **LIBTRACY_TEST,
             'runs_default': (gopts.path / 'gdflatbuffers' / 'tracy-runs').as_posix(),
-            # Capture tools and timeouts come from godot's Tracy settings (paths.local.py).
+            # Capture tools come from godot's Tracy settings (paths.local.py).
+            # Timeouts stay on LIBTRACY_TEST and LIBTRACY_BENCH.
             'capture': GODOT_TRACY_TEST.get('capture'),
             'csvexport': GODOT_TRACY_TEST.get('csvexport'),
             'address': GODOT_TRACY_TEST.get('address'),
             'port': GODOT_TRACY_TEST.get('port'),
-            'timeout': GODOT_TRACY_TEST.get('timeout'),
         },
         'bench': {
             **LIBTRACY_BENCH,

@@ -2,6 +2,11 @@
 # Copy to gdflatbuffers/paths.local.py (gitignored) and adjust; gdflatbuffers/config.py
 # loads it when present. Any name left out keeps its default from config.py.
 
+# Local checkout to fetch the main source from. Unset keeps the GitHub url
+# in config.py. Ref stays main, which must be a branch in that repo. Fetch
+# sees committed refs only. libtracy fetches this same path at ref tracy.
+# GDFB_SOURCE_PATH = '/path/to/godot-flatbuffers'
+
 # Install prefix of every gdflatbuffers build (cmake --install --prefix). A
 # relative path is under that build's source worktree; the default 'install'
 # is <source>/install. An absolute path is used as given. Files land in
