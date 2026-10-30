@@ -338,20 +338,24 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
                 f"{gitdef.remote}/{gitdef.ref}, update needed"
             )
             fetch_list.setdefault(gitdef.remote, set()).add(gitdef.ref)
+        elif gitdef.remote == 'origin' and not sha_re.match(gitdef.ref):
+            # The object is already local. The branch ref from the bare clone
+            # can still name the old tip.
+            _point_origin_branch(repo, gitdef.ref, remote_hash)
 
     fmt.hd()
 
     if fetch_list:
         fmt.h("Fetching updates:")
         for remote, refs in fetch_list.items():
-            # Fetch only the branches we need into the remote-tracking
-            # namespace (matches add_remote / bare-clone fetch config).
-            # Avoids the previous origin special-case that pulled every
-            # branch + all tags into refs/heads/* on a multi-GB repo.
-            refspecs = [
-                f"+refs/heads/{ref}:refs/remotes/{remote}/{ref}"
-                for ref in sorted(refs)
-            ]
+            # One branch into the remote-tracking namespace. For origin, also
+            # that same branch into refs/heads. A wildcard refs/heads/* fetch
+            # pulls every branch and hangs on a large repo.
+            refspecs = []
+            for ref in sorted(refs):
+                refspecs.append(f"+refs/heads/{ref}:refs/remotes/{remote}/{ref}")
+                if remote == 'origin' and not sha_re.match(ref):
+                    refspecs.append(f"+refs/heads/{ref}:refs/heads/{ref}")
             fmt.hu(f'git fetch --progress --force {remote} {" ".join(refspecs)}')
             try:
                 _git_fetch_with_retry(repo, remote, refspecs, opts)
@@ -482,3 +486,18 @@ def resolve_local_tracking_ref(repo: Repo, remote: str, ref: str):
         if local_hash:
             return local_hash
     return None
+
+
+def _point_origin_branch(repo: Repo, ref: str, commit: str) -> None:
+    """Point refs/heads/<ref> at origin's tip.
+
+    Fetch stores the branch at refs/remotes/origin/<ref>. A bare clone also
+    keeps refs/heads/<ref> from the initial copy, and that is the name
+    `git log <ref>` prints. Move that one branch. The caller guarantees
+    `commit` is already in the repo.
+    """
+    head_ref = f'refs/heads/{ref}'
+    if resolve_local_ref(repo, head_ref) == commit:
+        return
+    fmt.hu(f'{head_ref} -> {commit[:12]}')
+    repo.git.update_ref(head_ref, commit)
