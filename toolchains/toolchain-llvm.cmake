@@ -1,9 +1,13 @@
 set( CMAKE_SYSTEM_NAME Windows )
 set( CMAKE_SYSTEM_PROCESSOR x86_64 )
 
-# which compilers to use for C and C++
-#set( CMAKE_C_COMPILER "C:/Program Files/LLVM/bin/clang.exe" )
+# This install's clang-cl defaults to x86_64-pc-windows-msvc. Native CPU
+# flags stay on only when that is the host. Another processor is a cross
+# compile, and this file does not select a clang-cl target triple for it.
+include( "${CMAKE_CURRENT_LIST_DIR}/native-target.cmake" )
 
+# C and C++ both use clang-cl. CMake rejects a GNU-like clang mixed with clang-cl.
+set( CMAKE_C_COMPILER "C:/Program Files/LLVM/bin/clang-cl.exe" )
 set( CMAKE_CXX_COMPILER "C:/Program Files/LLVM/bin/clang-cl.exe" )
 set( CMAKE_RC_COMPILER "C:/Program Files/LLVM/bin/llvm-rc.exe" )
 
@@ -11,9 +15,18 @@ set( CMAKE_RC_COMPILER "C:/Program Files/LLVM/bin/llvm-rc.exe" )
 # search programs in the host environment
 set( CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER )
 
-# search headers and libraries in the target environment
-set( CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY )
-set( CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY )
+# Host clang-cl. Search the LLVM tree and the rest of the host, so libomp,
+# the Vulkan SDK, and OpenSSL are visible.
+set( CMAKE_FIND_ROOT_PATH "C:/Program Files/LLVM" )
+set( CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH )
+set( CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH )
+
+# clang-cl ignores -fopenmp. -openmp:llvm compiles, and libomp.lib links.
+set( OpenMP_C_FLAGS "-openmp:llvm" CACHE STRING "" FORCE )
+set( OpenMP_CXX_FLAGS "-openmp:llvm" CACHE STRING "" FORCE )
+set( OpenMP_C_LIB_NAMES "libomp" CACHE STRING "" FORCE )
+set( OpenMP_CXX_LIB_NAMES "libomp" CACHE STRING "" FORCE )
+set( OpenMP_libomp_LIBRARY "C:/Program Files/LLVM/lib/libomp.lib" CACHE FILEPATH "" FORCE )
 
 
 #[[ FIXME When specifying glaang++ I get the below error:

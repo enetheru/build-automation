@@ -256,6 +256,10 @@ def expand_cmake( config:SimpleNamespace ) -> list:
 
         match generator_key:
             case 'msvc':
+                # Win32 and ARM64 are cross builds from an x64 host. CMake
+                # forces CMAKE_CROSSCOMPILING FALSE unless CMAKE_SYSTEM_NAME
+                # is set, so those rows need a toolchain file before they
+                # are added to an arch list. msvc.py is x86_64 only today.
                 _A = {'x86_32':'Win32', 'x86_64':'x64', 'arm64':'ARM64'}
                 cmake.config_vars.append( f'-A {_A[cfg.arch]}')
                 # cmake['tool_vars'] = ['-nologo', '-verbosity:normal', "-consoleLoggerParameters:'ShowCommandLine;ForceNoAlign'"]

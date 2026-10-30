@@ -13,6 +13,7 @@ def configure_llvm_mingw(self: SimpleNamespace, config: SimpleNamespace) -> bool
         case 'cmake':
             cmake = config.buildtool
             cmake.toolchain = gopts.path / 'toolchains' / 'toolchain-llvm-mingw.cmake'
+            cmake.config_vars.append(f'-DLLVM_MINGW_ROOT={Path(self.sysroot).as_posix()}')
             cmake.config_vars.append(f'-DLLVM_MINGW_PROCESSOR={config.arch}')
 
     return True
