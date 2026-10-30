@@ -3,7 +3,7 @@
 Each host toolchain gets its own CMake cache. The build target is llama-server.
 `cpu` is the stock configure.
 `vulkan` adds -DGGML_VULKAN=ON, the switch from the x64-windows-vulkan preset
-in the reference checkout.
+in the reference checkout. Every row passes -DGGML_STATIC=ON.
 `cuda` adds -DGGML_CUDA=ON on the msvc rows. nvcc on Windows does not accept
 clang-cl or MinGW as the host compiler. The cache is Ninja Multi-Config or
 Visual Studio, and the only configuration type is Release. Visual Studio
@@ -151,6 +151,7 @@ def generate(opts: SimpleNamespace) -> SimpleNamespace:
             cfg.buildtool.config_vars.extend(extra)
             cfg.buildtool.config_vars.extend(_SLIM)
             cfg.buildtool.config_vars.append('-DGGML_CCACHE=OFF')
+            cfg.buildtool.config_vars.append('-DGGML_STATIC=ON')
             if cfg.buildtool.short_gen == 'msvc':
                 cfg.buildtool.config_vars.append(f'-DCMAKE_PROJECT_INCLUDE={_MSVC_MP}')
             split.append(cfg)
