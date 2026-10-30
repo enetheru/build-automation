@@ -4,6 +4,9 @@ Each host toolchain gets its own CMake cache. The build target is llama-server.
 `cpu` is the stock configure.
 `vulkan` adds -DGGML_VULKAN=ON, the switch from the x64-windows-vulkan preset
 in the reference checkout. Every row passes -DGGML_STATIC=ON.
+MinGW rows also pass OPENSSL_USE_STATIC_LIBS and
+-static-libgcc -static-libstdc++, and include mingw-static.cmake so
+find_library prefers .a after project().
 `cuda` adds -DGGML_CUDA=ON on the msvc rows. nvcc on Windows does not accept
 clang-cl or MinGW as the host compiler. The cache is Ninja Multi-Config or
 Visual Studio, and the only configuration type is Release. Visual Studio
@@ -43,6 +46,48 @@ _CUDA_TOOLCHAINS = {'msvc'}
 
 # cl.exe /MP. Included only for the Visual Studio generator.
 _MSVC_MP = (Path(__file__).parent / 'msvc-mp.cmake').as_posix()
+
+# GNU drivers. clang-cl is the llvm row and is not in this set.
+_MINGW_TOOLCHAINS = {
+    'mingw64', 'llvm-mingw',
+    'msys2-mingw32', 'msys2-mingw64', 'msys2-ucrt64', 'msys2-clang64',
+}
+_MINGW_STATIC = (Path(__file__).parent / 'mingw-static.cmake').as_posix()
+
+
+def copy_runtime_dlls():
+    """Copy libwinpthread and, for Vulkan, vulkan-1.dll beside llama-server.exe."""
+    config: dict = {}
+    # start_script
+    if not config.get('ok') or 'build' not in opts.get('build_actions', []):
+        return
+    build_path = buildtool.get('build_path')
+    if build_path is None:
+        return
+    import shutil
+    sysroot = toolchain.get('sysroot')
+    if sysroot:
+        pthread = Path(sysroot) / 'bin' / 'libwinpthread-1.dll'
+    else:
+        environ = toolchain['name'].split('-', 1)[-1]
+        pthread = Path('C:/msys64') / environ / 'bin' / 'libwinpthread-1.dll'
+    sources = [pthread]
+    if build.get('variant') == 'vulkan':
+        windir = Path(os.environ.get('SystemRoot', r'C:\Windows'))
+        sources.append(windir / 'System32' / 'vulkan-1.dll')
+    for config_name in buildtool.get('configuration_types') or [None]:
+        exe_dir = Path(build_path) / 'bin'
+        if config_name:
+            exe_dir = exe_dir / config_name
+        if not (exe_dir / 'llama-server.exe').is_file():
+            continue
+        for src in sources:
+            if not src.is_file():
+                print(f'missing runtime DLL {src}')
+                continue
+            dest = exe_dir / src.name
+            shutil.copy2(src, dest)
+            print(f'{dest} <= {src}')
 
 # Tests, examples, and the unified app are not the server binary.
 _SLIM = [
@@ -152,6 +197,14 @@ def generate(opts: SimpleNamespace) -> SimpleNamespace:
             cfg.buildtool.config_vars.extend(_SLIM)
             cfg.buildtool.config_vars.append('-DGGML_CCACHE=OFF')
             cfg.buildtool.config_vars.append('-DGGML_STATIC=ON')
+            if build.toolchain.name in _MINGW_TOOLCHAINS:
+                cfg.buildtool.config_vars.append('-DOPENSSL_USE_STATIC_LIBS=ON')
+                cfg.buildtool.config_vars.append(
+                    '-DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"'
+                )
+                cfg.buildtool.config_vars.append(
+                    f'-DCMAKE_PROJECT_INCLUDE={_MINGW_STATIC}'
+                )
             if cfg.buildtool.short_gen == 'msvc':
                 cfg.buildtool.config_vars.append(f'-DCMAKE_PROJECT_INCLUDE={_MSVC_MP}')
             split.append(cfg)
@@ -186,6 +239,8 @@ def generate(opts: SimpleNamespace) -> SimpleNamespace:
         build.name = '.'.join(filter(None, name_parts))
         build.source_dir = f'{build.host}.main'
         cmake.build_dir = build.name
+        if toolchain in _MINGW_TOOLCHAINS:
+            build.script_parts.append(copy_runtime_dlls)
         build.script_parts.append(show_stats)
 
     project.build_configs = {build.name: build for build in builds}
