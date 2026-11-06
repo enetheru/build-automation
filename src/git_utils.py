@@ -144,10 +144,11 @@ def _git_fetch_with_retry(repo: Repo, remote_name: str, refspec, opts,
             with _make_fetch_progress() as progress:
                 label = remote_name if attempt == 1 else f'{remote_name} (retry {attempt - 1})'
                 bridge = _RichFetchProgress(progress, label=label)
-                # tags=False: incremental branch updates do not need to re-walk
-                # every tag (Godot has hundreds); that flood of stderr lines was
-                # also a major source of "stuck in a thread" feel under Rich.
-                # Initial clone still uses tags=True.
+                # tags=False (--no-tags): a branch update must not walk every
+                # tag. Godot has hundreds, and that stderr flood stalled the
+                # Rich progress thread. A source that names `tag` puts
+                # refs/tags/<name> in the refspec; --no-tags does not drop an
+                # explicit tag. The initial clone still uses tags=True.
                 fetch_kwargs = dict(progress=bridge, tags=False, force=True, verbose=True)
                 # Only pass refspec if the caller supplied one; otherwise use
                 # the remote's configured refspec (much better default).
@@ -214,6 +215,97 @@ def git_override(opts: SimpleNamespace):
             break
 
 
+# A single tag name. Slashes and refspec characters stay out so the
+# caller can safely prefix refs/tags/.
+_TAG_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+-]*$')
+
+
+def _plain_tag_name(tag: str) -> bool:
+    """True when `tag` is one tag name, not a refspec or a pattern."""
+    return bool(_TAG_NAME.fullmatch(tag)) and '..' not in tag
+
+
+def _merged_source(build, opts: SimpleNamespace) -> SimpleNamespace:
+    """Source definition with the command-line override applied over it."""
+    return SimpleNamespace(
+        {**vars(build.source_def), **vars(getattr(opts, 'srcdef', SimpleNamespace()))})
+
+
+def _fetch_refspecs(remote: str, branches: set[str], tags: set[str]) -> list[str]:
+    """Refspecs for one remote.
+
+    One branch lands in refs/remotes/<remote>/<branch>. Origin also updates
+    refs/heads/<branch>. A wildcard refs/heads/* fetch pulls every branch.
+    Each tag is named on its own. The fetch uses --no-tags, which would
+    otherwise drop it.
+    """
+    refspecs = []
+    for ref in sorted(branches):
+        refspecs.append(f'+refs/heads/{ref}:refs/remotes/{remote}/{ref}')
+        if remote == 'origin':
+            refspecs.append(f'+refs/heads/{ref}:refs/heads/{ref}')
+    for tag in sorted(tags):
+        refspecs.append(f'+refs/tags/{tag}:refs/tags/{tag}')
+    return refspecs
+
+
+def _queue_tag_if_stale(repo: Repo, gitdef, tag: str, fetch_tags: dict[str, set[str]],
+                        remote_hash_cache: dict[tuple[str, str], str | None],
+                        opts: SimpleNamespace) -> bool | None:
+    """Queue `tag` when the remote tag is missing locally or moved.
+
+    Returns True when queued, False when the local tag already matches,
+    None when the remote does not advertise the tag.
+    """
+    cache_key = (gitdef.url, f'refs/tags/{tag}')
+    if cache_key not in remote_hash_cache:
+        remote_hash_cache[cache_key] = resolve_remote_ref(
+            gitdef.url, f'refs/tags/{tag}', opts)
+    remote_tag = remote_hash_cache[cache_key]
+    if not remote_tag:
+        return None
+    local_tag = resolve_local_ref(repo, f'refs/tags/{tag}')
+    if local_tag == remote_tag:
+        if opts.verbose:
+            fmt.hu(f"  - tag [green]{tag}[/green] is current")
+        return False
+    fmt.hu(f"tag {gitdef.remote}/{tag} needs update")
+    fetch_tags.setdefault(gitdef.remote, set()).add(tag)
+    return True
+
+
+def _disable_missing_pins(repo: Repo, opts: SimpleNamespace, project: SimpleNamespace,
+                          sha_re: re.Pattern) -> None:
+    """Disable a build whose commit pin is still absent after fetch.
+
+    A tag fetch brings the commit that tag points at. A pin that still
+    does not resolve is a different commit than that tag.
+    """
+    for build in project.build_configs.values():
+        if getattr(build, 'disabled', False):
+            continue
+        gitdef = _merged_source(build, opts)
+        if not sha_re.match(gitdef.ref):
+            continue
+        if resolve_local_ref(repo, gitdef.ref):
+            continue
+        tag = str(getattr(gitdef, 'tag', '') or '')
+        peeled = None
+        if tag:
+            peeled = resolve_local_ref(repo, f'refs/tags/{tag}^{{commit}}')
+        if peeled:
+            fmt.hu(
+                f"disabling build: '{build.name}' "
+                f"(tag {tag} is {peeled[:12]}, pin is {gitdef.ref[:12]})"
+            )
+        else:
+            fmt.hu(
+                f"disabling build: '{build.name}' "
+                f"(commit {gitdef.ref[:12]} is not in the bare repo)"
+            )
+        build.disabled = True
+
+
 #MARK: Fetch
 def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
     """Handle git fetch/prune/add-remote/ls-remote/rev-parse for project builds/sources."""
@@ -271,8 +363,9 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
     fmt.h("Looking for Updates")
     if opts.verbose: fmt.hu()
 
-    # remote name -> set of branch names that need a fetch
+    # remote name -> branch names, and remote name -> tag names
     fetch_list: dict[str, set[str]] = {}
+    fetch_tags: dict[str, set[str]] = {}
     # cache remote hashes so we only ls-remote once per (url, ref)
     remote_hash_cache: dict[tuple[str, str], str | None] = {}
 
@@ -282,15 +375,13 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
     # Walk every build so each (remote, ref) is evaluated — not just the first
     # build that happens to use a given remote.
     for build in project.build_configs.values():
-        # derive the final source definition by merging the generated config with the cmdline override.
-        gitdef: SimpleNamespace = SimpleNamespace(
-            {**vars(build.source_def), **vars(getattr(opts, 'srcdef', SimpleNamespace()))})
+        gitdef = _merged_source(build, opts)
+        tag = str(getattr(gitdef, 'tag', '') or '')
 
-        # Add the new remote to the bare repo if it doesnt exist, and queue a fetch
+        # Add the new remote to the bare repo if it doesnt exist.
+        # Fall through so a tag pin is queued the same way as an existing remote.
         if gitdef.remote not in [remote.name for remote in repo.remotes]:
             add_remote(repo, gitdef, opts)
-            fetch_list.setdefault(gitdef.remote, set()).add(gitdef.ref)
-            continue
 
         # ls-remote uses gitdef.url, then `git fetch <name>` uses the URL
         # stored on the remote. A changed url has to be written first or the
@@ -300,10 +391,41 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
             fmt.hu(f'retargeting {gitdef.remote} to {gitdef.url}')
             existing.set_url(gitdef.url)
 
-        # If we are being passed a commit hash, full or short, continue if it exists.
-        if sha_re.match(gitdef.ref) and resolve_local_ref(repo, gitdef.ref):
-            if opts.verbose:
-                fmt.hu(f"  - Fixed commit [green]{gitdef.ref[:8]}[/green]... available locally ✓")
+        # `tag` is the tag name. Branch fetches pass --no-tags, so without
+        # this the tag commit never lands in the bare repo.
+        if tag:
+            if not _plain_tag_name(tag):
+                fmt.hu(f"disabling build: '{build.name}' (tag {tag!r} is not a single ref)")
+                build.disabled = True
+                continue
+            queued = _queue_tag_if_stale(
+                repo, gitdef, tag, fetch_tags, remote_hash_cache, opts)
+            if queued is None:
+                fmt.hu(f"disabling build: '{build.name}'")
+                build.disabled = True
+                continue
+
+        # A commit pin is not a branch. Skip the refs/heads lookup when the
+        # object is already here, or when the tag fetch above will bring it.
+        if sha_re.match(gitdef.ref):
+            if resolve_local_ref(repo, gitdef.ref):
+                if opts.verbose:
+                    fmt.hu(f"  - Fixed commit [green]{gitdef.ref[:8]}[/green]... available locally ✓")
+                continue
+            if tag and tag in fetch_tags.get(gitdef.remote, ()):
+                continue
+            peeled = resolve_local_ref(repo, f'refs/tags/{tag}^{{commit}}') if tag else None
+            if peeled:
+                fmt.hu(
+                    f"disabling build: '{build.name}' "
+                    f"(tag {tag} is {peeled[:12]}, pin is {gitdef.ref[:12]})"
+                )
+            else:
+                fmt.hu(
+                    f"disabling build: '{build.name}' "
+                    f"(commit {gitdef.ref[:12]} is not in the bare repo)"
+                )
+            build.disabled = True
             continue
 
         # get the remote hash for the ref we want. or disable the build if it does not exist
@@ -338,29 +460,29 @@ def git_fetch_project(opts: SimpleNamespace, project: SimpleNamespace):
                 f"{gitdef.remote}/{gitdef.ref}, update needed"
             )
             fetch_list.setdefault(gitdef.remote, set()).add(gitdef.ref)
-        elif gitdef.remote == 'origin' and not sha_re.match(gitdef.ref):
+        elif gitdef.remote == 'origin':
             # The object is already local. The branch ref from the bare clone
             # can still name the old tip.
             _point_origin_branch(repo, gitdef.ref, remote_hash)
 
     fmt.hd()
 
-    if fetch_list:
+    remotes = set(fetch_list) | set(fetch_tags)
+    if remotes:
         fmt.h("Fetching updates:")
-        for remote, refs in fetch_list.items():
-            # One branch into the remote-tracking namespace. For origin, also
-            # that same branch into refs/heads. A wildcard refs/heads/* fetch
-            # pulls every branch and hangs on a large repo.
-            refspecs = []
-            for ref in sorted(refs):
-                refspecs.append(f"+refs/heads/{ref}:refs/remotes/{remote}/{ref}")
-                if remote == 'origin' and not sha_re.match(ref):
-                    refspecs.append(f"+refs/heads/{ref}:refs/heads/{ref}")
+        for remote in sorted(remotes):
+            refspecs = _fetch_refspecs(
+                remote,
+                fetch_list.get(remote, set()),
+                fetch_tags.get(remote, set()),
+            )
             fmt.hu(f'git fetch --progress --force {remote} {" ".join(refspecs)}')
             try:
                 _git_fetch_with_retry(repo, remote, refspecs, opts)
             except GitCommandError as e:
                 handle_error(f"git fetch {remote}", e, opts)
+
+    _disable_missing_pins(repo, opts, project, sha_re)
     fmt.h("[green]Up-To-Date")
 
 

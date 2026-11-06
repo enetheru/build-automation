@@ -34,9 +34,9 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
 
     origin = SimpleNamespace({**vars(git_base), **{
         'name': 'origin',
-        'tag': '4.5',
+        'tag': '10.0.0-stable',
         'url': "https://github.com/godotengine/godot-cpp.git/",
-        'ref': 'e83fd0904c13356ed1d4c3d09f8bb9132bdc6b77'
+        'ref': '507ed9d840c01a3c5b2a39af8bb4000bfac30bf5'
     }})
     sources:dict = {
         'origin': origin,
