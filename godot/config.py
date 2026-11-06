@@ -2291,10 +2291,11 @@ def install_scons():
     # MARK: Install
     #[================================[ Install ]================================]
     # Launch files only: the engine binary, its console twin, matching symbol
-    # files, shared libraries next to them, and godot_profiling<suffix>.gen.h
-    # when the build produced it. The suffix matches the engine binary so
-    # several builds can share the install directory. Import libraries stay
-    # in the build tree.
+    # files, shared libraries next to them, the Tracy import library (.lib or
+    # .a) beside that client, and godot_profiling<suffix>.gen.h when the build
+    # produced it. The suffix matches the engine binary so several builds can
+    # share the install directory. The extension links the import library from
+    # this folder.
     if 'install' not in opts['build_actions']:
         pass
     else:
@@ -2381,6 +2382,8 @@ def install_scons():
                                 continue
                             name = path.name
                             if path.suffix.lower() == '.dll' or name.endswith('.dylib') or '.so' in name:
+                                files.append(path)
+                            elif path.suffix.lower() in ('.lib', '.a') and 'TracyClient' in name:
                                 files.append(path)
                         # stem is "godot" plus the engine suffix. The header uses that suffix
                         # so a later install does not overwrite another build's copy.
@@ -2511,6 +2514,7 @@ def configure_scons( config:SimpleNamespace ) -> bool:
         "compiledb=yes",
         "debug_symbols=yes",
         "separate_debug_symbols=yes",
+        "deprecated=no",
         f"platform={godot_platforms[tc.target_platform]}",
         f"arch={godot_arch[tc.target_arch]}",
     ]

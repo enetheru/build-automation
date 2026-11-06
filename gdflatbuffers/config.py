@@ -77,6 +77,14 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
 
     split = []
     for build in builds:
+        # godot-cpp 10 reads a versioned api file unless CUSTOM_API_FILE is set.
+        # DEPRECATED=OFF matches an engine built with deprecated=no.
+        if CUSTOM_GDEXTENSION_DIR:
+            gde_dir = str(CUSTOM_GDEXTENSION_DIR).replace('\\', '/')
+            build.buildtool.config_vars.append(f'-DGODOTCPP_GDEXTENSION_DIR={gde_dir}')
+            build.buildtool.config_vars.append(
+                f'-DGODOTCPP_CUSTOM_API_FILE={gde_dir}/extension_api.json')
+        build.buildtool.config_vars.append('-DGODOTCPP_DEPRECATED=OFF')
         for target in ('template_release', 'template_debug', 'editor'):
             cfg = copy.deepcopy(build)
             cfg.godotcpp_target = target
@@ -128,6 +136,12 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
             'addon_name': LIBTRACY_ADDON_NAME,
             'flatc_glob': LIBTRACY_FLATC_GLOB,
         }
+        # lib/flatbuffers is a submodule. libtracy already inits it. A main
+        # checkout does not, and CMake stops when that directory is empty.
+        if getattr(build, 'variant', None) != 'libtracy':
+            if init_submodules not in build.script_parts:
+                at = build.script_parts.index(source_git) + 1
+                build.script_parts.insert(at, init_submodules)
         if install_cmake not in build.script_parts:
             build.script_parts.insert(build.script_parts.index(cmake_build) + 1, install_cmake)
         if 'install' not in build.verbs:
@@ -150,29 +164,25 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
 #   branches, so uncommitted files there are not what gets built. libtracy
 #   uses this same path when it is set, and still checks out ref tracy.
 # GDFB_INSTALL_PREFIX: the `cmake --install --prefix` of every build, main
-#   and libtracy. Relative paths resolve against that build's source
-#   worktree; the default 'install' is <source>/install. An absolute path is
-#   used as given. Files land in <prefix>/addons/enetheru.flatbuffers-extension/.
-#   The prefix may be any folder, including a Godot project. The verb still
-#   refuses the source worktree itself or a folder above it. The merge key
-#   drops `.tracy`, so a libtracy install takes the main build's slot and the
-#   last install wins.
-#
-# GDFB_TRACY_PROJECT: Godot project the libtracy test and bench use in place.
-#   The runner worktree gitignores `project`, so <source>/project is not a
-#   Godot project. Set this to the real project. $GDFB_TRACY_PROJECT at run
-#   time still overrides the path baked into the script. Point
-#   GDFB_INSTALL_PREFIX at the same folder when the build under test is the
-#   one just installed.
+#   and libtracy, and the Godot folder the libtracy test and bench use.
+#   Relative paths resolve against that build's source worktree; the default
+#   'install' is <source>/install. An absolute path is used as given. Files
+#   land in <prefix>/addons/enetheru.flatbuffers-extension/. The prefix may be
+#   any folder, including a Godot project. The verb still refuses the source
+#   worktree itself or a folder above it. The merge key drops `.tracy`, so a
+#   libtracy install takes the main build's slot and the last install wins.
+#   An absolute prefix is also the engine folder: exes, profiling headers,
+#   and the Tracy client sit at its root. libtracy reads them there instead
+#   of searching a toolchain-named build.
 GDFB_SOURCE_PATH: str | None = None
 GDFB_INSTALL_PREFIX: str = 'install'
-GDFB_TRACY_PROJECT: str | None = None
+CUSTOM_GDEXTENSION_DIR: str | None = None
 
 # Names paths.local.py may set.
 _LOCAL_OVERRIDES = (
     'GDFB_SOURCE_PATH',
     'GDFB_INSTALL_PREFIX',
-    'GDFB_TRACY_PROJECT',
+    'CUSTOM_GDEXTENSION_DIR'
 )
 
 
@@ -254,9 +264,12 @@ LIBTRACY_EXE_CLIENT_RE = r'TracyClient\.'
 LIBTRACY_HEADER = 'godot_profiling.*.gen.h'
 
 # Per platform. Globs are relative to the Godot bin; {target} is the
-# GODOTCPP_TARGET, {host} is short_host(). 'godot_glob' is a folder under the
-# runner's godot project (<runner root>/godot): that target's plain libtracy
-# build, any version. The newest version wins.
+# GODOTCPP_TARGET, {host} is short_host(). When GDFB_INSTALL_PREFIX is
+# absolute, that folder is the bin (files at its root). Otherwise
+# 'godot_glob' is a folder under the runner's godot project
+# (<runner root>/godot): that target's plain libtracy build, any version.
+# The newest version wins. The glob names the toolchain, so it only matches
+# a build made with that same toolchain.
 # 'link' is what TRACY_CLIENT_LIBRARY gets. 'runtime' is the client the engine
 # loads and the extension shares. It stays beside the engine exe, where the
 # godot runner install put it. A second copy next to the extension is a stray.
@@ -297,8 +310,8 @@ LIBTRACY_BUILD_BIN = 'bin'
 # The merge key drops `.tracy` and the config suffix, so a Tracy install takes
 # the default build's slot for that platform and target; the last install wins.
 # Every build's install verb passes --prefix GDFB_INSTALL_PREFIX. The libtracy
-# test installs the extension into GDFB_TRACY_PROJECT. The exe and TracyClient
-# stay in the godot runner's install. Every libtracy build uses that project.
+# test uses that same prefix. When the prefix is absolute, the exe and
+# TracyClient are the files at its root.
 LIBTRACY_ADDON_NAME = 'enetheru.flatbuffers-extension'
 LIBTRACY_INSTALL_GDEXTENSION = 'flatbuffers.gdextension'
 LIBTRACY_FLATC_GLOB = 'flatc*'                         # in <dest>/bin; installed 644, made executable
@@ -355,11 +368,8 @@ LIBTRACY_SOURCE = SimpleNamespace({**vars(git_base), **{
 }})
 
 # Headless test on the editor Tracy engine (libtracy_test_headless).
-# Env overrides, read by the build script:
-#   GDFB_TRACY_PROJECT       Godot project to test, used in place. cmake
-#                            --install puts the extension there. The engine is
-#                            the godot runner's install of this target. Unset:
-#                            the path baked below, else <source>/project.
+# The Godot project is GDFB_INSTALL_PREFIX, the same folder cmake --install
+# writes. Env overrides, read by the build script:
 #   GDFB_TRACY_TEST_SCRIPT   kept for older callers. The launch no longer
 #                            passes -s: run_headless.gd extends EditorScript,
 #                            and -s only accepts a SceneTree or MainLoop.
@@ -370,9 +380,6 @@ LIBTRACY_TEST = {
     'targets': ['editor'],
     'script': 'addons/enetheru.test-runner/plugin.gd',
     'headless_env': 'GDFB_HEADLESS_TESTS',
-    'project_env': 'GDFB_TRACY_PROJECT',
-    # Baked at generate time. None is omitted from the script.
-    'project': GDFB_TRACY_PROJECT,
     'script_env': 'GDFB_TRACY_TEST_SCRIPT',
     'runs_env': 'GDFB_TRACY_RUNS',
     # The engine's on-demand client drops zones until a server is connected.
@@ -440,6 +447,7 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
     Paths that depend on the Godot build are left for libtracy_resolve.
     """
     import copy
+    from pathlib import Path
     from src.config import gopts
     from src.expand_config import short_host
 
@@ -467,6 +475,9 @@ def libtracy_variant( cfg:SimpleNamespace ) -> SimpleNamespace | None:
         'header': LIBTRACY_HEADER,
         'include_dir': include_dir,
         'bin_env': [f'{LIBTRACY_BIN_ENV}_{target.upper()}', LIBTRACY_BIN_ENV],
+        # Absolute install prefix: engine files live at that folder's root.
+        # Empty keeps the toolchain-named search under godot_root.
+        'godot_dir': GDFB_INSTALL_PREFIX if Path(GDFB_INSTALL_PREFIX).is_absolute() else '',
         'godot_root': (gopts.path / 'godot').as_posix(),
         'godot_glob': spec['godot_glob'].format(
             host=short_host(), target=target, toolchain=cfg.toolchain.name),
@@ -611,14 +622,21 @@ def libtracy_resolve():
             def _profiling_headers(folder):
                 return sorted((folder / 'bin').glob(tt['header']))
 
-            # 1. The Godot bin: env override, else the newest libtracy folder
-            # whose bin has one godot_profiling.<suffix>.gen.h.
+            # 1. The Godot bin: env override, else the configured folder
+            # (absolute GDFB_INSTALL_PREFIX; exes and headers at its root),
+            # else the newest libtracy folder whose bin has one
+            # godot_profiling.<suffix>.gen.h.
             bin_dir = None
+            shared_folder = False
             for name in tt['bin_env']:
                 if os.environ.get(name):
                     bin_dir = Path(os.environ[name])
                     fmt.h(f'godot bin from ${name}: {bin_dir.as_posix()}')
                     break
+            if bin_dir is None and tt.get('godot_dir'):
+                bin_dir = Path(tt['godot_dir'])
+                shared_folder = True
+                fmt.h(f'godot bin folder: {bin_dir.as_posix()}')
             if bin_dir is None:
                 root = Path(tt['godot_root'])
                 pattern = tt['godot_glob']
@@ -641,9 +659,11 @@ def libtracy_resolve():
                 _missing('Godot bin is not a directory', [bin_dir.as_posix()])
 
             # 2. The header. The defines hash is the contract with the client library.
-            headers = sorted(bin_dir.glob(tt['header']))
+            # A shared folder holds one header per target, so the glob names this target.
+            header_glob = tt['header'].replace('*', f'*{tt["target"]}*', 1) if shared_folder else tt['header']
+            headers = sorted(bin_dir.glob(header_glob))
             if len(headers) != 1:
-                _missing(f'{tt["header"]} matched {len(headers)} files', [
+                _missing(f'{header_glob} matched {len(headers)} files', [
                     f'looked in {bin_dir.as_posix()}',
                     'the engine publishes one godot_profiling<suffix>.gen.h for this target'])
             header = headers[0]
@@ -739,6 +759,36 @@ def libtracy_resolve():
             tt['runtime_path'] = runtime
 
 
+def init_submodules():
+    config:dict = {}
+    opts:dict = {}
+    build:dict = {}
+    stats:dict = {}
+    # start_script
+
+    # MARK: Submodules
+    #[===============================[ Submodules ]==============================]
+    # flatbuffers is a submodule. The parent checkout does not contain it.
+    # .gitmodules uses git@github.com, so rewrite that to https per command.
+    if config['ok'] and 'source' in opts['build_actions']:
+        with fmt.Section('Submodules'), Timer(name='submodules') as timer:
+            source = Path(build['source_path'])
+            if source.is_dir():
+                os.chdir(source)
+            elif not opts['dry']:
+                fmt.h(f'ERROR: no source worktree at {source.as_posix()}')
+                timer.status = TaskStatus.FAILED
+            if timer.ok():
+                stream_command(
+                    ['git', '-c', 'url.https://github.com/.insteadOf=git@github.com:',
+                     'submodule', 'update', '--init', '--', 'lib/flatbuffers'],
+                    dry=opts['dry'])
+                if not opts['dry']:
+                    stream_command(['git', 'submodule', 'status', '--', 'lib/flatbuffers'])
+        stats['submodules'] = timer.get_dict()
+        config['ok'] = timer.ok()
+
+
 def libtracy_submodules():
     config:dict = {}
     opts:dict = {}
@@ -783,7 +833,7 @@ def install_cmake():
     # GDFB_INSTALL_PREFIX, under the source worktree when the path is relative.
     # Files go in <prefix>/addons/<addon>/. The merge key drops .tracy, so the
     # two variants share one library line and the last install wins. The
-    # libtracy test installs into GDFB_TRACY_PROJECT on its own. Configurations
+    # libtracy test uses this same prefix. Configurations
     # install in recorded order and the last one wins the slot (narrow with
     # --config-regex).
     from src.select import chosen_config_types
@@ -1006,9 +1056,8 @@ def libtracy_test_headless():
     # MARK: libtracy-Test
     #[============================[ libtracy Test ]=============================]
     # One headless run of the test-runner on the editor Tracy engine, captured.
-    # The Godot project is used in place, for every build
-    # ($GDFB_TRACY_PROJECT, else the baked path, else <source>/project):
-    #   addons/<addon>/ from cmake --install --prefix that project
+    # The Godot project is GDFB_INSTALL_PREFIX, used in place:
+    #   addons/<addon>/ from cmake --install --prefix that folder
     #   .godot/extension_list.cfg gains flatbuffers.gdextension when missing
     # The exe is the resolved libtracy build, launched in place. The godot
     # runner's install can be a newer editor, and a defines-hash mismatch
@@ -1051,7 +1100,7 @@ def libtracy_test_headless():
         bin_dir = Path(tt['bin_dir']) if 'bin_dir' in tt else None
         engine_src = Path(tt['engine_path']) if tt.get('engine_path') else None
         runtime_src = Path(tt['runtime_path']) if tt.get('runtime_path') else None
-        project_src = Path(os.environ.get(tst['project_env']) or tst.get('project') or (source / 'project'))
+        project_src = (source / Path(tt['install_prefix']).expanduser()).resolve()
         runner_rel = tst['script']
         capture_tool = tst.get('capture')
         csvexport_tool = tst.get('csvexport')
@@ -1060,7 +1109,7 @@ def libtracy_test_headless():
             libtracy_need(res, bin_dir, 'Godot bin (libtracy Resolve did not run?)'),
             libtracy_need(res, engine_src, 'shared-client engine exe (libtracy Resolve did not run?)'),
             libtracy_need(res, runtime_src, 'TracyClient runtime (libtracy Resolve did not run?)'),
-            libtracy_need(res, project_src, f'Godot project (set ${tst["project_env"]})'),
+            libtracy_need(res, project_src, 'Godot project (GDFB_INSTALL_PREFIX)'),
             libtracy_need(res, capture_tool, 'tracy-capture (godot TRACY_CAPTURE)'),
             libtracy_need(res, csvexport_tool, 'tracy-csvexport (godot TRACY_CSVEXPORT)'),
         ])
@@ -1290,7 +1339,7 @@ def libtracy_bench():
 
     def libtracy_bench_steps(tt, bench, tst, dry, res):
         source = Path(build['source_path'])
-        project_dir = Path(os.environ.get(tst['project_env']) or tst.get('project') or (source / 'project'))
+        project_dir = (source / Path(tt['install_prefix']).expanduser()).resolve()
         engine_src = Path(tt['engine_path']) if tt.get('engine_path') else None
         runtime_src = Path(tt['runtime_path']) if tt.get('runtime_path') else None
         capture_tool = tst.get('capture')
@@ -1298,7 +1347,7 @@ def libtracy_bench():
         ok = all([
             libtracy_need(res, engine_src, 'shared-client engine exe (libtracy Resolve did not run?)'),
             libtracy_need(res, runtime_src, 'TracyClient runtime (libtracy Resolve did not run?)'),
-            libtracy_need(res, project_dir, f'Godot project (set ${tst["project_env"]})'),
+            libtracy_need(res, project_dir, 'Godot project (GDFB_INSTALL_PREFIX)'),
             libtracy_need(res, project_dir / 'project.godot', 'project.godot'),
             libtracy_need(res, project_dir / 'export_presets.cfg', 'export_presets.cfg'),
             libtracy_need(res, capture_tool, 'tracy-capture (godot TRACY_CAPTURE)'),
@@ -1320,24 +1369,9 @@ def libtracy_bench():
             editor = Path(editor_env)
             fmt.h(f'export editor from ${bench["editor_env"]}: {editor.as_posix()}')
         else:
-            root = Path(tt['godot_root'])
-            pattern = tt['godot_glob'].replace(tt['target'] + '.libtracy', 'editor.libtracy')
+            shared = Path(tt['bin_dir']) if tt.get('bin_dir') else (Path(tt['godot_dir']) if tt.get('godot_dir') else None)
             exe_glob = tt['engine'][0].replace(tt['target'], 'editor')
             client_glob = tt['runtime'][0].replace(tt['target'], 'editor')
-            folders = []
-            for folder in root.glob(pattern):
-                if not folder.is_dir() or '.libtracy.' not in folder.name:
-                    continue
-                suffix = folder.name.split('.libtracy.', 1)[1]
-                if _re.fullmatch(r'(?:tests\.)?\d+(?:\.\d+)*~?', suffix) \
-                        and len(list((folder / 'bin').glob(tt['header']))) == 1:
-                    folders.append(folder)
-
-            def _editor_key(folder):
-                suffix = folder.name.split('.libtracy.', 1)[1]
-                m = _re.fullmatch(r'(?:tests\.)?(\d+(?:\.\d+)*)(~?)', suffix)
-                return (tuple(int(n) for n in m.group(1).split('.')),
-                        1 if m.group(2) else 0, folder.stat().st_mtime)
 
             def _editor_in(bin_dir):
                 if not bin_dir.is_dir():
@@ -1348,10 +1382,43 @@ def libtracy_bench():
                     return None
                 return max(exes, key=lambda p: p.stat().st_mtime)
 
-            if folders:
-                editor = _editor_in(max(folders, key=_editor_key) / 'bin')
+            if shared is not None:
+                editor = _editor_in(shared)
                 if editor is not None:
                     fmt.h(f'export editor: {editor.as_posix()}')
+            if editor is None and shared is None:
+                root = Path(tt['godot_root'])
+                pattern = tt['godot_glob'].replace(tt['target'] + '.libtracy', 'editor.libtracy')
+                exe_glob = tt['engine'][0].replace(tt['target'], 'editor')
+                client_glob = tt['runtime'][0].replace(tt['target'], 'editor')
+                folders = []
+                for folder in root.glob(pattern):
+                    if not folder.is_dir() or '.libtracy.' not in folder.name:
+                        continue
+                    suffix = folder.name.split('.libtracy.', 1)[1]
+                    if _re.fullmatch(r'(?:tests\.)?\d+(?:\.\d+)*~?', suffix) \
+                            and len(list((folder / 'bin').glob(tt['header']))) == 1:
+                        folders.append(folder)
+
+                def _editor_key(folder):
+                    suffix = folder.name.split('.libtracy.', 1)[1]
+                    m = _re.fullmatch(r'(?:tests\.)?(\d+(?:\.\d+)*)(~?)', suffix)
+                    return (tuple(int(n) for n in m.group(1).split('.')),
+                            1 if m.group(2) else 0, folder.stat().st_mtime)
+
+                def _editor_in_folder(bin_dir):
+                    if not bin_dir.is_dir():
+                        return None
+                    exes = [p for p in bin_dir.glob(exe_glob)
+                            if p.is_file() and '.console.' not in p.name]
+                    if not exes or not any(bin_dir.glob(client_glob)):
+                        return None
+                    return max(exes, key=lambda p: p.stat().st_mtime)
+
+                if folders:
+                    editor = _editor_in_folder(max(folders, key=_editor_key) / 'bin')
+                    if editor is not None:
+                        fmt.h(f'export editor: {editor.as_posix()}')
         if not libtracy_need(res, editor, f'export editor (set ${bench["editor_env"]})'):
             ok = False
 

@@ -72,6 +72,14 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
 
     split = []
     for build in builds:
+        # godot-cpp 10 reads a versioned api file unless CUSTOM_API_FILE is set.
+        # DEPRECATED=OFF matches an engine built with deprecated=no.
+        if CUSTOM_GDEXTENSION_DIR:
+            gde_dir = str(CUSTOM_GDEXTENSION_DIR).replace('\\', '/')
+            build.buildtool.config_vars.append(f'-DGODOTCPP_GDEXTENSION_DIR={gde_dir}')
+            build.buildtool.config_vars.append(
+                f'-DGODOTCPP_CUSTOM_API_FILE={gde_dir}/extension_api.json')
+        build.buildtool.config_vars.append('-DGODOTCPP_DEPRECATED=OFF')
         for target in ('template_release', 'template_debug', 'editor'):
             cfg = copy.deepcopy(build)
             cfg.godotcpp_target = target
@@ -143,11 +151,13 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
 #   worktree itself or a folder above it.
 GDUUID_SOURCE_PATH: str | None = None
 GDUUID_INSTALL_PREFIX: str = 'install'
+CUSTOM_GDEXTENSION_DIR:str = ''
 
 # Names paths.local.py may set.
 _LOCAL_OVERRIDES = (
     'GDUUID_SOURCE_PATH',
     'GDUUID_INSTALL_PREFIX',
+    'CUSTOM_GDEXTENSION_DIR'
 )
 
 
