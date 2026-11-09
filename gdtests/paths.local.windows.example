@@ -1,0 +1,18 @@
+# Per-machine gdtests paths for this Windows box.
+# Copy to gdtests/paths.local.py (gitignored) and adjust; gdtests/config.py
+# loads it when present. Any name left out keeps its default from config.py.
+
+# Local checkout to fetch the main source from. Unset keeps the GitHub url
+# in config.py. Ref stays main, which must be a branch in that repo. Fetch
+# sees committed refs only.
+# GDTESTS_SOURCE_PATH = 'C:/Godot/extensions/Enetheru.godot-tests'
+
+# Install prefix of every gdtests build (cmake --install --prefix). A
+# relative path is under that build's source worktree; the default 'install'
+# is <source>/install. An absolute path is used as given. Files land in
+# <prefix>/addons/enetheru.tests-extension/.
+# GDTESTS_INSTALL_PREFIX = 'C:/Godot/godot-tracy'
+
+# Dumped gdextension interface. When set, configure passes this directory
+# and its unversioned extension_api.json.
+# CUSTOM_GDEXTENSION_DIR = "C:/Godot/godot-tracy"
