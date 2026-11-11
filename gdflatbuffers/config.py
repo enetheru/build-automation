@@ -23,7 +23,8 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
     from src.config import (git_base, project_base, build_base, cmake_base, gopts)
 
     # main builds one library. GODOTCPP_TARGET is a cache string, so each
-    # flavor is its own configure. flatc is a second --target of that cache.
+    # flavor is its own configure. flatc is a second --target of the editor
+    # cache only; template libraries do not ship the schema compiler.
     # GDFB_SOURCE_PATH, when set, replaces the GitHub url. Ref stays main.
     git_source = SimpleNamespace({**vars(git_base), **{
         'name': 'git',
@@ -40,7 +41,7 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
         'buildtools':{
             'cmake':SimpleNamespace(**{
                 **vars(cmake_base),
-                'targets': ['flatc', 'godot-flatbuffers'],
+                'targets': ['godot-flatbuffers'],
                 # One configure, then cmake --build --config. Single-config
                 # Ninja and MinGW Makefiles would repeat that as three folders.
                 'generators': {
@@ -89,6 +90,12 @@ def generate( opts:SimpleNamespace ) -> SimpleNamespace:
             cfg = copy.deepcopy(build)
             cfg.godotcpp_target = target
             cfg.buildtool.config_vars.append(f'-DGODOTCPP_TARGET={target}')
+            # The editor addon shells out to flatc. Template builds only need
+            # the extension library, and install skips a flatc that was not built.
+            if target == 'editor':
+                cfg.buildtool.build_targets = ['flatc', 'godot-flatbuffers']
+                if hasattr(cfg.buildtool, 'target'):
+                    delattr(cfg.buildtool, 'target')
             split.append(cfg)
             # Three more folders per platform: the same configure against the
             # matching libtracy Godot bin. The default folders stay as they are.
