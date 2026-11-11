@@ -128,8 +128,10 @@ TRACY_CMAKE: str | None = None
 TRACY_TEST_DISPLAY: str | None = None
 TRACY_XVFB = 'Xvfb'
 # Every Godot build. The install verb copies that build's launch files into
-# GODOT_INSTALL_PATH after the earlier steps have succeeded. Builds share
-# this one directory. None leaves the verb with nothing to copy.
+# GODOT_INSTALL_PATH after the earlier steps have succeeded. An editor this
+# machine can run also dumps the GDExtension interface and extension API
+# into that directory. Builds share this one directory. None leaves the
+# verb with nothing to copy.
 GODOT_INSTALL_PATH: str | None = None
 
 # Names paths.local.py may set. The shared settings above may be overridden too.
@@ -2288,6 +2290,8 @@ def test_scons():
 def install_scons():
     """
     Copy a build's launch files into GODOT_INSTALL_PATH.
+    An editor this machine can run also dumps the GDExtension interface and
+    extension API into that directory.
     Last step. Runs when install was requested and every earlier step succeeded.
     """
     config:dict = {}
@@ -2305,7 +2309,10 @@ def install_scons():
     # .a) beside that client, and godot_profiling<suffix>.gen.h when the build
     # produced it. The suffix matches the engine binary so several builds can
     # share the install directory. The extension links the import library from
-    # this folder.
+    # this folder. An editor this machine can run then dumps
+    # gdextension_interface.h, gdextension_interface.json, and
+    # extension_api.json there. Godot writes those fixed names in the
+    # working directory.
     if 'install' not in opts['build_actions']:
         pass
     else:
@@ -2318,6 +2325,8 @@ def install_scons():
 
             with Timer(name='install') as timer, fmt.Section('Install'):
                 import shutil
+                import subprocess
+                from src.run import PANEL_LABEL
 
                 def scons_opt(name):
                     value = None
@@ -2403,6 +2412,58 @@ def install_scons():
                         files = sorted(set(files))
                         has_engine = bool(apps) or any(
                             path.suffix.lower() == '.exe' or path.name == stem for path in files)
+
+                        def dump_extension_api():
+                            # Only an editor binary can write these, and only when
+                            # this machine can run it. Templates leave the files
+                            # from the last editor install alone.
+                            if not build.get('dump_extension_api'):
+                                if (scons_opt('target') or build.get('target')) == 'editor':
+                                    fmt.h('Skip extension api dump: this machine cannot run the editor')
+                                return
+                            if platform_name == 'windows':
+                                exe = dest / f'{stem}.console.exe'
+                                if not opts['dry'] and not exe.is_file():
+                                    exe = dest / f'{stem}.exe'
+                            else:
+                                exe = dest / stem
+                            args = [str(exe), '--headless',
+                                    '--dump-gdextension-interface',
+                                    '--dump-gdextension-interface-json',
+                                    '--dump-extension-api']
+                            if opts['dry']:
+                                fmt.h(f'dry-run: dump extension api into {dest.as_posix()}')
+                                fmt.hu(subprocess.list2cmdline(args))
+                                return
+                            if not exe.is_file():
+                                fmt.h(f'ERROR: no editor to dump the extension api: {exe.as_posix()}')
+                                timer.status = TaskStatus.FAILED
+                                return
+                            names = ('gdextension_interface.h', 'gdextension_interface.json',
+                                     'extension_api.json')
+                            previous = os.getcwd()
+                            try:
+                                os.chdir(dest)
+                                if not sys.stdout.isatty():
+                                    print(f'{PANEL_LABEL}extension-api')
+                                proc = stream_command(args, stdin=subprocess.DEVNULL, check=False)
+                            except OSError as e:
+                                fmt.h(f'ERROR: could not dump the extension api: {e}')
+                                timer.status = TaskStatus.FAILED
+                                return
+                            finally:
+                                os.chdir(previous)
+                            missing = [name for name in names if not (dest / name).is_file()]
+                            if proc.returncode != 0:
+                                fmt.h(f'ERROR: extension api dump exited {proc.returncode}')
+                                timer.status = TaskStatus.FAILED
+                            elif missing:
+                                fmt.h('ERROR: extension api dump did not write ' + ', '.join(missing))
+                                timer.status = TaskStatus.FAILED
+                            else:
+                                for name in names:
+                                    fmt.hu((dest / name).as_posix())
+
                         if not has_engine:
                             fmt.h(f'ERROR: no engine binary named {stem} in {bin_dir.as_posix()}')
                             timer.status = TaskStatus.FAILED
@@ -2412,6 +2473,7 @@ def install_scons():
                                 fmt.hu(path.name)
                             for path in apps:
                                 fmt.hu(path.name)
+                            dump_extension_api()
                         else:
                             dest.mkdir(parents=True, exist_ok=True)
                             for path in files:
@@ -2424,6 +2486,7 @@ def install_scons():
                                 shutil.copytree(path, target)
                                 fmt.hu(target.as_posix())
                             fmt.h(f'Installed {len(files)} files to {dest.as_posix()}')
+                            dump_extension_api()
 
             stats['install'] = timer.get_dict()
             config['ok'] = timer.ok() and config['ok']
@@ -2606,6 +2669,16 @@ def configure_scons( config:SimpleNamespace ) -> bool:
         config.script_parts.append(test_scons)
 
     # After build and test. show_stats is appended later and exits when this failed.
+    # The editor dump writes into the install directory. A template cannot
+    # produce the files, and a binary this machine cannot run is left alone.
+    config.dump_extension_api = (
+        getattr(config, 'target', None) == 'editor'
+        and _host_can_run(
+            tc.host,
+            godot_platforms[tc.target_platform],
+            godot_arch[tc.target_arch],
+        )
+    )
     config.verbs.append('install')
     if GODOT_INSTALL_PATH:
         setattr(config, 'godot_install', GODOT_INSTALL_PATH)
