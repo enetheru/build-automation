@@ -17,7 +17,7 @@ from src import format as fmt
 from src.ConsoleMultiplex import ConsoleMultiplex, TeeOutput
 from src.error import handle_error
 from src.generate import write_namespace
-from src.run import ENDCMD, stream_command
+from src.run import ENDCMD, PANEL_LABEL, stream_command
 from src.utils import get_interior_dict, process_log_null
 
 console = ConsoleMultiplex()
@@ -69,6 +69,18 @@ def _screen_width() -> int:
     if width < 20:
         width = 20
     return width
+
+
+def panel_title(section: str, label: str) -> str:
+    """The section name, plus the command's own name when it sent one.
+
+    A test phase is a single section. The label is what distinguishes the
+    panels inside it: "Test: doctest", "Test: fibers-engine".
+    """
+    label = label.strip()
+    if not label:
+        return section
+    return f'{section}: {label}'
 
 
 def _display_line(text: str) -> Text:
@@ -421,7 +433,7 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
         # A command panel stays open until that command ends, and the lines
         # it prints are rows in the same box.
         current: dict[str, CommandFrame | None] = {'frame': None}
-        step = {'title': 'command'}
+        step = {'title': 'command', 'label': ''}
 
         def write_line(line: str) -> None:
             # Outside the frame. ANSI still paints on screen; a file console
@@ -440,6 +452,11 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
                 close_frame()
                 return
 
+            # Names the next panel. Not output, and not a heading.
+            if line.startswith(PANEL_LABEL):
+                step['label'] = line[len(PANEL_LABEL):].strip()
+                return
+
             # The working directory is already in the command text.
             if line.startswith('CWD ') or _SKIP_LINE.match(line):
                 return
@@ -452,12 +469,14 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
                 write_line('')
                 write_line(shown)
                 step['title'] = shown.split(' - ', 1)[-1]
+                step['label'] = ''
                 return
 
             if line.startswith('  $ ') or line.startswith('$ '):
                 cmd = line.split('$ ', 1)[1]
                 close_frame()
-                current['frame'] = CommandFrame(cmd, step['title'])
+                current['frame'] = CommandFrame(cmd, panel_title(step['title'], step['label']))
+                step['label'] = ''
                 return
 
             if current['frame'] is not None:

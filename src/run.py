@@ -27,6 +27,9 @@ from rich.text import Text
 
 # The parent closes a command panel when it sees this line.
 ENDCMD = '\x1eENDCMD'
+# The next command panel is titled "<section>: <label>". A phase that is one
+# section, such as Test, would otherwise give every panel that same title.
+PANEL_LABEL = '\x1ePANEL '
 
 def _write_out(line: str) -> None:
     """Write a child stdout line and flush. A pipe is block-buffered, so an

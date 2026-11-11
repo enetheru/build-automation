@@ -682,6 +682,7 @@ def test_scons():
             import tempfile
             import time
             from datetime import datetime
+            from src.run import PANEL_LABEL
 
             tt = dict(build.get('tracy_test') or {})
             dry = bool(opts['dry'])
@@ -782,6 +783,15 @@ def test_scons():
                 prefix = ''.join(f'{k}={v} ' for k, v in (env or {}).items())
                 return prefix + subprocess.list2cmdline([short_arg(str(a)) for a in args])
 
+            def print_cmd(name, args, env=None, background=False):
+                # The section heading is "Test" for this whole phase. The
+                # label is the panel title's test name. A terminal has no
+                # parent framing the lines, so it only prints the command.
+                if not sys.stdout.isatty():
+                    print(f'{PANEL_LABEL}{name}')
+                suffix = ' &' if background else ''
+                print(f'  $ {short_cmd(args, env)}{suffix}')
+
             def write_cmd(res, name, args, env=None):
                 # Every command a stage launches is saved as <name>.cmd.
                 if dry:
@@ -793,7 +803,7 @@ def test_scons():
             def run(res, name, args, timeout, echo=20, env=None):
                 # Like stream_command: print the command, launch nothing when dry.
                 args = [str(a) for a in args]
-                print(f'  $ {short_cmd(args, env)}')
+                print_cmd(name, args, env)
                 if dry:
                     return None
                 write_cmd(res, name, args, env)
@@ -956,9 +966,9 @@ def test_scons():
                 facts['tracy_flag'] = '--profiler' in eng_cmd
                 facts['tracy_features'] = option_value(eng_cmd, '--profiler-features')
                 facts['tracy_mask'] = option_value(eng_cmd, '--profiler-categories')   # None: build default
-                print(f'  $ {short_cmd(cap_cmd)} &')
+                print_cmd(f'{name}-capture', cap_cmd, background=True)
                 if dry:
-                    print(f'  $ {short_cmd(eng_cmd, env)}')
+                    print_cmd(f'{name}-engine', eng_cmd, env)
                     as_dry(res)
                     return None, None
                 write_cmd(res, f'{name}-capture', cap_cmd)
@@ -1328,7 +1338,7 @@ def test_scons():
                 if num is None:
                     return None, 'no free X display number for Xvfb'
                 cmd = [xvfb, f':{num}', '-screen', '0', '1280x720x24', '-nolisten', 'tcp']
-                print(f'  $ {short_cmd(cmd)} &')
+                print_cmd('xvfb', cmd, background=True)
                 ctx['xvfb_cmd'] = cmdline(cmd)
                 if dry:
                     return {'DISPLAY': f':{num}'}, None
@@ -1521,7 +1531,7 @@ def test_scons():
                 facts = res['facts']
                 fib = ctx['stages'].get('fibers_capture') or {}
                 if fib.get('status') == 'dry':
-                    print(f"  $ {tt.get('csvexport')} {logdir / 'fibers.tracy'}")
+                    print_cmd('fibers-csvexport', [tt.get('csvexport'), logdir / 'fibers.tracy'])
                     return as_dry(res)
                 if fib.get('status') == 'n/a':
                     return not_applicable(res, fib.get('reason'))
