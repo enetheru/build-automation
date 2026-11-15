@@ -6,7 +6,8 @@
 
 TRACY_SOURCE_PATH = "C:/Godot/src/godot-private"
 TRACY_REF = 'enetheru/4.7-tracy'
-# Tracy v0.14.1 sources: the client for profiler_path and the server for the analyser.
+# Tracy sources: the client for profiler_path and the server for the analyser.
+# The version is public/common/TracyVersion.hpp in this tree.
 TRACY_PROFILER_PATH = "C:/git/wolfpld/tracy"
 TRACY_TOOLS_PATH = "C:/Users/nicho/AppData/Local/Microsoft/WinGet/Packages/wolfpld.tracy_Microsoft.Winget.Source_8wekyb3d8bbwe"
 TRACY_CAPTURE = f"{TRACY_TOOLS_PATH}/tracy-capture.exe"

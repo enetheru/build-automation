@@ -47,9 +47,9 @@ origin = SimpleNamespace({**vars(git_base), **{
 # the `tracy` source is left out, config_tracy skips the tracy variants, and
 # the test step skips every stage whose tool or harness is missing.
 
-# Shared, machine-independent settings. config_tracy checks the version header
-# so a different Tracy in TRACY_PROFILER_PATH can't slip into a build.
-TRACY_VERSION = '0.14.1'
+# Shared, machine-independent settings. The Tracy version is the checkout at
+# TRACY_PROFILER_PATH. config_tracy reads public/common/TracyVersion.hpp and
+# skips the build when that header cannot be read.
 TRACY_CAPTURE_ADDR = '127.0.0.1'
 # Listen port for tracy-capture and the engine's --profiler-port. After
 # paths.local.py, an environment variable overrides it: TRACY_CAPTURE_PORT,
@@ -104,8 +104,9 @@ TRACY_ANALYZER_SRC = 'misc/scripts/tracy/trace_analyzer/trace_analyzer.cpp'
 # TRACY_SOURCE_PATH: the Godot clone that carries the Tracy fork. Fetching from
 #   a local repo only sees its branches (refs/heads/*), so TRACY_REF names a
 #   branch in that clone.
-# TRACY_PROFILER_PATH: the Tracy profiler sources, pinned to TRACY_VERSION. The
-#   test step also builds the capture analyser against them.
+# TRACY_PROFILER_PATH: the Tracy profiler sources. The test step also builds
+#   the capture analyser against them. The version is that tree's
+#   public/common/TracyVersion.hpp.
 # TRACY_TOOLS_PATH, TRACY_CAPTURE, TRACY_CSVEXPORT: tracy-capture and
 #   tracy-csvexport for the capture stages.
 TRACY_SOURCE_PATH: str | None = None
@@ -140,7 +141,7 @@ _LOCAL_OVERRIDES = (
     'TRACY_CAPTURE', 'TRACY_CSVEXPORT', 'TRACY_ANALYZER_SRC', 'TRACY_ANALYZER', 'TRACY_CMAKE',
     'TRACY_FIBERS_GD', 'TRACY_TOGGLE_GD', 'TRACY_FRAME_IMAGES_GD', 'TRACY_LOG_GD',
     'TRACY_LATE_GPU_PROJECT',
-    'TRACY_VERSION', 'TRACY_CAPTURE_ADDR', 'TRACY_CAPTURE_PORT',
+    'TRACY_CAPTURE_ADDR', 'TRACY_CAPTURE_PORT',
     'TRACY_TEST_FEATURES', 'TRACY_TEST_TIMEOUT', 'TRACY_TEST_MASK', 'TRACY_TEST_DOCTEST',
     'TRACY_TEST_GPU_FEATURES', 'TRACY_TEST_GPU_QUIT_AFTER',
     'TRACY_TEST_FRAME_IMAGE_FEATURES', 'TRACY_TEST_FRAME_IMAGE_MIN',
@@ -191,7 +192,6 @@ if _env_port:
 # build['tracy_test']. A missing tool or harness makes its stage skip with a
 # message. The generated script drops empty values, so read it with .get().
 TRACY_TEST = {
-    'version': TRACY_VERSION,
     'profiler_path': TRACY_PROFILER_PATH,
     'tools_path': TRACY_TOOLS_PATH,
     'capture': TRACY_CAPTURE,
@@ -1079,7 +1079,7 @@ def test_scons():
 
             def analyzer_tracy_version(profiler):
                 # TracyVersion.hpp of the sources it links against, else git describe of
-                # that tree, else the pinned TRACY_VERSION.
+                # that tree.
                 found = tracy_version_at(profiler) if tt.get('profiler_path') else None
                 if not found and tt.get('profiler_path') and profiler.is_dir():
                     try:
@@ -1088,7 +1088,7 @@ def test_scons():
                         found = proc.stdout.strip() if proc.returncode == 0 else None
                     except (OSError, subprocess.SubprocessError):
                         found = None
-                found = found or tt.get('version') or 'unknown'
+                found = found or 'unknown'
                 return re.sub(r'[^0-9A-Za-z._-]', '_', found.lstrip('v'))
 
             def sha256_of(path):
@@ -1420,8 +1420,8 @@ def test_scons():
                     found = tracy_version_at(profiler_path) if profiler_path else None
                     facts['tracy_path'] = profiler_path
                     facts['tracy_version'] = found
-                    if found != tt.get('version'):
-                        fail(res, f'expected Tracy {tt.get("version")} at {profiler_path}, found {found}')
+                    if not found:
+                        fail(res, f'cannot read Tracy version at {profiler_path}')
                 gen_h = source_dir / 'core/profiling/profiling.gen.h'
                 facts['gen_h'] = gen_h.as_posix()
                 if not gen_h.is_file():
@@ -1444,8 +1444,9 @@ def test_scons():
                     if 'TRACY_ENABLE' not in defines or 'GODOT_USE_TRACY' not in defines:
                         fail(res, 'profiler=tracy build but profiling.gen.h does not enable Tracy')
                     pinned = [defines.get(f'GODOT_TRACY_PINNED_VERSION_{p}') for p in ('MAJOR', 'MINOR', 'PATCH')]
-                    if all(pinned) and '.'.join(pinned) != tt.get('version'):
-                        fail(res, f'profiling.gen.h pins Tracy {".".join(pinned)}')
+                    recorded = '.'.join(pinned) if all(pinned) else None
+                    if found and recorded != found:
+                        fail(res, f'profiling.gen.h records Tracy {recorded}, checkout is {found}')
                 return res
 
             def stage_doctest():
@@ -2773,8 +2774,8 @@ def config_tracy( cfg:SimpleNamespace ) -> bool:
         print("Skipping tracy build: TRACY_PROFILER_PATH is not set (see godot/paths.local.*.example)")
         return False
     found = _tracy_version_at(TRACY_PROFILER_PATH)
-    if found != TRACY_VERSION:
-        print(f"Skipping tracy build: expected Tracy {TRACY_VERSION} at {TRACY_PROFILER_PATH}, found {found}")
+    if not found:
+        print(f"Skipping tracy build: cannot read Tracy version at {TRACY_PROFILER_PATH}")
         return False
     scons.build_vars.append(f"profiler_path={TRACY_PROFILER_PATH}")
 

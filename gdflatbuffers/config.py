@@ -437,13 +437,12 @@ LIBTRACY_BENCH = {
 
 def _tracy_include_dir() -> str | None:
     """Tracy public headers, from the same TRACY_PROFILER_PATH the godot libtracy builds use."""
-    from godot.config import TRACY_PROFILER_PATH, TRACY_VERSION, _tracy_version_at
+    from godot.config import TRACY_PROFILER_PATH, _tracy_version_at
     if not TRACY_PROFILER_PATH:
         print('Skipping gdflatbuffers libtracy: TRACY_PROFILER_PATH is not set (see godot/paths.local.*.example)')
         return None
-    found = _tracy_version_at(TRACY_PROFILER_PATH)
-    if found != TRACY_VERSION:
-        print(f'Skipping gdflatbuffers libtracy: expected Tracy {TRACY_VERSION} at {TRACY_PROFILER_PATH}, found {found}')
+    if not _tracy_version_at(TRACY_PROFILER_PATH):
+        print(f'Skipping gdflatbuffers libtracy: cannot read Tracy version at {TRACY_PROFILER_PATH}')
         return None
     return f'{TRACY_PROFILER_PATH.rstrip("/")}/public'
 
