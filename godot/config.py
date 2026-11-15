@@ -684,6 +684,7 @@ def test_scons():
             import tempfile
             import time
             from datetime import datetime
+            from rich.markup import escape
             from src.run import PANEL_LABEL
 
             tt = dict(build.get('tracy_test') or {})
@@ -757,7 +758,9 @@ def test_scons():
             def fail(res, why):
                 res['status'] = 'fail'
                 res['failures'].append(why)
-                fmt.h(f'FAIL: {why}')
+                # Rich markup, so a piped run still emits ANSI for the parent frame.
+                # The reason is escaped: doctest names contain brackets.
+                fmt.h(f'[red]FAIL: {escape(why)}[/red]')
                 return res
 
             def as_dry(res):
@@ -770,6 +773,33 @@ def test_scons():
 
             def plain(text):
                 return re.sub(r'\x1b\[[0-9;]*m', '', text)
+
+            def doctest_failures(text):
+                # A failed case sits between ===== rules. The live log only
+                # keeps the tail of the run, and that tail is engine shutdown
+                # noise, so the case name has to come out of the captured text.
+                found = []
+                blocks = re.split(r'^={20,}\s*$', text, flags=re.M)
+                for block in blocks:
+                    case = re.search(r'^TEST CASE:\s*(.+?)\s*$', block, re.M)
+                    if not case:
+                        continue
+                    name = case.group(1).strip()
+                    pending = None
+                    for raw in block.splitlines():
+                        line = raw.strip()
+                        match = re.search(r'(?:FATAL )?ERROR:\s*((?:CHECK|REQUIRE).+)$', line)
+                        if match:
+                            if pending:
+                                found.append(pending)
+                            pending = f'{name}: {match.group(1).strip()}'
+                            continue
+                        if pending and line.startswith('values:'):
+                            found.append(f'{pending} {line}')
+                            pending = None
+                    if pending:
+                        found.append(pending)
+                return found
 
             def cmdline(args, env=None):
                 prefix = ''.join(f'{k}={v} ' for k, v in (env or {}).items())
@@ -1501,7 +1531,12 @@ def test_scons():
                     return fail(res, 'no doctest summary in the output')
                 cases = facts['test_cases']
                 if cases['failed'] or facts['assertions']['failed']:
-                    fail(res, 'doctest reported failures')
+                    reasons = doctest_failures(text)
+                    if reasons:
+                        for reason in reasons:
+                            fail(res, reason)
+                    else:
+                        fail(res, 'doctest reported failures')
                 if not cases['total']:
                     return fail(res, f'no test case matched {flt}')
                 if names and cases['total'] != len(names):
@@ -2231,7 +2266,11 @@ def test_scons():
                                 stages[name] = fail(result(), f'{type(e).__name__}: {e}')
                             res = stages[name]
                             detail = '; '.join(res['failures']) or res.get('reason') or ''
-                            fmt.h(f"{name}: {res['status']}" + (f' - {detail}' if detail else ''))
+                            line = f"{name}: {res['status']}" + (f' - {detail}' if detail else '')
+                            if res['status'] == 'fail':
+                                fmt.h(f'[red]{escape(line)}[/red]')
+                            else:
+                                fmt.h(line)
                     finally:
                         stop_display()
                     best_info = compare_best(stages)
