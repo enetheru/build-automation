@@ -80,14 +80,13 @@ class ConsoleMultiplex(Console):
             Console: The removed console.
 
         Raises:
-            AlreadyEmpty: If no outputs are registered.
-            InvalidName: If the specified name does not exist.
+            LookupError: If no outputs are registered, or the name is not one of them.
         """
         if not len(self.outputs):
-            raise "AlreadyEmpty"
+            raise LookupError("no console outputs")
         if name:
             if name not in self.outputs:
-                raise "InvalidName"
+                raise LookupError(name)
             console = self.outputs.pop(name)
         else:
             console = self.outputs.popitem()
@@ -136,15 +135,28 @@ class TeeOutput:
         Removes the current task or item associated with the provided name from
         the multiplexer.
 
+        A cancel handler may already have closed this console. Popping a name
+        that is gone used to raise a string, and that TypeError replaced the
+        KeyboardInterrupt, so the next cancel line never ran.
+
         :return: None
         :rtype: None
         """
+        if self.name not in self.multiplexer.outputs:
+            return
         self.multiplexer.pop(self.name)
 
     def __enter__(self):
         self.start()
         return self
 
-    def __exit__(self, *exc):
-        self.end()
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            self.end()
+        except Exception:
+            # Keep a CTRL+C in flight. A cleanup error here is what turned
+            # the later cancel steps into a traceback.
+            if exc_type is not None and issubclass(exc_type, KeyboardInterrupt):
+                return False
+            raise
         return False

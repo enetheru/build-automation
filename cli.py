@@ -140,8 +140,9 @@ def main():
         then continues, so a requested fetch or build still runs.
 
     Raises:
-        KeyboardInterrupt: User cancellation propagated from subprocess handlers.
+        SystemExit: Status 130 when a CTRL+C cancels the whole run.
     """
+    run_cancelled = False
     console.set_window_title( "AutoBuild" )
 
     # Same plain wide console as the per-build logs. force_terminal wraps at 80.
@@ -204,9 +205,12 @@ def main():
                     with fmt.Section('Generate Build Scripts'):
                         generate_build_scripts(gopts)
                     for project in projects.values():
-                        try: process_project(gopts, project)
+                        try:
+                            process_project(gopts, project)
                         except KeyboardInterrupt:
-                            print('Processing Cancelled')
+                            print("Run cancelled.")
+                            run_cancelled = True
+                            break
 
     if has_statistics(gopts):
         with fmt.Section('Statistics'):
@@ -216,6 +220,12 @@ def main():
         print_available_actions(toolchains, projects)
 
     console.pop( "build_log" )
+    if run_cancelled:
+        raise SystemExit(130)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Run cancelled.")
+        raise SystemExit(130)

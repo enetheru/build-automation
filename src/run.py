@@ -15,15 +15,32 @@ import os
 import shlex
 import sys
 from collections import deque
-from typing import cast, BinaryIO, TextIO
-
 from concurrent.futures import ThreadPoolExecutor
-from subprocess import PIPE, CalledProcessError, CompletedProcess, Popen
 from functools import partial
+from subprocess import PIPE, CalledProcessError, CompletedProcess, Popen
+from typing import BinaryIO, TextIO, cast
 
 import rich
 from rich.panel import Panel
 from rich.text import Text
+
+
+def _keyboard_interrupt_message(exc_type, exc, tb):
+    """CTRL+C is a cancel. The interpreter traceback is not the message."""
+    if exc_type is not None and issubclass(exc_type, KeyboardInterrupt):
+        try:
+            sys.stderr.write("Cancelled.\n")
+            sys.stderr.flush()
+        except Exception:
+            pass
+        return
+    sys.__excepthook__(exc_type, exc, tb)
+
+
+# Build scripts import this module, and so does the CLI. An interrupt that
+# no handler claimed prints one line instead of a stack trace.
+if sys.excepthook is sys.__excepthook__:
+    sys.excepthook = _keyboard_interrupt_message
 
 # The parent closes a command panel when it sees this line.
 ENDCMD = '\x1eENDCMD'

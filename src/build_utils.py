@@ -360,6 +360,19 @@ Args:
 Side effects:
     Runs pwsh/python script, captures logs/stats.
 """
+def _escalate_cancel() -> None:
+    """Wait so another CTRL+C can cancel the next larger scope.
+
+    Re-raise with a bare ``raise``. ``except KeyboardInterrupt as e: raise e``
+    chains a new exception onto the first, and a context manager that then
+    fails prints that chain instead of the next cancel line.
+    """
+    try:
+        sleep(3)
+    except KeyboardInterrupt:
+        raise
+
+
 def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
     """
 
@@ -534,13 +547,14 @@ def process_build( opts:SimpleNamespace, build:SimpleNamespace ):
                 "duration": end_time - stats["start_time"]
             }
 
-            print("Build Cancelled with 'KeyboardInterrupt'")
-            console.pop( build.name )
-
-            print("Waiting 3s before continuing, CTRL+C to cancel project")
-            try: sleep(3)
-            except KeyboardInterrupt as e: raise e
-            print("continuing...")
+            # Leave the build log attached. The with-block closes it.
+            # Popping it here made that close raise over the KeyboardInterrupt.
+            console.print(
+                "Build cancelled. Continuing in 3s. CTRL+C cancels this project.",
+                markup=False,
+            )
+            _escalate_cancel()
+            console.print("Continuing.", markup=False)
         except Exception as e:
             end_time = datetime.now()
             stats |= {
@@ -587,14 +601,12 @@ def _run_project_builds(opts: SimpleNamespace, project: SimpleNamespace) -> None
         try:
             process_build(opts, build)
         except KeyboardInterrupt:
-            print(f'"Cancelling project "{project.name}", CTRL+C again to cancel all projects"')
-            try:
-                from time import sleep
-                sleep(3)
-            except KeyboardInterrupt as e:
-                console.pop(project.name)
-                raise e
-            print("continuing")
+            console.print(
+                f"Project {project.name} cancelled. Continuing in 3s. CTRL+C cancels the run.",
+                markup=False,
+            )
+            _escalate_cancel()
+            console.print("Continuing.", markup=False)
 
 
 def process_project(opts: SimpleNamespace, project: SimpleNamespace):
