@@ -28,6 +28,10 @@ sys.stdout.reconfigure(encoding='utf-8')
 # columns and folds paths in the middle. A terminal keeps the normal console.
 # AUTOBUILD_COLOR means the parent frame will paint ANSI, so this pipe still
 # emits color. soft_wrap leaves the wrapping to that frame.
+# Auto detection on a Windows pipe selects the legacy console renderer.
+# That renderer sets console attributes and writes plain text, so the
+# parent frame never receives the color. Standard ANSI and legacy_windows
+# off put the codes in the pipe. TERM=dumb would also refuse auto color.
 _want_color = (
     os.environ.get('AUTOBUILD_COLOR') == '1'
     and not os.environ.get('NO_COLOR')
@@ -36,7 +40,13 @@ _want_color = (
 if sys.stdout.isatty():
     rich._console = console = Console()
 elif _want_color:
-    rich._console = console = Console(force_terminal=True, soft_wrap=True)
+    rich._console = console = Console(
+        force_terminal=True,
+        soft_wrap=True,
+        color_system='standard',
+        legacy_windows=False,
+        no_color=False,
+    )
 else:
     rich._console = console = Console(color_system=None, soft_wrap=True)
 if not sys.stdout.isatty():
