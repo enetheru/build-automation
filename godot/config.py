@@ -84,9 +84,9 @@ TRACY_TEST_BEST_TOLERANCE = 0.10
 TRACY_TEST_REQUIRED = {
     'default': ['version', 'doctest'],
     'minimum': ['version', 'doctest'],
-    'tracy': ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
+    'tracy': ['version', 'tracy_defines', 'doctest', 'pre_yield', 'pre_silence', 'pre_enter', 'post_await', 'signal_arm', 'finish_await', 'fibers_capture', 'counts',
               'silenced', 'toggle', 'log', 'frame_images', 'gpu_late_start'],
-    'libtracy': ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
+    'libtracy': ['version', 'tracy_defines', 'doctest', 'pre_yield', 'pre_silence', 'pre_enter', 'post_await', 'signal_arm', 'finish_await', 'fibers_capture', 'counts',
                 'silenced', 'toggle', 'log', 'frame_images', 'gpu_late_start'],
 }
 
@@ -94,6 +94,12 @@ TRACY_TEST_REQUIRED = {
 # the Godot source being built, so every host tests with the harness of the
 # commit under test. paths.local.py may point them elsewhere (absolute paths).
 TRACY_FIBERS_GD = 'tests/tracy_harness/fibers.gd'
+TRACY_PRE_YIELD_GD = 'tests/tracy_harness/pre_yield.gd'
+TRACY_PRE_SILENCE_PROJECT = 'tests/tracy_harness/pre_silence'
+TRACY_PRE_ENTER_PROJECT = 'tests/tracy_harness/pre_enter'
+TRACY_POST_AWAIT_PROJECT = 'tests/tracy_harness/post_await'
+TRACY_SIGNAL_ARM_PROJECT = 'tests/tracy_harness/signal_arm'
+TRACY_FINISH_AWAIT_PROJECT = 'tests/tracy_harness/finish_await'
 TRACY_TOGGLE_GD = 'tests/tracy_harness/toggle.gd'
 TRACY_FRAME_IMAGES_GD = 'tests/tracy_harness/frame_images.gd'
 TRACY_LOG_GD = 'tests/tracy_harness/log.gd'
@@ -139,7 +145,7 @@ GODOT_INSTALL_PATH: str | None = None
 _LOCAL_OVERRIDES = (
     'TRACY_SOURCE_PATH', 'TRACY_REF', 'TRACY_PROFILER_PATH', 'TRACY_TOOLS_PATH',
     'TRACY_CAPTURE', 'TRACY_CSVEXPORT', 'TRACY_ANALYZER_SRC', 'TRACY_ANALYZER', 'TRACY_CMAKE',
-    'TRACY_FIBERS_GD', 'TRACY_TOGGLE_GD', 'TRACY_FRAME_IMAGES_GD', 'TRACY_LOG_GD',
+    'TRACY_FIBERS_GD', 'TRACY_PRE_YIELD_GD', 'TRACY_PRE_SILENCE_PROJECT', 'TRACY_PRE_ENTER_PROJECT', 'TRACY_POST_AWAIT_PROJECT', 'TRACY_SIGNAL_ARM_PROJECT', 'TRACY_FINISH_AWAIT_PROJECT', 'TRACY_TOGGLE_GD', 'TRACY_FRAME_IMAGES_GD', 'TRACY_LOG_GD',
     'TRACY_LATE_GPU_PROJECT',
     'TRACY_CAPTURE_ADDR', 'TRACY_CAPTURE_PORT',
     'TRACY_TEST_FEATURES', 'TRACY_TEST_TIMEOUT', 'TRACY_TEST_MASK', 'TRACY_TEST_DOCTEST',
@@ -202,6 +208,12 @@ TRACY_TEST = {
     'analyzer_cache': (pathlib.Path(__file__).resolve().parent / 'trace_analyzer').as_posix(),
     'cmake': TRACY_CMAKE,
     'fibers_gd': TRACY_FIBERS_GD,
+    'pre_yield_gd': TRACY_PRE_YIELD_GD,
+    'pre_silence_project': TRACY_PRE_SILENCE_PROJECT,
+    'pre_enter_project': TRACY_PRE_ENTER_PROJECT,
+    'post_await_project': TRACY_POST_AWAIT_PROJECT,
+    'signal_arm_project': TRACY_SIGNAL_ARM_PROJECT,
+    'finish_await_project': TRACY_FINISH_AWAIT_PROJECT,
     'toggle_gd': TRACY_TOGGLE_GD,
     'frame_images_gd': TRACY_FRAME_IMAGES_GD,
     'log_gd': TRACY_LOG_GD,
@@ -692,7 +704,7 @@ def test_scons():
             run_timeout = int(tt.get('timeout') or 60)
             tolerance = float(tt.get('best_tolerance') or 0)
             runtime_case = '[Profiling] Report the runtime state'
-            stage_names = ['version', 'tracy_defines', 'doctest', 'fibers_capture', 'counts',
+            stage_names = ['version', 'tracy_defines', 'doctest', 'pre_yield', 'pre_silence', 'pre_enter', 'post_await', 'signal_arm', 'finish_await', 'fibers_capture', 'counts',
                            'silenced', 'toggle', 'log', 'frame_images', 'gpu_late_start']
 
             # MARK: Helpers
@@ -964,12 +976,13 @@ def test_scons():
                     ctx['stub_project'] = stub.as_posix()
                 return stub
 
-            def script_cmd(script, unsilence):
+            def script_cmd(script, unsilence, features=None):
                 cmd = [str(exe), '--headless']
                 if is_template():
                     cmd += ['--path', str(stub_project())]
                 cmd += ['--profiler'] if unsilence else []
-                cmd += ['--script', str(Path(script).resolve()), '--profiler-features', tt['features']]
+                cmd += ['--script', str(Path(script).resolve()), '--profiler-features',
+                        tt['features'] if features is None else features]
                 if tt.get('mask') is not None:
                     cmd += ['--profiler-categories', tt['mask']]
                 return cmd
@@ -1548,6 +1561,347 @@ def test_scons():
                 elif is_tracy and flt == tt.get('doctest'):
                     fail(res, f"'{runtime_case}' is not among the {flt} cases")
                 metric('doctest', f'doctest_cases[{flt}]', cases['total'], exact=True)
+                return res
+
+            def stage_pre_yield():
+                # Begin one zone on the thread and end it once fiber `_pre` is
+                # current. The client emits that end on the current fiber, so
+                # tracy-capture aborts while that is true. A pass means this
+                # end stayed off `_pre`. It does not mean TracyCapture._pre is
+                # fixed: that hook can still abort on a zone this script never
+                # opens, and the same editor case has both passed and aborted.
+                # `zones` only, so a function zone cannot end on the way out
+                # of begin_zone and fail the capture for a different reason.
+                res = result()
+                gate = capture_gate(res, needs_project=True)
+                if gate:
+                    return gate
+                script = harness('pre_yield_gd')
+                if not script or not script.is_file():
+                    return skip(res, f'no pre_yield harness at {script}')
+                # --profiler unsilences an on-demand build. Without it the manual
+                # zone is never sent, and the capture cannot show the bad end.
+                capture_run(res, 'pre_yield', script_cmd(script, True, 'zones'))
+                return res
+
+            def stage_pre_silence():
+                # A node queues a disable and awaits one frame, with automatic
+                # GDScript zones, under the real scene tree. The disable lands
+                # on the next frame mark, so the await still records, and the
+                # capture aborts. A SceneTree --script does not hit this, and
+                # neither does the await without the queued disable.
+                # A pass means this await no longer ends a zone on an empty
+                # stack. The capture does not name the fiber. The editor
+                # failure names `_pre`.
+                res = result()
+                gate = capture_gate(res, needs_project=True)
+                if gate:
+                    return gate
+                src_project = harness('pre_silence_project')
+                if not src_project or not (src_project / 'project.godot').is_file():
+                    return skip(res, f'no pre_silence project at {src_project}')
+                proj = logdir / 'pre_silence-project'
+                if not dry:
+                    shutil.copytree(src_project, proj, dirs_exist_ok=True, ignore=shutil.ignore_patterns('.godot'))
+                cmd = [str(exe), '--headless', '--path', str(proj), '--profiler',
+                       '--profiler-features', 'zones,auto_gdscript']
+                capture_run(res, 'pre_silence', cmd)
+                return res
+
+            def stage_pre_enter():
+                # `_pre` starts before the server connects, queues a disable,
+                # and awaits a nested poll. The current client enters fiber
+                # `_pre` and records no zones on it. The editor captures do
+                # the same. `pre_silence` awaits once after the server is
+                # connected, so its await stays on `_pre`.
+                # A pass means `_pre` was not entered with an empty zone list.
+                res = result()
+                gate = capture_gate(res, needs_project=True)
+                if gate:
+                    return gate
+                src_project = harness('pre_enter_project')
+                if not src_project or not (src_project / 'project.godot').is_file():
+                    return skip(res, f'no pre_enter project at {src_project}')
+                proj = logdir / 'pre_enter-project'
+                if not dry:
+                    shutil.copytree(src_project, proj, dirs_exist_ok=True, ignore=shutil.ignore_patterns('.godot'))
+                cmd = [str(exe), '--headless', '--path', str(proj), '--profiler',
+                       '--profiler-features', 'zones,auto_gdscript']
+                trace, _ = capture_run(res, 'pre_enter', cmd)
+                if res['status'] == 'fail' or dry or trace is None:
+                    return res
+                info, why = analyse(res, 'pre_enter', trace)
+                if info is None:
+                    return fail(res, f'cannot inspect the trace: {why}')
+                text = (logdir / 'pre_enter-analysis.txt').read_text(encoding='utf-8')
+                for name, count in re.findall(r"^thread \d+ '([^']+)' fiber=1 timeline=(\d+)", text, re.M):
+                    if name == '_pre' and int(count) == 0:
+                        fail(res, 'fiber _pre was entered and has no zones')
+                return res
+
+            def stage_post_await():
+                # `_pre` is already awaiting when tracy-capture connects.
+                # The resume enables recording, awaits one frame, then
+                # queues a disable and awaits again. That second await
+                # is the editor hook's `_post`. The current client
+                # aborts the capture on `completed.await` in `_pre`.
+                # A pass means the capture log has no instrumentation failure.
+                res = result()
+                gate = capture_gate(res, needs_project=True)
+                if gate:
+                    return gate
+                src_project = harness('post_await_project')
+                if not src_project or not (src_project / 'project.godot').is_file():
+                    return skip(res, f'no post_await project at {src_project}')
+                proj = logdir / 'post_await-project'
+                if not dry:
+                    shutil.copytree(src_project, proj, dirs_exist_ok=True, ignore=shutil.ignore_patterns('.godot', 'suspended.txt'))
+                port = free_listen_port(tt['address'], tt.get('port'))
+                if port is None:
+                    return fail(res, f"no free listen port on {tt['address']} from {tt.get('port')}")
+                if port != str(tt.get('port')):
+                    print(f"  {tt['address']}:{tt.get('port')} is in use; using {port}")
+                cmd = [str(exe), '--headless', '--path', str(proj), '--profiler-port', port,
+                       '--profiler-features', 'zones,auto_gdscript']
+                trace = logdir / 'post_await.tracy'
+                cap_cmd = [str(tool('capture')), '-o', str(trace), '-a', tt['address'], '-p', port, '-f']
+                facts = res['facts']
+                facts['engine_cmd'] = cmdline(cmd)
+                facts['capture_cmd'] = cmdline(cap_cmd)
+                print_cmd('post_await-engine', cmd)
+                print_cmd('post_await-capture', cap_cmd, background=True)
+                if dry:
+                    return as_dry(res)
+                marker = proj / 'suspended.txt'
+                if marker.exists():
+                    marker.unlink()
+                write_cmd(res, 'post_await-engine', cmd)
+                write_cmd(res, 'post_await-capture', cap_cmd)
+                cap_log_path = logdir / 'post_await-capture.log'
+                eng_log_path = logdir / 'post_await-engine.log'
+                res['logs'].extend((cap_log_path.as_posix(), eng_log_path.as_posix()))
+                popen_kw = {}
+                if sys.platform == 'win32':
+                    popen_kw['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+                with open(eng_log_path, 'w', encoding='utf-8') as eng_log:
+                    eng = subprocess.Popen(cmd, stdout=eng_log, stderr=subprocess.STDOUT,
+                                           stdin=subprocess.DEVNULL, **popen_kw)
+                    deadline = time.monotonic() + 30
+                    while time.monotonic() < deadline and not marker.is_file():
+                        if eng.poll() is not None:
+                            break
+                        time.sleep(0.05)
+                    if not marker.is_file():
+                        if eng.poll() is None:
+                            eng.terminate()
+                            eng.wait(timeout=10)
+                        return fail(res, 'post_await did not reach the wait for tracy-capture')
+                    with open(cap_log_path, 'w', encoding='utf-8') as cap_log:
+                        cap = subprocess.Popen(cap_cmd, stdout=cap_log, stderr=subprocess.STDOUT,
+                                               stdin=subprocess.DEVNULL, **popen_kw)
+                        try:
+                            eng.wait(timeout=run_timeout)
+                        except subprocess.TimeoutExpired:
+                            eng.kill()
+                            eng.wait()
+                            fail(res, f'engine still running after {run_timeout}s')
+                        try:
+                            cap_rc = cap.wait(timeout=60)
+                        except subprocess.TimeoutExpired:
+                            cap.terminate()
+                            try:
+                                cap.wait(timeout=10)
+                            except subprocess.TimeoutExpired:
+                                cap.kill()
+                                cap.wait()
+                            cap_rc = 'timeout'
+                cap_text = cap_log_path.read_text(encoding='utf-8', errors='backslashreplace')
+                fmt.h('post_await capture:')
+                tail(cap_text, 8)
+                facts['capture_rc'] = cap_rc
+                facts['engine_rc'] = eng.returncode
+                facts['trace'] = trace.as_posix()
+                if 'Instrumentation failure' in cap_text:
+                    start = cap_text.find('Instrumentation failure')
+                    return fail(res, cap_text[start:].split('\nSaving', 1)[0].strip())
+                if eng.returncode not in (0, None):
+                    return fail(res, f'engine exited {eng.returncode}')
+                return res
+
+            def stage_signal_arm():
+                # `pre` is not awaited. server_connected enables recording
+                # while `_wait_connected` is still polling, then `_pre`
+                # awaits one more frame. That is the editor hook.
+                # `post_await` enables only after the poll returns.
+                # The current client aborts on `completed.await` in `_pre`.
+                # A pass means the capture log has no instrumentation failure.
+                res = result()
+                gate = capture_gate(res, needs_project=True)
+                if gate:
+                    return gate
+                src_project = harness('signal_arm_project')
+                if not src_project or not (src_project / 'project.godot').is_file():
+                    return skip(res, f'no signal_arm project at {src_project}')
+                proj = logdir / 'signal_arm-project'
+                if not dry:
+                    shutil.copytree(src_project, proj, dirs_exist_ok=True, ignore=shutil.ignore_patterns('.godot', 'suspended.txt'))
+                port = free_listen_port(tt['address'], tt.get('port'))
+                if port is None:
+                    return fail(res, f"no free listen port on {tt['address']} from {tt.get('port')}")
+                if port != str(tt.get('port')):
+                    print(f"  {tt['address']}:{tt.get('port')} is in use; using {port}")
+                cmd = [str(exe), '--headless', '--path', str(proj), '--profiler-port', port,
+                       '--profiler-features', 'zones,auto_gdscript']
+                trace = logdir / 'signal_arm.tracy'
+                cap_cmd = [str(tool('capture')), '-o', str(trace), '-a', tt['address'], '-p', port, '-f']
+                facts = res['facts']
+                facts['engine_cmd'] = cmdline(cmd)
+                facts['capture_cmd'] = cmdline(cap_cmd)
+                print_cmd('signal_arm-engine', cmd)
+                print_cmd('signal_arm-capture', cap_cmd, background=True)
+                if dry:
+                    return as_dry(res)
+                marker = proj / 'suspended.txt'
+                if marker.exists():
+                    marker.unlink()
+                write_cmd(res, 'signal_arm-engine', cmd)
+                write_cmd(res, 'signal_arm-capture', cap_cmd)
+                cap_log_path = logdir / 'signal_arm-capture.log'
+                eng_log_path = logdir / 'signal_arm-engine.log'
+                res['logs'].extend((cap_log_path.as_posix(), eng_log_path.as_posix()))
+                popen_kw = {}
+                if sys.platform == 'win32':
+                    popen_kw['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+                with open(eng_log_path, 'w', encoding='utf-8') as eng_log:
+                    eng = subprocess.Popen(cmd, stdout=eng_log, stderr=subprocess.STDOUT,
+                                           stdin=subprocess.DEVNULL, **popen_kw)
+                    deadline = time.monotonic() + 30
+                    while time.monotonic() < deadline and not marker.is_file():
+                        if eng.poll() is not None:
+                            break
+                        time.sleep(0.05)
+                    if not marker.is_file():
+                        if eng.poll() is None:
+                            eng.terminate()
+                            eng.wait(timeout=10)
+                        return fail(res, 'signal_arm did not reach the wait for tracy-capture')
+                    with open(cap_log_path, 'w', encoding='utf-8') as cap_log:
+                        cap = subprocess.Popen(cap_cmd, stdout=cap_log, stderr=subprocess.STDOUT,
+                                               stdin=subprocess.DEVNULL, **popen_kw)
+                        try:
+                            eng.wait(timeout=run_timeout)
+                        except subprocess.TimeoutExpired:
+                            eng.kill()
+                            eng.wait()
+                            fail(res, f'engine still running after {run_timeout}s')
+                        try:
+                            cap_rc = cap.wait(timeout=60)
+                        except subprocess.TimeoutExpired:
+                            cap.terminate()
+                            try:
+                                cap.wait(timeout=10)
+                            except subprocess.TimeoutExpired:
+                                cap.kill()
+                                cap.wait()
+                            cap_rc = 'timeout'
+                cap_text = cap_log_path.read_text(encoding='utf-8', errors='backslashreplace')
+                fmt.h('signal_arm capture:')
+                tail(cap_text, 8)
+                facts['capture_rc'] = cap_rc
+                facts['engine_rc'] = eng.returncode
+                facts['trace'] = trace.as_posix()
+                if 'Instrumentation failure' in cap_text:
+                    start = cap_text.find('Instrumentation failure')
+                    return fail(res, cap_text[start:].split('\nSaving', 1)[0].strip())
+                if eng.returncode not in (0, None):
+                    return fail(res, f'engine exited {eng.returncode}')
+                return res
+
+            def stage_finish_await():
+                # `pre` emits `settled` on the resume of `_pre`, so `run_await`
+                # continues inside fiber `_pre`. Its last await is `_finish_await`.
+                # The current client aborts with `completed.await` still on top of `_pre`.
+                # A pass means the capture log has no instrumentation failure.
+                res = result()
+                gate = capture_gate(res, needs_project=True)
+                if gate:
+                    return gate
+                src_project = harness('finish_await_project')
+                if not src_project or not (src_project / 'project.godot').is_file():
+                    return skip(res, f'no finish_await project at {src_project}')
+                proj = logdir / 'finish_await-project'
+                if not dry:
+                    shutil.copytree(src_project, proj, dirs_exist_ok=True, ignore=shutil.ignore_patterns('.godot', 'suspended.txt'))
+                port = free_listen_port(tt['address'], tt.get('port'))
+                if port is None:
+                    return fail(res, f"no free listen port on {tt['address']} from {tt.get('port')}")
+                if port != str(tt.get('port')):
+                    print(f"  {tt['address']}:{tt.get('port')} is in use; using {port}")
+                cmd = [str(exe), '--headless', '--path', str(proj), '--profiler-port', port,
+                       '--profiler-features', 'zones,auto_gdscript']
+                trace = logdir / 'finish_await.tracy'
+                cap_cmd = [str(tool('capture')), '-o', str(trace), '-a', tt['address'], '-p', port, '-f']
+                facts = res['facts']
+                facts['engine_cmd'] = cmdline(cmd)
+                facts['capture_cmd'] = cmdline(cap_cmd)
+                print_cmd('finish_await-engine', cmd)
+                print_cmd('finish_await-capture', cap_cmd, background=True)
+                if dry:
+                    return as_dry(res)
+                marker = proj / 'suspended.txt'
+                if marker.exists():
+                    marker.unlink()
+                write_cmd(res, 'finish_await-engine', cmd)
+                write_cmd(res, 'finish_await-capture', cap_cmd)
+                cap_log_path = logdir / 'finish_await-capture.log'
+                eng_log_path = logdir / 'finish_await-engine.log'
+                res['logs'].extend((cap_log_path.as_posix(), eng_log_path.as_posix()))
+                popen_kw = {}
+                if sys.platform == 'win32':
+                    popen_kw['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+                with open(eng_log_path, 'w', encoding='utf-8') as eng_log:
+                    eng = subprocess.Popen(cmd, stdout=eng_log, stderr=subprocess.STDOUT,
+                                           stdin=subprocess.DEVNULL, **popen_kw)
+                    deadline = time.monotonic() + 30
+                    while time.monotonic() < deadline and not marker.is_file():
+                        if eng.poll() is not None:
+                            break
+                        time.sleep(0.05)
+                    if not marker.is_file():
+                        if eng.poll() is None:
+                            eng.terminate()
+                            eng.wait(timeout=10)
+                        return fail(res, 'finish_await did not reach the wait for tracy-capture')
+                    with open(cap_log_path, 'w', encoding='utf-8') as cap_log:
+                        cap = subprocess.Popen(cap_cmd, stdout=cap_log, stderr=subprocess.STDOUT,
+                                               stdin=subprocess.DEVNULL, **popen_kw)
+                        try:
+                            eng.wait(timeout=run_timeout)
+                        except subprocess.TimeoutExpired:
+                            eng.kill()
+                            eng.wait()
+                            fail(res, f'engine still running after {run_timeout}s')
+                        try:
+                            cap_rc = cap.wait(timeout=60)
+                        except subprocess.TimeoutExpired:
+                            cap.terminate()
+                            try:
+                                cap.wait(timeout=10)
+                            except subprocess.TimeoutExpired:
+                                cap.kill()
+                                cap.wait()
+                            cap_rc = 'timeout'
+                cap_text = cap_log_path.read_text(encoding='utf-8', errors='backslashreplace')
+                fmt.h('finish_await capture:')
+                tail(cap_text, 8)
+                facts['capture_rc'] = cap_rc
+                facts['engine_rc'] = eng.returncode
+                facts['trace'] = trace.as_posix()
+                if 'Instrumentation failure' in cap_text:
+                    start = cap_text.find('Instrumentation failure')
+                    return fail(res, cap_text[start:].split('\nSaving', 1)[0].strip())
+                if eng.returncode not in (0, None):
+                    return fail(res, f'engine exited {eng.returncode}')
                 return res
 
             def stage_fibers_capture():
@@ -2248,7 +2602,13 @@ def test_scons():
                     fmt.h(f'Test logs: {logdir.as_posix()}')
 
                     stage_funcs = {'version': stage_version, 'tracy_defines': stage_tracy_defines,
-                                   'doctest': stage_doctest, 'fibers_capture': stage_fibers_capture,
+                                   'doctest': stage_doctest, 'pre_yield': stage_pre_yield,
+                                   'pre_silence': stage_pre_silence,
+                                   'pre_enter': stage_pre_enter,
+                                   'post_await': stage_post_await,
+                                   'signal_arm': stage_signal_arm,
+                                   'finish_await': stage_finish_await,
+                                   'fibers_capture': stage_fibers_capture,
                                    'counts': stage_counts, 'silenced': stage_silenced, 'toggle': stage_toggle,
                                    'log': stage_log,
                                    'frame_images': stage_frame_images,
